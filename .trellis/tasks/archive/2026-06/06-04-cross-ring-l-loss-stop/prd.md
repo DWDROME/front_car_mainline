@@ -1230,3 +1230,77 @@ Validation:
 Rollback:
 
 * Remove the upward补搜 block in `find_seeds()` and restore single-side seed row assignment to the original fixed-row `y`.
+
+## Post-commit Caveat: Which Mechanism This Patch Covers
+
+Commit: `9cd95ff 修复基础搜线单侧丢失`.
+
+Confirmed code basis:
+
+* `code/tracking/mainline.cpp:104-113` already traces left and right seeds independently through `trace_single()`.
+* `code/tracking/mainline.cpp:128-132` uses `seed_pair_accepted()` only to clear `rt->seeds.width`; pair failure does not block a side seed from entering trace.
+* Existing safety gates remain downstream: bad trace or bad midline still becomes `TRACK_REJECT_NO_MIDLINE` / invalid control input.
+
+Important limitation:
+
+* This patch covers the case where one side is found on the fixed seed row and the missing side exists on a higher row.
+* It may not cover a pure side-border entry where every candidate point is too close to `x=0` or `x=RAW_W-1`.
+* Current `find_seeds()` rejects seed candidates closer than `kSeedBorderMargin`, and `trace_single()` also rejects seeds within `kTraceBorderMargin`.
+* Therefore a visually clear line pasted to the image edge may still fail until a separate side-border/inset-seed mechanism is designed.
+
+Next validation distinction:
+
+* If field/replay frames show the补搜 seed appears on a higher non-border row, this patch addresses the observed acquisition failure.
+* If frames show the left boundary remains at `x <= kTraceBorderMargin` across the usable row range, the next branch should be side-border acquisition, not another same-row or mixed-row pair change.
+
+## Reassessment After Side-entry Screenshot
+
+User evidence:
+
+* The failing frame shows the right boundary is visually clear and long.
+* The left road boundary has already entered from the image side / is partly outside the raw image.
+* The observed stop happens around cross entry: lower L disappears, farline points are absent, and control input becomes invalid.
+
+Important correction:
+
+* The next fix should not primarily try to fabricate a left seed at the image border.
+* If the left physical boundary is outside the image, there may be no real left edge for `trace_left()` to follow.
+* Current ordinary mainline can already use one visible side: `pick_track_type()` selects `TRACK_TYPE_RIGHT` when `rpts1s_num >= k_min_border_step` and left side is missing.
+* Therefore, if a frame with a clear right boundary still stops, the more likely blocker is not ordinary single-side midline. It is the cross transition path.
+
+Current code facts:
+
+* `code/tracking/cross.cpp:484-497` enters `CROSS_STATE_BEGIN` only from a frame where both left and right L are valid.
+* `code/tracking/cross.cpp:360-368` currently requires `both_l && near_ok` before switching from `BEGIN` to `IN`.
+* If one lower L disappears while already in `BEGIN`, the current code may stay in `BEGIN` instead of starting farline.
+* `code/tracking/mainline.cpp:513-519` clips nearline point counts while cross is `BEGIN` or newly changed from `BEGIN` to `IN`.
+* `code/tracking/mainline.cpp:527-552` only uses `solve_cross_mid()` when the frame started in `CROSS_STATE_IN` (`cross_in0 == 1`). A frame that just changed from `BEGIN` to `IN` still tries to use clipped nearline.
+* This creates a plausible stop mechanism: one L disappears near the car, nearline gets clipped too short, farline is either not started or not used yet, then `NO_MIDLINE`.
+
+Reference facts:
+
+* RT1064 `check_cross()` enters cross only when both L points were found.
+* RT1064 `run_cross()` in `CROSS_BEGIN` switches to `CROSS_IN` when both L still exist and either L index is near.
+* The reference assumes both L remain detectable long enough. The user's video violates that assumption because one side is outside / side-entry.
+
+Recommended next patch:
+
+* Keep `CROSS_STATE_NONE -> CROSS_STATE_BEGIN` conservative: still require both L to first confirm a cross.
+* Once already in `CROSS_STATE_BEGIN`, allow either current L near the car to switch into `CROSS_STATE_IN`.
+* This uses `BEGIN` as memory that the cross was already confirmed by both L in an earlier frame.
+* Do not relax initial cross detection to one L in this patch.
+* After switching into `CROSS_STATE_IN`, prefer using farline in the same frame if `cross_evolve()` produced a usable farline; otherwise fall back to the existing clipped nearline path for that transition frame.
+
+Why this is better than border-left seed fabrication:
+
+* It directly targets the observed "lower L disappears, no farline, then stop" chain.
+* It does not invent a fake left boundary when the real boundary is outside the camera.
+* It preserves the downstream single-side half-road-width midline contract.
+* It keeps the first cross entry conservative and only relaxes the already-confirmed cross transition.
+
+Acceptance criteria for this branch:
+
+* A frame that previously entered `CROSS_BEGIN` with both L, then loses one L, can still enter `CROSS_IN` when the remaining L is near.
+* A clear right-side boundary is not forced to stop only because the left lower L disappeared during `BEGIN`.
+* Initial cross detection is not changed to one-L detection.
+* No changes to control stop gates, drive output, logging systems, or test framework.

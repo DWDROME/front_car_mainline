@@ -1,0 +1,177 @@
+{
+  "ok": true,
+  "error_type": "",
+  "error": "",
+  "session_id": "d49c0a06ef6c",
+  "query": "智能车 巡线 边界 从图像边缘进入 起线点 seed 补线 丢线",
+  "platform": "",
+  "model": "grok-4.3-high",
+  "primary_api_mode": "chat-completions",
+  "content": "**智能车（smart car / model autonomous vehicle）视觉巡线（line following / lane tracking）中，处理图像边界、从边缘进入的线、起线点（seed points）、补线（line repair/completion）和丢线（lost line recovery）是核心图像处理任务。** 这些主要出现在中国大学生智能车竞赛（如全国大学生智能汽车竞赛）的摄像头组别中，赛道通常为白色引导线 + 黑色/蓝色背景，含直道、弯道、十字、环岛、三岔等元素。算法需在嵌入式平台（单片机或Jetson等）上实时运行（二值化图像后提取边界，计算中线偏差用于PID控制转向/速度）。[[1]](https://patents.google.com/patent/CN114863387A/zh)[[2]](https://www.cnblogs.com/zyly/p/19830032)\n\n### 1. 基本流程概述（图像预处理 → 边界提取 → 补线/中线 → 控制）\n- **二值化**：灰度图 → Otsu或动态阈值 → 黑白图（白色赛道，黑色背景）。常加桶形校正或透视变换（bird’s-eye view）减少畸变。\n- **边界提取**：寻找黑白跳变点（transition points）。\n- **中线计算**：左右边界中点或单边偏移；用于偏差（error = 当前中线 - 图像中心）。\n- **特殊元素**：状态机识别十字/环岛等，切换补线策略。\n\n**滑动窗口 + 直方图法**（经典OpenCV风格）和**八邻域（8-neighborhood）追线**是两种主流方法。后者在竞赛中更常见（资源友好，适合单片机）。[[3]](https://www.cnblogs.com/SkyXZ/p/18919993)\n\n### 2. 从图像边缘进入的边界 & 起线点（Seed Points）\n赛道线通常从图像**底部**（最近处，车头前方）进入画面，有时从左右侧边缘进入（弯道或元素入口）。\n\n- **起点搜索（Seed Finding）**：\n  - 从图像底部中间或底部行开始，向左/右扫描找白→黑跳变点（白色赛道与黑色背景的边界）。\n  - 左边界：白色像素右邻是白、左邻是黑的跳变点。\n  - 若在图像最左/最右列找到，即“从边缘进入”。\n  - 直方图法辅助：统计底部行白色像素列分布，峰值处为大致种子位置。[[3]](https://www.cnblogs.com/SkyXZ/p/18919993)\n\n- **向上“爬楼梯”或追线**：以种子为起点，逐行向上搜索下一行跳变点。停止条件：到达图像顶部、跳变过大（|Δx| > 阈值THR，防止噪声）、或左右边界相遇。[[1]](https://patents.google.com/patent/CN114863387A/zh)\n\n**八邻域追线详解**（最匹配“seed + 边界”场景）：\n- 八邻域指当前像素周围8个方向（上、下、左、右、左上、右上、左下、右下）。\n- 找到底部种子后，按特定顺序遍历邻域寻找同类跳变点（左边界按逆时针/特定方向，右边界相反，确保沿边界“绕行”）。\n- 左边界用“左手规则”式搜索，右边界“右手规则”。\n- 优点：能跟踪连续曲线，即使轻微断裂或弯曲；计算量低（每边界点平均O(1)）。\n- 停止：连续无新点或相遇。输出原始点列表，后续整理为 per-row 数组（left_border[y], right_border[y]）。[[2]](https://www.cnblogs.com/zyly/p/19830032)\n\n**类比**：像蚂蚁沿墙根爬行（边界），从底部起点（seed）开始，顺着墙（黑白跳变）向上走，遇到岔路或断裂就用邻域判断方向。\n\n若线从侧边缘进入：起点搜索会直接命中最左/右列，无需额外处理，但需注意视场边缘失真（可用half_road宽度补偿表）。\n\n### 3. 补线（Line Repair / Interpolation）\n当边界不完整（十字、环岛入口常见）或一侧丢失时，用已知信息“补”缺失部分，生成完整中线。\n\n- **固定宽度补线**（最常用）：\n  - 赛道物理宽度固定（常45cm），图像中每行白色像素数W_n（由近及远递减，预标定）。\n  - 一侧丢失时：L_n = R_n - W_n（或反之）；中线 M_n = (L_n + R_n)/2。\n  - 透视补偿：用half_road[y]表（不同y行半宽不同，底部宽、顶部窄）。[[1]](https://patents.google.com/patent/CN114863387A/zh)[[2]](https://www.cnblogs.com/zyly/p/19830032)\n\n- **斜率/插值补线**：用前几行边界斜率外推；或连接已知拐点（上下拐点连线）。\n- **曲线拟合**：Bezier曲线（环岛常用，起点+控制点+终点拟合）；或二阶多项式拟合（y为自变量更稳）。\n- **单边巡线**：只跟踪最长/最可靠的一侧边界，偏移固定量得到中线（丢线时鲁棒）。[[4]](https://blog.csdn.net/Lovely_him/article/details/119255431)\n\n**十字示例**：找上下左右拐点，连接下方两点或用斜率补横向丢失线，确保直行通过。[[5]](https://bbs.huaweicloud.com/blogs/320229)\n\n**环岛示例**：入环时一侧大面积丢线，用另一侧 + 宽度表或Bezier补；状态机管理进/内/出环补线策略。\n\n### 4. 丢线（Lost Line）恢复策略\n丢线指连续多行无有效边界（噪声、光照、元素遮挡）。\n\n- **检测**：统计loss_count（丢线行数）、first_loss_y；或 |Δx| 突变。\n- **恢复方法**：\n  - **插值/平移**：用最近有效行宽度或正常直道宽度平移已知边界。\n  - **前瞻与历史**：用前几帧或数组存储正常宽度；丢线不严重区用比例缩放。\n  - **单边 + 状态机**：切换到单边巡线；特殊元素（十字/环岛）用预判 + 限幅输出。\n  - **保护**：丢线过多 → 减速/停车或用IMU/编码器辅助。\n  - **权重**：底部（近）行权重高，远行用拟合或丢弃。[[6]](https://bbs.huaweicloud.com/blogs/320221)[[2]](https://www.cnblogs.com/zyly/p/19830032)\n\n**滑动窗口法处理丢线**：窗口内白色像素 < minpix 阈值时，保持上一层中心（平滑过渡）。[[3]](https://www.cnblogs.com/SkyXZ/p/18919993)\n\n### 5. 实用建议与变体\n- **参数调优**：THR（跳变阈值）、窗口大小/margin、minpix、W_n标定表。\n- **鲁棒性**：动态阈值二值化 + 滤波；多行平均中线；元素识别（拐点检测、突变点）。\n- **开源参考**：专利CN114863387A（详细种子+8邻域+宽度补线）；ROS2仿真示例（完整pipeline）；CSDN/博客的八邻域代码。\n- **其他方法**：深度学习（ResNet等特征提取，需数据标注）；电磁/光电辅助（混合）。\n\n这些技术使系统在弯道、元素处稳定运行，避免“丢线后失控”。实际调试需在真实赛道迭代（光照、速度影响大）。若需具体代码片段或某元素（如环岛）详解，可提供更多上下文。",
+  "sources": [
+    {
+      "title": "1",
+      "url": "https://patents.google.com/patent/CN114863387A/zh"
+    },
+    {
+      "title": "2",
+      "url": "https://www.cnblogs.com/zyly/p/19830032"
+    },
+    {
+      "title": "3",
+      "url": "https://www.cnblogs.com/SkyXZ/p/18919993"
+    },
+    {
+      "title": "4",
+      "url": "https://blog.csdn.net/Lovely_him/article/details/119255431"
+    },
+    {
+      "title": "5",
+      "url": "https://bbs.huaweicloud.com/blogs/320229"
+    },
+    {
+      "title": "6",
+      "url": "https://bbs.huaweicloud.com/blogs/320221"
+    },
+    {
+      "url": "https://patents.google.com/patent/CN109033932B/zh",
+      "provider": "firecrawl",
+      "title": "CN109033932B - 一种赛道识别方法、识别系统、智能车巡迹方法及 ...",
+      "description": "本发明还提供一种智能车巡迹方法，包括通过实施例1中的赛道识别方法识别出赛道类型后，根据巡线算法获得图像各行的中线值，再根据赛道类型获取赛道的中线值或赛道的模糊中线值 ..."
+    }
+  ],
+  "sources_count": 7,
+  "primary_sources": [
+    {
+      "title": "1",
+      "url": "https://patents.google.com/patent/CN114863387A/zh"
+    },
+    {
+      "title": "2",
+      "url": "https://www.cnblogs.com/zyly/p/19830032"
+    },
+    {
+      "title": "3",
+      "url": "https://www.cnblogs.com/SkyXZ/p/18919993"
+    },
+    {
+      "title": "4",
+      "url": "https://blog.csdn.net/Lovely_him/article/details/119255431"
+    },
+    {
+      "title": "5",
+      "url": "https://bbs.huaweicloud.com/blogs/320229"
+    },
+    {
+      "title": "6",
+      "url": "https://bbs.huaweicloud.com/blogs/320221"
+    }
+  ],
+  "primary_sources_count": 6,
+  "extra_sources": [
+    {
+      "url": "https://patents.google.com/patent/CN109033932B/zh",
+      "provider": "firecrawl",
+      "title": "CN109033932B - 一种赛道识别方法、识别系统、智能车巡迹方法及 ...",
+      "description": "本发明还提供一种智能车巡迹方法，包括通过实施例1中的赛道识别方法识别出赛道类型后，根据巡线算法获得图像各行的中线值，再根据赛道类型获取赛道的中线值或赛道的模糊中线值 ..."
+    }
+  ],
+  "extra_sources_count": 1,
+  "source_warning": "extra_sources are retrieved in parallel and are not automatically used to verify generated content; use fetch on key URLs for claim-level evidence.",
+  "routing_decision": {
+    "docs_intent": false,
+    "zh_current_intent": false,
+    "web_current_intent": false,
+    "fetch_intent": false,
+    "supplemental_paths": [],
+    "validation_level": "balanced",
+    "fallback_mode": "auto",
+    "providers": "auto",
+    "main_search_chain": [
+      "openai-compatible"
+    ],
+    "openai_compatible_stream": true
+  },
+  "providers_used": [
+    "OpenAI-compatible",
+    "firecrawl"
+  ],
+  "provider_attempts": [
+    {
+      "capability": "main_search",
+      "provider": "OpenAI-compatible",
+      "status": "ok",
+      "error_type": "",
+      "error": "",
+      "elapsed_ms": 41590.5,
+      "result_count": 1
+    },
+    {
+      "capability": "web_search",
+      "provider": "firecrawl",
+      "status": "ok",
+      "error_type": "",
+      "error": "",
+      "elapsed_ms": 43516.89,
+      "result_count": 1
+    }
+  ],
+  "fallback_used": false,
+  "validation_level": "balanced",
+  "minimum_profile_ok": true,
+  "capability_status": {
+    "main_search": {
+      "configured": [
+        "openai-compatible"
+      ],
+      "fallback_chain": [
+        "xai-responses",
+        "openai-compatible"
+      ],
+      "ok": true
+    },
+    "web_search": {
+      "configured": [
+        "tavily",
+        "firecrawl"
+      ],
+      "fallback_chain": [
+        "zhipu",
+        "tavily",
+        "firecrawl"
+      ],
+      "ok": true
+    },
+    "docs_search": {
+      "configured": [
+        "context7",
+        "exa"
+      ],
+      "fallback_chain": [
+        "context7",
+        "exa"
+      ],
+      "ok": true
+    },
+    "web_fetch": {
+      "configured": [
+        "tavily",
+        "firecrawl"
+      ],
+      "fallback_chain": [
+        "tavily",
+        "firecrawl"
+      ],
+      "ok": true
+    },
+    "vertical_search": {
+      "configured": [],
+      "fallback_chain": [
+        "anysearch"
+      ],
+      "experimental": true,
+      "ok": false
+    }
+  },
+  "elapsed_ms": 43516.91
+}

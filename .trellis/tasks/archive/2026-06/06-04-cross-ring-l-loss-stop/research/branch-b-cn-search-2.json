@@ -1,0 +1,193 @@
+{
+  "ok": true,
+  "error_type": "",
+  "error": "",
+  "session_id": "1fbe508a6d1e",
+  "query": "智能车 摄像头 八邻域 起点搜索 边线 从边缘进入 丢线 补线 十字 环岛",
+  "platform": "",
+  "model": "grok-4.3-high",
+  "primary_api_mode": "chat-completions",
+  "content": "**智能车（模型车/机器人车）摄像头视觉循迹算法核心是基于二值化图像提取赛道边线（黑白或白黑边界），使用八邻域（8-connected）边界追踪实现起点搜索与边线提取，再通过丢线检测与补线策略处理十字、环岛等特殊元素。**[[1]](https://www.cnblogs.com/zyly/p/19830032)[[1]](https://www.cnblogs.com/zyly/p/19830032)\n\n这些技术主要应用于中国大学生智能汽车竞赛（智能车竞赛）等场景，赛道通常为白色背景+黑色边线（或反之），摄像头安装在车头前方（高度有限，如20-30cm），图像从底部进入（车前进时近处先入画）。\n\n### 1. 图像预处理（基础）\n- 采集摄像头图像 → 灰度化或HSV/颜色过滤（提取白色赛道区域）→ 二值化（固定阈值或Otsu大津法）。\n- 常加黑框防止边界溢出。\n- 输出二值图：白色=赛道，黑色=背景/边线。\n\n### 2. 起点搜索（从边缘/底部进入）\n正常行驶时，赛道从图像**底部中央**进入。算法从图像底部（或近底部行）靠近中心位置开始，向左、向右分别搜索左右边线起点：\n- 寻找白色赛道与黑色背景的跳变点（白→黑或黑→白，取决于赛道颜色）。\n- 左边线起点：从中心向左扫到第一个跳变。\n- 右边线起点：从中心向右扫到第一个跳变。\n- 若找不到，进入保护模式（认为图像无效）。[[1]](https://www.cnblogs.com/zyly/p/19830032)\n\n这对应“从边缘进入”和“边线”处理，确保从图像下沿可靠起始。\n\n### 3. 八邻域边线提取（起点搜索后的追踪）\n找到起点后，使用**八邻域搜索**（Moore邻域）沿边界“爬”线追踪：\n- 八邻域指当前像素周围8个方向：左上、上、右上、左、右、左下、下、右下。\n- 从起点开始，顺时针或逆时针搜索下一个非零（或边界）像素。\n- 左边线与右边线搜索方向相反（确保一致绕行边界）。\n- 规则示例：优先某个方向顺序，避免爬出图像或陷入死循环；连续多次无新点则停止。\n- 输出：左右边线点集（或按行索引的边界数组 left_border[y]、right_border[y]）。\n\n伪代码思路（常见实现）：\n```\n从起点 (x0, y0) 开始\nwhile 未结束:\n    在当前点八邻域中按顺序查找下一个边界点\n    添加到边线列表\n    更新当前点\n    if 左右边线相遇或连续丢失 → 停止\n```\n此法高效、实时性好，适合嵌入式MCU（TC264、英飞凌等）。[[2]](https://blog.csdn.net/m0_66478571/article/details/122557273)[[1]](https://www.cnblogs.com/zyly/p/19830032)\n\n**连通性**：基于8连通区域生长或种子填充思想，确保追踪的是连续边界。\n\n### 4. 丢线检测与补线（核心策略）\n- **丢线（Lost line）**：某行或多行无法找到边线（常见于弯道、元素入口）。统计丢线行数、首次丢线位置（first_loss_y）、总丢失计数。\n- **补线（Repair/Extrapolate line）**：根据上下文恢复缺失部分，避免中线偏差过大。\n  - **普通情况**：用前几行斜率外推；或假设赛道宽度固定（标定不同y行的半宽表 half_road，因透视近宽远窄），一侧丢失则另一侧 ± 宽度计算。\n  - **示例**：若右边线丢线，右边界 = 左边界 + 预标定宽度 W[y]；中线 = (左 + 右)/2。\n  - 质量矩或最小二乘拟合辅助平滑。[[3]](https://blog.csdn.net/2302_77398648/article/details/142765394)[[4]](https://patents.google.com/patent/CN114863387A/zh)\n\n补线后计算中线偏差（与图像中心或期望前瞻点偏差），用于PID控制舵机/电机。\n\n### 5. 特殊元素处理：十字与环岛\n使用**状态机**（标志位或枚举）管理：NORMAL → APPROACHING → ENTERING → INSIDE/EXITING。\n\n- **十字（Cross/十字路口）**：\n  - 特征：左右边线同时大面积丢线（开口），远处重新出现边界，常有4个拐点（左上/左下、右上/右下）。\n  - 识别：检测丢线高度阈值 + 宽度突变 + 4拐点存在。\n  - 处理：用前段斜率插值补线（或连接对应拐点），强制直行（不允许拐弯）。中线改为连接远端有效点。\n  - 斜入/直入/中入区分处理，避免误判。[[5]](https://zhuanlan.zhihu.com/p/1934169748163240672)[[4]](https://patents.google.com/patent/CN114863387A/zh)\n\n- **环岛（Roundabout/环岛）**：\n  - 特征：一侧边线大幅丢线（入口三角形或弧形）、赛道宽度突变、可能检测到正/倒三角或侧三角；环内常一侧持续丢线。\n  - 识别：丢线计数阈值 + 拐点（弧形拐点、下拐点） + 电磁辅助（若混合方案）。\n  - 处理：\n    - 入环：补线直入或斜入，切换状态。\n    - 环内：用编码器/陀螺仪积分判断角度；补弧线或保持一侧补线；调整前瞻点与中线偏移（左/右环不同）。\n    - 出环：检测另一侧恢复 + 特定标志位，补线出环。\n  - 常结合陀螺仪z轴积分或编码器测距判断环大小/完成度。[[6]](https://www.guyuehome.com/wap/detail?id=1825476343915966466)[[7]](https://developer.aliyun.com/article/1141259)\n\n其他辅助：拐点检测（方向变化识别下拐点、上拐点、突变点）、元素优先级状态机防止误触发。\n\n### 6. 整体流程与控制\n1. 预处理 + 八邻域提取左右边线。\n2. 整理边线 + 丢线统计 + 拐点检测。\n3. 道路状态判断（普通/十字/环岛）。\n4. 策略补线 + 计算中线偏差（前瞻行 track_aim）。\n5. PID输出舵机/速度控制。\n6. 调试可视化（叠加边线、中线、状态）。\n\n**注意事项**：\n- 透视畸变补偿（half_road表）。\n- 反光/光照鲁棒性（自适应阈值）。\n- 实车常用C代码（嵌入式），仿真可用Python+OpenCV。\n- 调试重点：起点稳定性、丢线阈值、补线平滑度、元素切换时机。\n\n典型资源包括竞赛技术报告、CSDN/知乎/古月居博客、Bilibili视频（搜索“智能车 八邻域”或“智能车 补线”可找到开源代码示例）。实际移植需根据硬件（摄像头型号、MCU）和赛道规则微调参数。[[8]](https://blog.csdn.net/qq_52496822/article/details/129707983)\n\n此算法实时性强、计算量适中，是视觉组主流方案。若需具体C代码框架或参数示例，可提供更多细节进一步查阅。",
+  "sources": [
+    {
+      "title": "1",
+      "url": "https://www.cnblogs.com/zyly/p/19830032"
+    },
+    {
+      "title": "2",
+      "url": "https://blog.csdn.net/m0_66478571/article/details/122557273"
+    },
+    {
+      "title": "3",
+      "url": "https://blog.csdn.net/2302_77398648/article/details/142765394"
+    },
+    {
+      "title": "4",
+      "url": "https://patents.google.com/patent/CN114863387A/zh"
+    },
+    {
+      "title": "5",
+      "url": "https://zhuanlan.zhihu.com/p/1934169748163240672"
+    },
+    {
+      "title": "6",
+      "url": "https://www.guyuehome.com/wap/detail?id=1825476343915966466"
+    },
+    {
+      "title": "7",
+      "url": "https://developer.aliyun.com/article/1141259"
+    },
+    {
+      "title": "8",
+      "url": "https://blog.csdn.net/qq_52496822/article/details/129707983"
+    }
+  ],
+  "sources_count": 8,
+  "primary_sources": [
+    {
+      "title": "1",
+      "url": "https://www.cnblogs.com/zyly/p/19830032"
+    },
+    {
+      "title": "2",
+      "url": "https://blog.csdn.net/m0_66478571/article/details/122557273"
+    },
+    {
+      "title": "3",
+      "url": "https://blog.csdn.net/2302_77398648/article/details/142765394"
+    },
+    {
+      "title": "4",
+      "url": "https://patents.google.com/patent/CN114863387A/zh"
+    },
+    {
+      "title": "5",
+      "url": "https://zhuanlan.zhihu.com/p/1934169748163240672"
+    },
+    {
+      "title": "6",
+      "url": "https://www.guyuehome.com/wap/detail?id=1825476343915966466"
+    },
+    {
+      "title": "7",
+      "url": "https://developer.aliyun.com/article/1141259"
+    },
+    {
+      "title": "8",
+      "url": "https://blog.csdn.net/qq_52496822/article/details/129707983"
+    }
+  ],
+  "primary_sources_count": 8,
+  "extra_sources": [
+    {
+      "url": "https://patents.google.com/patent/CN114863387A/zh",
+      "provider": "firecrawl",
+      "title": "CN114863387A - 一种循迹智能车赛道识别与分类方法- Google Patents",
+      "description": "本发明提供一种循迹智能车赛道识别与分类方法，该方法提出的摄像头图像处理和特征提取算法能够有效地对赛道元素进行识别与分类处理，该算法简单易于实现，复杂度较低，对于 ..."
+    },
+    {
+      "url": "https://zhuanlan.zhihu.com/p/1934169748163240672",
+      "provider": "firecrawl",
+      "title": "摄像头算法控制总结 - 知乎专栏",
+      "description": "一般来说，我们的车是放在赛道中间，即起始点为白点，然后我们往两边判断一直到黑点，我们记录下黑点坐标放进左右边线的数组里，若没有扫到黑点则记录图像数组 ..."
+    }
+  ],
+  "extra_sources_count": 2,
+  "source_warning": "extra_sources are retrieved in parallel and are not automatically used to verify generated content; use fetch on key URLs for claim-level evidence.",
+  "routing_decision": {
+    "docs_intent": false,
+    "zh_current_intent": false,
+    "web_current_intent": false,
+    "fetch_intent": false,
+    "supplemental_paths": [],
+    "validation_level": "balanced",
+    "fallback_mode": "auto",
+    "providers": "auto",
+    "main_search_chain": [
+      "openai-compatible"
+    ],
+    "openai_compatible_stream": true
+  },
+  "providers_used": [
+    "OpenAI-compatible",
+    "firecrawl"
+  ],
+  "provider_attempts": [
+    {
+      "capability": "main_search",
+      "provider": "OpenAI-compatible",
+      "status": "ok",
+      "error_type": "",
+      "error": "",
+      "elapsed_ms": 49927.04,
+      "result_count": 1
+    },
+    {
+      "capability": "web_search",
+      "provider": "firecrawl",
+      "status": "ok",
+      "error_type": "",
+      "error": "",
+      "elapsed_ms": 51814.61,
+      "result_count": 2
+    }
+  ],
+  "fallback_used": false,
+  "validation_level": "balanced",
+  "minimum_profile_ok": true,
+  "capability_status": {
+    "main_search": {
+      "configured": [
+        "openai-compatible"
+      ],
+      "fallback_chain": [
+        "xai-responses",
+        "openai-compatible"
+      ],
+      "ok": true
+    },
+    "web_search": {
+      "configured": [
+        "tavily",
+        "firecrawl"
+      ],
+      "fallback_chain": [
+        "zhipu",
+        "tavily",
+        "firecrawl"
+      ],
+      "ok": true
+    },
+    "docs_search": {
+      "configured": [
+        "context7",
+        "exa"
+      ],
+      "fallback_chain": [
+        "context7",
+        "exa"
+      ],
+      "ok": true
+    },
+    "web_fetch": {
+      "configured": [
+        "tavily",
+        "firecrawl"
+      ],
+      "fallback_chain": [
+        "tavily",
+        "firecrawl"
+      ],
+      "ok": true
+    },
+    "vertical_search": {
+      "configured": [],
+      "fallback_chain": [
+        "anysearch"
+      ],
+      "experimental": true,
+      "ok": false
+    }
+  },
+  "elapsed_ms": 51814.63
+}
