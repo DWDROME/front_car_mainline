@@ -1,0 +1,10 @@
+.ace-tool/
+build/
+build-host/
+*.o
+*.d
+*.a
+*.so
+*.elf
+front_car_mainline
+key_supervisor
