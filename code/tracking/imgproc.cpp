@@ -268,18 +268,55 @@ int find_seeds(const uint8_t gray[RAW_H][RAW_W],
         return 1;
     }
 
+    int left_y = y;
+    int right_y = y;
+
+    // 固定行只找到一侧时，沿用 TC264/Front_Car 的保守补搜：只向上找缺失侧。
+    if(ok0 && !ok1)
+    {
+        for(int yy = y - 1; yy >= MINI_HIGH; --yy)
+        {
+            const int xr = find_right_edge(gray, yy, right_x0);
+            if(xr >= right_x0 && xr <= RAW_W - 1 - kSeedBorderMargin)
+            {
+                single_right_x = xr;
+                right_y = yy;
+                break;
+            }
+        }
+    }
+    else if(!ok0 && ok1)
+    {
+        for(int yy = y - 1; yy >= MINI_HIGH; --yy)
+        {
+            const int xl = find_left_edge(gray, yy, left_x0);
+            if(xl >= kSeedBorderMargin && xl <= left_x0)
+            {
+                single_left_x = xl;
+                left_y = yy;
+                break;
+            }
+        }
+    }
+
     int state = 0;
     if(single_left_x >= 0)
     {
-        seeds->left = {single_left_x, y};
-        seeds->row = y;
+        seeds->left = {single_left_x, left_y};
         state |= 1;
     }
     if(single_right_x >= 0)
     {
-        seeds->right = {single_right_x, y};
-        seeds->row = y;
+        seeds->right = {single_right_x, right_y};
         state |= 2;
+    }
+    if(state == 3 && left_y == right_y)
+    {
+        seeds->row = left_y;
+    }
+    else
+    {
+        seeds->row = -1;
     }
 
     if(seed_state != nullptr)

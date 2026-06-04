@@ -813,6 +813,73 @@ Open design detail:
 
 * If left and right seeds come from different rows, current `seed_pair_accepted()` rejects the pair because it requires equal `y` and uses one `seeds->row`. A multi-row missing-side patch must either keep such a frame as single-side for trace/midline, or deliberately relax pair acceptance. Relaxing pair acceptance is broader and should not be first.
 
+### Reassessment: Seed Width Is Not the Reference Width Contract
+
+User correction:
+
+* Treating current `seed_pair_t.width = right.x - left.x` as the main width source is misleading when aligning to the RT1064 reference.
+* RT1064 ordinary `process_image()` does not preserve a seed-pair width field. It uses fixed-row seeds only to start `findline_lefthand_adaptive()` / `findline_righthand_adaptive()`.
+
+RT1064 layer split:
+
+1. Seed layer:
+   * `Project/USER/src/main.c:532-545`
+   * Find one raw start point per side on `begin_y`.
+   * Purpose: start boundary tracing, not validate road width.
+
+2. Boundary point layer:
+   * `Project/USER/src/main.c:547-569`
+   * Raw traced points are mapped through `mapx/mapy`, blurred, and resampled into `rpts0s/rpts1s`.
+   * Downstream logic works on these point sequences, not seed-pair width.
+
+3. Width / pair checks:
+   * `Project/USER/src/main.c:655-672`
+   * L-pair checks use distances between selected points in `rpts0s/rpts1s`, e.g. `hypot(dx, dy)` against `0.45 * pixel_per_meter`.
+   * The pairing is by semantic point index such as L/Y point id, not by raw seed row.
+
+4. Centerline generation:
+   * `Project/CODE/imgproc.c:612-635`
+   * `track_leftline()` and `track_rightline()` generate the centerline by offsetting a selected side boundary by `pixel_per_meter * ROAD_WIDTH / 2`.
+   * Normal and element states choose which side to offset through `track_type`.
+
+Current code mapping:
+
+* `code/tracking/imgproc.cpp:257-263` stores `seeds->width` only when both fixed-row seeds are accepted on the same row.
+* `code/tracking/imgproc.cpp:293-309` rejects seed pairs when left/right seed y differ.
+* `code/tracking/mainline.cpp:305-388` already follows the RT1064 idea of choosing a single side based on resampled point counts and prior `track_type_keep`.
+* `code/tracking/imgproc.cpp:769-977` already follows the RT1064 single-side outward offset idea with `ROAD_HALF_WIDTH`.
+* `code/tracking/boundary.cpp:275-325` already performs L-pair width checks on traced/transformed point sequences, not raw seed row width.
+
+Implication:
+
+* A future multi-row seed patch should not be judged by whether it can produce a trustworthy `seeds->width`.
+* Its main job is to start valid boundary traces.
+* If left/right seed rows differ, that does not invalidate the traces by itself.
+* The current `seed_pair_accepted()` contract may remain as a conservative report/pair-width contract, but it must not prevent valid single-side trace acquisition.
+
+This is now a broader design branch, not a tiny implementation patch. Source changes are paused until the seed/trace/width/centerline contract is explicitly chosen.
+
+### Candidate Architecture Directions After Reassessment
+
+**A. Keep seed width as a conservative same-row report field, but decouple trace acquisition from pair acceptance** (recommended direction for a minimal future patch)
+
+* Seed layer may find left/right seeds on different nearby rows.
+* `trace_edges()` can trace each valid side independently.
+* `seed_pair_accepted()` continues to mean "same-row pair with trustworthy seed width"; it does not decide whether a side may trace.
+* Control still uses resampled boundary point counts and single-side outward offset.
+
+**B. Remove or downgrade `seed_pair_t.width` from algorithmic decisions**
+
+* Treat `seeds->width` as debug/report only.
+* Ensure downstream algorithmic checks use point sequences (`rpts*`, L-pair width, midline lookahead) instead.
+* Larger cleanup; not a first patch unless a direct dependency on seed width causes failure.
+
+**C. Rebuild seed acquisition around row-indexed boundary arrays**
+
+* Introduce per-row left/right boundary arrays and compute width by matching rows.
+* This would answer the "corresponding width by row" idea directly.
+* Very large rewrite and not aligned with the existing RT1064 point-sequence pipeline; reject for this task unless the whole tracking architecture is intentionally replaced.
+
 ### Branch C: Ring Selected-Side Midline Failure
 
 Question: after ring state forces inner/outer side, which state first produces `TRACK_REJECT_NO_MIDLINE`?
@@ -913,3 +980,253 @@ Validation:
 Rollback:
 
 * Revert the one `k_cross_far_begin_y` constant and `find_far_seed()` start-row change, or switch `find_far_seed()` back to `START_HIGH`.
+
+## Evidence Correction: Current Seed Width vs RT1064
+
+Updated: 2026-06-05 02:39:55 +0800.
+
+User correction:
+
+* Do not describe the current code as having a literal `width = right.x - left.x` assignment.
+* The exact source must be matched using the real field names and local variables.
+* For this comparison stage, only compare the current project and the RT1064 reference. Other libraries are guidance only and should not drive the next conclusion.
+
+Current project exact code facts:
+
+* `code/types.hpp:14-20` defines `seed_pair_t` with `point_t left`, `point_t right`, `int row`, and `int width`.
+* `code/tracking/imgproc.cpp:244-245` finds same-row seed candidates into local variables `x0` and `x1`.
+* `code/tracking/imgproc.cpp:257` computes the candidate same-row raw seed span as `const int w = x1 - x0`.
+* `code/tracking/imgproc.cpp:258-263` writes `seeds->width = w` only when both seeds are found on that fixed row and `w` is within `kSeedMinWidth..kSeedMaxWidth`.
+* `code/tracking/imgproc.cpp:292-308` `seed_pair_accepted()` requires both seed bits, equal `left.y/right.y`, `seeds->row == left.y`, and `seeds->width` within range.
+* `code/tracking/mainline.cpp:64-136` `trace_edges()` traces each side independently from valid seed coordinates. It calls `seed_pair_accepted()` before and after trace, but the observed source use of failed pair acceptance is clearing `rt->seeds.width = 0`; it does not block single-side `trace_single()` by itself.
+* `code/app/report.cpp:20-42`, `111-117`, and `296-303` use seed-pair acceptance / seed width for diagnostic/report output, not direct control midline generation.
+
+RT1064 exact code facts:
+
+* `/mnt/e/longxin/RT1064_Code_ref/SJTU-AuTop-RT1064-Code/Project/USER/inc/main.h:26-41` declares point arrays and point counts such as `ipts0/ipts1`, `rpts0/rpts1`, `rpts0s/rpts1s`; there is no ordinary seed-pair struct or ordinary seed-width field in this header.
+* `/mnt/e/longxin/RT1064_Code_ref/SJTU-AuTop-RT1064-Code/Project/USER/src/main.c:532-545` ordinary line acquisition uses local `x1/y1` and `x2/y2`, scans one fixed row outward, then directly calls `findline_lefthand_adaptive()` / `findline_righthand_adaptive()`. No seed-pair width is persisted.
+* `/mnt/e/longxin/RT1064_Code_ref/SJTU-AuTop-RT1064-Code/Project/USER/src/main.c:583-587` builds single-side candidate centerlines from traced/resampled point arrays using `track_leftline()` / `track_rightline()`.
+* `/mnt/e/longxin/RT1064_Code_ref/SJTU-AuTop-RT1064-Code/Project/USER/src/main.c:308-317` ordinary side selection uses `rpts0s_num/rpts1s_num`, not a raw seed width.
+* `/mnt/e/longxin/RT1064_Code_ref/SJTU-AuTop-RT1064-Code/Project/USER/src/main.c:653-672` L-pair geometry checks use distances between `rpts0s[...]` and `rpts1s[...]` points after tracing, mapping, filtering, and resampling.
+
+Corrected interpretation:
+
+* Current `seed_pair_t::width` is a same-fixed-row raw seed span, not a row-indexed boundary-array width.
+* RT1064 does not have an equivalent ordinary seed-pair width contract.
+* Therefore, when aligning with RT1064, the stable geometry contract should be traced/resampled point sequences and their counts/distances, not the raw fixed-row seed span.
+* Because current `trace_edges()` already allows left and right seeds to trace independently, the key question is not "how to compute width when seed rows differ"; it is whether `seed_pair_t::width` should remain only a same-row report/diagnostic field while trace acquisition accepts any valid current-frame side seed.
+
+## Candidate Decision: Remove `seed_pair_t::width`
+
+User inclination:
+
+* Prefer deleting the stored `seed_pair_t::width` field.
+* Reason: RT1064 has no ordinary seed-width state, and TC264 / Front_Car style multi-row missing-side search can work from seed coordinates plus `Seed_State`.
+* Front_Car's `width_base` is a separate concept: it is used to estimate `mid_position` when only one side seed exists, not to validate a current-frame same-row seed pair.
+
+Current impact surface if removing the field:
+
+* `code/types.hpp:14-20`: remove `int width` from `seed_pair_t`.
+* `code/tracking/imgproc.cpp:257-263`: keep local `w = x1 - x0` only for same-row pair acceptance, but stop storing it in `seeds`.
+* `code/tracking/imgproc.cpp:293-308`: make `seed_pair_accepted()` recompute same-row span from `seeds->right.x - seeds->left.x`, after verifying both seeds are on the same row.
+* `code/tracking/mainline.cpp:128-132`: remove the `rt->seeds.width = 0` cleanup, because failed pair acceptance should not mutate seed coordinates or a removed field.
+* `code/app/report.cpp:111-117` and `296-303`: remove or replace `seed_width` report output. If a report value is still wanted, compute a local same-row span only when `seed_pair_accepted()` is true.
+
+Reference alignment:
+
+* RT1064 ordinary seed coordinates are transient local start points (`x1/y1`, `x2/y2`) for trace.
+* RT1064 side selection and element geometry checks are based on traced/resampled point counts and distances, not a persisted raw seed width.
+* Deleting `seed_pair_t::width` moves the current project closer to this layer split without changing trace, midline, control, cross, or ring behavior by itself.
+
+Important distinction:
+
+* Removing `seed_pair_t::width` does not mean immediately adding `width_base`.
+* `width_base` would be a cross-frame `mid_position` recovery aid for one-side seed frames. That is a separate behavior change and needs its own field ownership, update rule, stale reset rule, and rollback plan.
+
+## Central Reframe: Four-Layer Reference Contract
+
+User correction:
+
+* The central issue is not `width_base`, not just deleting `seed_pair_t::width`, and not choosing ring before seed.
+* The central issue is the reference-style layer contract:
+  1. seed only starts boundary tracing;
+  2. traced/IPM/resampled point sequences carry geometry;
+  3. ordinary or element state chooses which side to follow;
+  4. selected side is converted to control midline by fixed half-road-width normal offset.
+
+Reference contract from RT1064:
+
+* Seed layer:
+  * `Project/USER/src/main.c:532-545`
+  * Uses `x1/y1` and `x2/y2` only to start `findline_lefthand_adaptive()` / `findline_righthand_adaptive()`.
+  * No persisted ordinary seed-pair width.
+* Point-sequence geometry:
+  * `Project/USER/src/main.c:547-582`
+  * Raw trace points become `rpts0s/rpts1s` after map, blur, resample, angle, and NMS.
+* Width / distance checks:
+  * `Project/USER/src/main.c:653-672`
+  * L-pair distance is computed between selected IPM/resampled points, not between raw seed row points.
+* Side selection:
+  * `Project/USER/src/main.c:308-317`
+  * Ordinary mode updates `track_type` from `rpts0s_num/rpts1s_num`.
+  * Cross/circle state machines may overwrite `track_type`.
+* Centerline generation:
+  * `Project/CODE/imgproc.c:612-635`
+  * `track_leftline()` / `track_rightline()` offset the selected side boundary by `pixel_per_meter * ROAD_WIDTH / 2`.
+
+Current project mapping:
+
+* Seed layer:
+  * `code/tracking/imgproc.cpp:214-290`
+  * Currently has extra same-row seed-pair state `seed_pair_t::width`.
+* Trace layer:
+  * `code/tracking/mainline.cpp:64-136`
+  * Already traces valid left/right seeds independently.
+* Point-sequence geometry:
+  * `code/tracking/mainline.cpp:271-303`
+  * Builds `rpts0s/rpts1s` from trace points by perspective, blur, and resample.
+* Width / distance checks:
+  * `code/tracking/boundary.cpp:275-328`
+  * L-pair checks use transformed/resampled boundary points.
+* Side selection:
+  * `code/tracking/mainline.cpp:305-388`
+  * Ordinary mode chooses side from `rpts0s_num/rpts1s_num` and `track_type_keep`.
+  * `code/tracking/mainline.cpp:527-551` cross IN requires farline side and farline midline.
+  * `code/tracking/mainline.cpp:559-596` ring active state forces side.
+* Centerline generation:
+  * `code/tracking/imgproc.cpp:769-1030`
+  * Single-side midline is generated by fixed `ROAD_HALF_WIDTH` normal offset.
+
+Design implication:
+
+* A future seed patch must be judged by whether it starts valid current-frame traces, not by whether it can produce same-row seed width.
+* If seed rows differ after a multi-row missing-side search, that is not inherently invalid for trace.
+* Raw seed-pair width must not become the core geometry contract.
+* The first real behavior patch should be a layer-specific change, not a mixed patch touching seed, ring, cross, and control together.
+
+Current brainstorm position:
+
+* `width_base`: out of current MVP; keep only as reference context.
+* `seed_pair_t::width` deletion: valid cleanup branch, but not by itself the cross/ring stop fix.
+* Branch to converge next: seed-layer acquisition contract, because it is the earliest layer that can make clear visible boundaries never reach the trace/IPM geometry layer.
+
+## Current Focus Correction: Basic Search Alignment
+
+User correction:
+
+* The current task is to solve the mismatch with the reference-style acquisition pipeline and the broken basic search.
+* Observed video symptom: a visually clear left boundary enters from the left image side, not from the bottom fixed seed row; current code does not acquire it.
+* After lower L points disappear, the car pauses and the farline points are also absent. This is a stable failure.
+* Therefore the next branch is not `width_base`, not ring selected-side fallback, and not control-layer tolerance. It is the seed/acquisition layer that decides whether a clear boundary reaches trace.
+
+Current project evidence:
+
+* `code/tracking/imgproc.cpp:214-290` `find_seeds()` only searches one fixed row from `mid_position ± ROAD_HALF_WIDTH`.
+* `code/tracking/imgproc.cpp:82-121` `find_left_edge()` / `find_right_edge()` are horizontal row searches. If the visible line starts above that row or only enters from the side, the fixed row may miss it.
+* `code/tracking/mainline.cpp:460-489` if ordinary seed or trace fails outside `CROSS_IN`, the frame rejects before boundary/IPM geometry exists.
+* `code/tracking/imgproc.cpp:475-512` `trace_single()` rejects seeds too close to the image border or too dark. A direct seed exactly on the left border is not acceptable.
+
+Reference / comparison evidence:
+
+* RT1064 ordinary `process_image()` (`Project/USER/src/main.c:532-545`) also uses fixed-row seeds only to start tracing; it does not persist seed width.
+* RT1064 cross farline (`Project/CODE/cross.c:128-186`) shows a separate reference-aligned mechanism for current-frame fixed-column vertical seed acquisition when a line is not available from the ordinary row.
+* TC264 / Front_Car `Seek_Pts_Seed()` show a lower-risk ordinary-line supplement: after fixed-row search finds only one side, scan rows above (`High - 1` down to `mini_high`) for the missing opposite side using the same horizontal row-search primitive.
+
+Design implication for the first real behavior patch:
+
+* Patch scope should be seed/acquisition only.
+* The patch should produce current-frame seed coordinates that `trace_single()` can validate and trace.
+* Do not seed exactly on the image edge; keep `trace_single()` border and brightness checks intact.
+* Do not change `track_leftline()` / `track_rightline()` external offset behavior.
+* Do not change cross/ring state machines or control stop gates in this patch.
+* Do not introduce `width_base` in this patch.
+* `seed_pair_t::width` removal can be paired only if it is needed to keep seed-layer semantics clean; it is not the behavioral fix by itself.
+
+## Seed vs Pair Contract
+
+Core correction:
+
+* A seed is a current-frame start point for `trace_single()`.
+* A pair is an optional same-row relationship between two seeds.
+* If two seeds are not on the same row, they may fail the pair contract but can still be valid trace start points.
+* Therefore "not a pair" must not be treated as "not a valid seed".
+
+Current source support:
+
+* `code/tracking/mainline.cpp:79-113` checks `seed_state` and valid coordinates, then calls `trace_single()` separately for left and right.
+* `code/tracking/mainline.cpp:128-132` uses `seed_pair_accepted()` only to clear `rt->seeds.width`; it does not block single-side trace.
+* This means the future multi-row补搜 can set `seed_state` for a missing side even if its `y` differs from the other seed, as long as `trace_single()` can validate the seed.
+
+Design rule for multi-row補搜:
+
+* Same-row fixed search success may still be considered a pair.
+* Multi-row补搜 success should be considered "side seed found", not "same-row pair found".
+* Width / pair diagnostics may be absent or invalid for mixed-row seeds.
+* Downstream geometry must rely on traced/IPM/resampled point sequences.
+
+## Candidate Patch Contract: Multi-row Missing-side Seed Search
+
+Updated: 2026-06-05 02:59:43 +0800.
+
+Goal:
+
+* Fix the basic acquisition failure where a clear boundary enters from the side or starts above the fixed bottom seed row, so the current fixed-row search misses it before trace can run.
+* Keep the RT1064-style layering: seed starts trace, point sequences carry geometry, side selection and midline generation stay downstream.
+
+Scope:
+
+* Modify only `code/tracking/imgproc.cpp::find_seeds()` and tightly related seed helpers if needed.
+* Do not modify `trace_single()`, `trace_edges()`, `track_leftline()`, `track_rightline()`, `cross.cpp`, `ring.cpp`, `control.cpp`, or `drive_output.cpp` in this patch.
+* Do not add `width_base`.
+* Do not add logs/tests/runtime observability systems.
+
+Mechanism:
+
+1. Run the existing fixed-row search exactly as today on `start_row`.
+2. If both sides are found on that row and same-row width is legal, keep the current same-row pair behavior.
+3. If only the left side is found, scan rows upward from `start_row - 1` down to `MINI_HIGH` for the missing right side using the existing horizontal right-edge search primitive.
+4. If only the right side is found, scan rows upward from `start_row - 1` down to `MINI_HIGH` for the missing left side using the existing horizontal left-edge search primitive.
+5. When the missing side is found on a different row, set that side's seed coordinate and side bit in `seed_state`.
+6. Do not compute or store a mixed-row seed width.
+7. Let `trace_single()` decide whether the found seed is usable by checking image bounds, border margin, brightness, and vertical trace gain.
+
+Open detail to settle before implementation:
+
+* If both sides are missing on the fixed row, should the first patch do no补搜, or should it scan upward for both sides?
+
+Recommendation:
+
+* First patch should only补搜 the missing side when exactly one fixed-row side is already found.
+* Reason: this matches TC264 / Front_Car most closely, keeps the search anchored to a known current-frame side, and avoids turning a fully lost bottom row into speculative two-side acquisition.
+
+Decision:
+
+* Accepted. First patch only补搜 the missing side when exactly one fixed-row side is already found.
+* If the fixed row finds neither side, keep current failure behavior.
+* This keeps the patch focused on the observed failure: one visually clear side starts above/sideward while the other side still anchors the current frame.
+
+Expected behavior:
+
+* A side boundary that is clear but starts above the bottom seed row can enter trace through a current-frame seed.
+* Mixed-row seeds may produce no valid `seed_pair_accepted()` result, but that is acceptable because trace is side-based.
+* If the补搜 seed is bad, too close to the border, too dark, or cannot climb enough vertically, `trace_single()` still rejects it and existing safety gates remain intact.
+
+Implementation:
+
+* `code/tracking/imgproc.cpp::find_seeds()` now keeps the existing fixed-row search first.
+* If the fixed row finds only left, it scans upward from `start_row - 1` to `MINI_HIGH` for a right seed using `find_right_edge()`.
+* If the fixed row finds only right, it scans upward from `start_row - 1` to `MINI_HIGH` for a left seed using `find_left_edge()`.
+* Found seed coordinates keep their real `y` in `seeds->left.y` / `seeds->right.y`.
+* `seeds->row` is set only when both seed `y` values match; otherwise it is `-1`, so mixed-row seeds are not treated as a same-row pair.
+* No `width_base`, cross/ring/control, or midline-generation code was changed.
+
+Validation:
+
+* `git diff --check -- code/tracking/imgproc.cpp .trellis/tasks/06-04-cross-ring-l-loss-stop/prd.md` passed.
+* `cmake --build code/build --target CMakeFiles/front_car_mainline.dir/tracking/imgproc.cpp.o -j1` passed.
+* `bash code/test.sh` compiled through `tracking/imgproc.cpp.o`, `tracking/mainline.cpp.o`, and `tracking/cross.cpp.o`, then failed at the existing dependency issue: `seekfree_assistant.cpp:37:10: fatal error: vision2_core.hpp: No such file or directory`.
+* `bash code/test.sh --host` failed at the same existing `vision2_core.hpp` include.
+
+Rollback:
+
+* Remove the upward补搜 block in `find_seeds()` and restore single-side seed row assignment to the original fixed-row `y`.
