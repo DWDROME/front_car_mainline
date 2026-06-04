@@ -15,6 +15,7 @@ namespace
 const int k_cross_min_front_step = 8; // 远线 trace / IPM 后至少保留 8 个点，太短就不当有效远线。
 const int k_cross_far_left_x = RAW_W * 86 / 376; // 左远线固定列 seed，按参考版 376 宽缩到当前 RAW_W。
 const int k_cross_far_right_x = RAW_W * 280 / 376; // 右远线固定列 seed，按参考版 376 宽缩到当前 RAW_W。
+const int k_cross_far_begin_y = (RAW_H * 167 + 120) / 240; // 十字远线 begin_y，按参考版 167/240 缩到当前 RAW_H。
 // 对齐参考版 0.1m 近角门；当前 3px 重采样下等效约 4~5 点，这里配合 <= 判断取 4。
 const int k_cross_begin_near_step = 4; // BEGIN 阶段 L 点靠近门，任一侧 L 角进入前约 0.1m 就切 IN。
 // CROSS_IN 退出门槛仍按当前近线长度算；这里不是 farline 阈值。
@@ -167,11 +168,7 @@ int find_far_seed(runtime_t *rt, int left_side, point_t *seed)
         x0 = k_cross_far_left_x;
     }
     const int x = clip_i(x0, 1, RAW_W - 2);
-    int y = START_HIGH;
-    if(rt->seeds.row > 0)
-    {
-        y = rt->seeds.row;
-    }
+    int y = k_cross_far_begin_y;
     y = clip_i(y, 1, RAW_H - 2);
 
     int white = 0;

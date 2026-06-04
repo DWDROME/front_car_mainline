@@ -12,7 +12,7 @@ Diagnose why the car pauses when entering or passing cross intersections and rou
 * User report from video: when a visible line enters from the left image border rather than the bottom edge, the left boundary is visually clear but is not acquired by the current pipeline.
 * User report from video: roundabout currently has no successful pass; the first corner disappearing is followed by a stop, and manually placing the car mid-roundabout can produce a reasonable midline only in some phases.
 * User report from teammate: "double L" cross detection is too strict under yaw/offset, but their last change that allowed single-side L to trigger/enter cross caused broader failures.
-* Team local tuning note: changing `code/tuning.hpp` `CONTROL_CENTER_X` from `60` to `85`, then to `80`, improved behavior; current source still has `CONTROL_CENTER_X = 60`.
+* Team local tuning note: changing `code/tuning.hpp` `CONTROL_CENTER_X` from `60` to `85`, then to `80`, improved behavior; user has now changed current source to `CONTROL_CENTER_X = 80`.
 * The active project for this image/vision/line-tracking issue is `front_car_mainline`.
 * The reference implementation path is `/mnt/e/longxin/RT1064_Code_ref`.
 * The concrete RT1064 reference checkout is `/mnt/e/longxin/RT1064_Code_ref/SJTU-AuTop-RT1064-Code`.
@@ -30,6 +30,10 @@ Diagnose why the car pauses when entering or passing cross intersections and rou
 * RT1064 `run_circle()` also forces `track_type` by circle state, and the main loop consumes the chosen side directly. The current ring port matches the state-based side choice, but adds explicit `NO_MIDLINE` rejection when the selected side cannot build a lookahead midline.
 * Current ordinary `find_seeds()` only searches one fixed bottom row (`START_HIGH = 116`) from `mid_position ± ROAD_HALF_WIDTH`; it does not search for a boundary whose first visible point enters from the left/right image edge.
 * RT1064 ordinary `process_image()` also starts from fixed `begin_y` and scans horizontally on that row, so border-entry recovery is not a direct copied feature from the reference. RT1064 cross farline, however, separately scans upward on fixed far columns before tracing.
+* RT1064 cross farline uses `far_x1 = 86`, `far_x2 = 280`, and starts vertical scanning from `begin_y`.
+* RT1064 default `begin_y = 167` on a 240-high image, so the height-normalized start row is `167 / 240 = 0.696`.
+* Current `front_car_mainline` uses `START_HIGH = 116` on a 120-high image, so the height-normalized start row is `116 / 120 = 0.967`.
+* Current cross farline therefore reuses a much lower near-line row; a reference-scaled cross farline start row would be about `167 * 120 / 240 = 83.5`.
 
 ## Assumptions
 
@@ -178,6 +182,27 @@ Because ring forced-side fallback can make the car follow the wrong arc, it is m
 
 ## Modification Candidate Table
 
+### C-FY: Separate cross farline begin row from ordinary near-line start row
+
+* Type: small cross-local parameter alignment.
+* Evidence:
+  * RT1064 reference `flash_param.c` sets `begin_y = 167`.
+  * RT1064 reference `cross.c::cross_farline()` starts fixed-column vertical scan from `begin_y`.
+  * Current `code/tracking/cross.cpp::find_far_seed()` starts from `START_HIGH` or `rt->seeds.row`, typically `116` on a 120-high image.
+* Idea:
+  * Add a cross-local constant for farline vertical scan start, derived from RT1064 `begin_y` by image-height scaling.
+  * Use that constant only in `find_far_seed()`.
+  * Do not change ordinary `START_HIGH`, ordinary `find_seeds()`, control reference point, ring fixed-column start, or zebra bottom scan.
+* Candidate values:
+  * `84`: strict rounded scale from `167 / 240 * 120 = 83.5`.
+  * `83`: floor-ish scale from the same ratio.
+  * `82`: slightly more aggressive upward start, close to the scaled reference but not the strict rounded value.
+* Recommendation:
+  * Prefer `84` as the first patch because it is directly explainable from the reference ratio and easy to roll back.
+  * Use `82` only if field evidence shows `84` still starts too low for the visible farline.
+* Rollback:
+  * Revert the one cross-local constant or switch `find_far_seed()` back to `START_HIGH`.
+
 ### C0: Do not change control-layer safety gate
 
 * Type: forbidden behavior change.
@@ -309,7 +334,7 @@ Because ring forced-side fallback can make the car follow the wrong arc, it is m
 
 ### Current `front_car_mainline`
 
-* `code/tuning.hpp:20-33`: `MID_X = RAW_W / 2`, `CONTROL_CENTER_X = 60`, `START_HIGH = 116`.
+* `code/tuning.hpp:20-33`: `MID_X = RAW_W / 2`, `CONTROL_CENTER_X = 80`, `START_HIGH = 116`.
 * `code/tracking/imgproc.cpp:214-290`: `find_seeds()` searches one fixed row from `center ± kSeedStartOffset`; it can return a single-side seed, but only if that row contains the edge.
 * `code/tracking/imgproc.cpp:312-341`: `find_column_seed()` can scan upward on one column, but current ordinary seed search does not use it; ring opposite-side fill and cross farline do.
 * `code/tracking/boundary.cpp:430-510`: L corners are cleared every refresh, found only in the front segment, and when both sides are found they must pass `corner_pair_ok()` or both `l_ok` flags are cleared.
@@ -341,7 +366,7 @@ Because ring forced-side fallback can make the car follow the wrong arc, it is m
 
 | Item | Teammate idea / observed effect | Current code | RT1064 alignment | Mechanism judgment | Risk | MVP recommendation |
 |---|---|---|---|---|---|---|
-| `CONTROL_CENTER_X` 60 -> 85 -> 80 | 85 made the car move from stuck to movable; 80 reportedly better | `tuning.hpp` still sets `CONTROL_CENTER_X = 60`; runtime can also read `SMARTCAR_CONTROL_CENTER_X` in `runners.cpp` | Reference uses geometric center plus mapping parameters, not this exact split | This changes the control reference point, not seed center. It can improve steering bias, but does not explain missing left seed or farline by itself | Medium: changing control reference affects all straight/curve/element steering | Keep as calibration note; do not mix into cross/ring state fix unless a separate calibration pass confirms it |
+| `CONTROL_CENTER_X` 60 -> 85 -> 80 | 85 made the car move from stuck to movable; 80 reportedly better | User has changed `tuning.hpp` to `CONTROL_CENTER_X = 80`; runtime can also read `SMARTCAR_CONTROL_CENTER_X` in `runners.cpp` | Reference uses geometric center plus mapping parameters, not this exact split | This changes the control reference point, not seed center. It can improve steering bias, but does not explain missing left seed or farline by itself | Medium: changing control reference affects all straight/curve/element steering | Treat as guidance from the baseline-version patch. Do not assume it is required for the cross/ring mechanism fix unless field validation confirms it. |
 | Control: delay clearing integrators for 3 bad element frames | Avoid one-frame invalid line causing a visible brake/pause | Current `control.cpp` clears state immediately on `!line_ok()` | RT1064 has no equivalent explicit `input_valid` stop gate, but also does not provide this exact controller latch | It masks downstream invalid-line frames rather than fixing line generation. It may reduce pause but can keep old control through a genuinely blind frame | High in vehicle path | Do not include as first MVP; only consider after vision-side cause is narrowed and with explicit fail-safe bounds |
 | `mainline.cpp` BEGIN->IN does not truncate `rpts` | Intended to keep near-line points when entering cross | Current code truncates near lines for cross BEGIN, then only uses farline when already in `CROSS_IN` at frame start | Reference truncates near lines in `CROSS_BEGIN`; in `CROSS_IN` it uses farline | Not clearly aligned. The stop described happens with no farline/L, so keeping near-line points may not address the core farline side decision | Medium-high: near-line in cross may be geometrically misleading | Not MVP unless exact failing frame is the transition frame rather than sustained `CROSS_IN` |
 | `cross.cpp` farline failure fallback side | Avoid `TRACK_TYPE_NONE` when far L is missing | Current `cross_evolve()` clears side every frame, so missing far L can become `NO_MIDLINE` | Strongly aligned at the side-decision level: RT1064 preserves previous `track_type` when no new far L/near-loss evidence appears | This is the cleanest RT1064 semantic mismatch. But preserving only side is insufficient if `solve_cross_mid()` still needs fresh far L index | Medium: stale far L/side can steer wrong if unbounded | Best candidate, but implement as bounded cross-local farline/side persistence, not as generic fallback |
@@ -409,7 +434,7 @@ No source edit should happen until the proposed line-level patch is reviewed aga
 | P1 | `code/tracking/mainline.cpp:559-635` | Ring state forces side, then midline/lookahead failure rejects frame | Likely hard-stop path inside ring after state has selected an inner/outer side | `Project/CODE/circle.c:33-145` forces `track_type` by state | Do not add opposite-side fallback; it can steer the wrong arc |
 | Avoid | `code/core/control.cpp:95-150` | Invalid line clears controller state and outputs no valid control | It is the final safety conversion, not the visual root cause | RT1064 has a different control architecture; no direct safe copy | Do not patch first |
 | Avoid | `code/drivers/drive_output.cpp:134-144` | `!input_valid` calls `drive_output_stop()` | Final motor safety gate | No applicable RT1064 line for this architecture | Do not patch |
-| Calibration only | `code/tuning.hpp:20-33` | `CONTROL_CENTER_X = 60`, `MID_X = 80`, `START_HIGH = 116` | Control reference and seed geometry interact, but this is not the cross farline clearing mismatch | RT1064 uses `begin_x=32`, `begin_y=167` in `Project/CODE/flash_param.c:22-23` | Do not mix calibration with state-machine patch |
+| Calibration only | `code/tuning.hpp:20-33` | `CONTROL_CENTER_X = 80`, `MID_X = 80`, `START_HIGH = 116` | Control reference and seed geometry interact, but this is not the cross farline clearing mismatch | RT1064 uses `begin_x=32`, `begin_y=167` in `Project/CODE/flash_param.c:22-23` | Keep separate from the state-machine patch. It is a field-tuning candidate, not proof of the root cause. |
 
 ## Patch Draft V1: Cross Far-L Index Hold (Not Applied)
 
@@ -565,7 +590,7 @@ Out of this MVP:
 * Single-L cross entry.
 * Ring state changes.
 * Seed acquisition changes for border-entry lines.
-* `CONTROL_CENTER_X` tuning.
+* Further `CONTROL_CENTER_X` tuning beyond the current user-applied `80`.
 * Control-layer tolerance or delayed stop.
 
 ## Implementation Record
@@ -600,3 +625,291 @@ Validation:
 * `make CMakeFiles/front_car_mainline.dir/tracking/cross.cpp.o -j1` in `code/build` passed.
 * Full `./test.sh` was attempted. It compiled through `tracking/cross.cpp.o`, then failed in the existing assistant dependency path: `libraries/zf_components/seekfree_assistant/seekfree_assistant.cpp:37:10: fatal error: vision2_core.hpp: No such file or directory`.
 * The full-build failure is outside this patch surface and is not caused by the `cross.cpp` change.
+
+## Current Progress Reassessment
+
+User assessment: the bug fix is only about 10% complete.
+
+Interpretation:
+
+* The implemented V2 cross farline reuse fixes one narrow failure chain: current farline exists, fresh far L detection flickers, and old L index still fits the current farline.
+* It does not fix frames where the farline seed/trace itself fails.
+* It does not fix the visible border-entry ordinary seed acquisition weakness.
+* It does not fix ring selected-side midline failure.
+* It does not prove that control-layer pauses are only caused by visual invalid frames.
+* It does not change cross entry from double L to single L, by design.
+
+The teammate baseline-version patch table is guidance only, not an implementation checklist for the current codebase:
+
+* Do not automatically copy the five baseline-version changes into the current branch.
+* `CONTROL_CENTER_X = 80` is a field-tuning observation, not proof of the root cause.
+
+## Deep Reference Note: Two Searches in Cross
+
+There are two different searches that must not be merged conceptually:
+
+### Search A: Ordinary near-line seed search
+
+Current code:
+
+* `code/tracking/imgproc.cpp:214-290` searches one fixed row (`START_HIGH`) from `mid_position +/- kSeedStartOffset`.
+* It can return a single-side seed, but it cannot start a line that first enters from the left/right image border if that boundary is not visible on the fixed bottom row.
+* This explains the user's video observation that a visually clear side-border line may not be acquired.
+* Image evidence from user: in the cross-entry screenshots, the left boundary is visually clear and enters from the left image border, but the overlay does not acquire/trace it. This strongly supports Search A being incomplete rather than a pure cross-farline L-index problem.
+
+RT1064 reference:
+
+* `Project/USER/src/main.c:532-545` also uses fixed `begin_y` and horizontal scanning for ordinary line acquisition.
+* Therefore side-border acquisition is a real weakness, but not the most direct RT1064 mismatch.
+
+Best interpretation:
+
+* Search A affects whether near boundaries and near L points exist.
+* It can prevent cross entry or leave the system without useful near-line evidence.
+* It does not by itself explain why the car stops after already entering `CROSS_IN`.
+* However, if Search A starves near-line acquisition before or during cross entry, Search B can also be starved indirectly because cross state and fallback decisions depend on near-line/L context.
+
+### Search B: Cross farline seed and far-L search
+
+Current code:
+
+* `code/tracking/cross.cpp:157-217` scans upward on a fixed far column, looking for white first and then black, and returns the previous white point as the farline seed.
+* `code/tracking/cross.cpp:224-306` traces the current farline from that seed, transforms/smooths/resamples it, and finds a far L index.
+* `code/tracking/mainline.cpp:153-237` builds the control midline only from the selected farline segment starting at that L index.
+
+RT1064 reference:
+
+* `Project/CODE/cross.c:128-251` performs the same farline pattern: fixed far column upward scan -> trace -> transform -> smooth/resample -> find far L.
+* `Project/USER/src/main.c:353-372` uses `track_type` to choose the farline and starts centerline generation from `far_Lpt*_rpts*s_id`.
+
+Best interpretation:
+
+* Search B is the direct path for `CROSS_IN` control.
+* In current code, if this path cannot provide a usable side plus usable far-L index, `mainline.cpp` rejects with `TRACK_REJECT_NO_MIDLINE`, which then disables control output.
+* The best reference alignment is not to invent a direct "far midline search"; the reference does not do that. It searches far side boundaries, finds far L, then expands side boundary into the control midline.
+
+### Best Reference Priority
+
+For the next cross fix, use RT1064 `cross.c` / `main.c` as the primary reference, but only for the cross-local visual contract:
+
+1. Farline is side-boundary based, not direct-midline based.
+2. `track_type` persists across uncertain frames unless new evidence overwrites it.
+3. Farline point arrays should still be rebuilt from the current frame.
+4. Final control safety should remain stricter than RT1064 in this port: no valid midline and no lookahead still means invalid tracking output.
+
+Do not use `TC264-Peripheral-perspective` as the primary cross behavior reference. It is useful evidence for seed mechanics (`Seek_Pts_Seed` row search and `seek_up` column search), but it does not define the RT1064-style `CROSS_IN` farline control contract.
+
+Do not use `Front_Car` current `image_processing.c` as proof because it is a stub. Its `.bak` confirms similar row/column seed mechanics only.
+* Control-layer bad-frame tolerance remains high risk unless the visual failure mode is bounded first.
+* Global trace-data retention remains high risk unless narrowed to a specific element state.
+
+## Next Brainstorm Branches
+
+### Branch A: Cross Farline Acquisition
+
+Question: when entering cross, is failure now mostly "current farline does not exist" rather than "farline exists but L index is missing"?
+
+Likely code surfaces:
+
+* `code/tracking/cross.cpp::find_far_seed()`
+* `code/tracking/cross.cpp::build_cross_farline()`
+* `code/tracking/imgproc.cpp::trace_single()`
+
+Why this matters:
+
+* V2 cannot help if `left_far_found/right_far_found` are false.
+* The video observation "no farline appears" points here.
+
+### Branch B: Ordinary Border-Entry Seed Acquisition
+
+Question: should ordinary seed search handle a clear boundary entering from the left/right image border instead of the bottom row?
+
+Likely code surfaces:
+
+* `code/tracking/imgproc.cpp::find_seeds()`
+* `code/tracking/imgproc.cpp::find_column_seed()`
+* `code/tracking/mainline.cpp::trace_edges()`
+
+Why this matters:
+
+* If no ordinary boundary is acquired, L corners cannot be detected, cross/ring state can be starved, and the car can reach an element with no usable near-line context.
+
+Correction after user review:
+
+* The screenshots prove Search A is incomplete, but they do not yet prove that the right implementation is a new side-border seed path.
+* Before designing a side-border seed, distinguish four mechanisms:
+  * the boundary exists on `START_HIGH`, but is rejected because it is too close to `kSeedBorderMargin`;
+  * the boundary exists above `START_HIGH`, but not on the fixed seed row;
+  * the row scan sees the boundary but local threshold / white-black transition logic rejects it;
+  * the boundary truly only has a side-entry geometry and needs a different seed source.
+* A side-border seed is only justified by the fourth mechanism. The first three should be solved by smaller changes to current row-search parameters or row-search policy.
+
+### Branch B Reference Comparison: Multi-row Horizontal Seed Scan
+
+Local source comparison:
+
+* `TC264-Peripheral-perspective/code/image_processing.c:225-277`
+  * `Seek_Pts_Seed(High, mini_high)` first scans one fixed row:
+    ```text
+    found_left_x = find_edge_canny_row(High, mid_position, 0)
+    found_right_x = find_edge_canny_row(High, mid_position, 1)
+    ```
+  * If only one side is found, it scans rows above `High` down to `mini_high`, still using horizontal row search from `mid_position`, to find the missing opposite side.
+  * It does not scan the image side border directly.
+  * It does not run a broad multi-row search when both sides are missing.
+
+* `Front_Car/code/image_processing.c.bak:288-350`
+  * Backup implementation has the same row-first and missing-opposite-side fallback pattern.
+  * It additionally updates `mid_position` from `width_base` when only one seed exists:
+    ```text
+    left only  -> mid_position = Seed_left[0] + width_base / 2
+    right only -> mid_position = Seed_right[0] - width_base / 2
+    ```
+  * This is important because it keeps the next frame's center seed closer to the road after a one-side frame.
+  * Current `Front_Car/code/image_processing.c` is a stub and must not be used as behavior evidence.
+
+* `RT1064_Code_ref/.../Project/USER/src/main.c:532-545`
+  * RT1064 ordinary acquisition uses one fixed `begin_y` row:
+    ```text
+    x1 = center - begin_x, y1 = begin_y
+    scan x1 left on that row
+    trace left from (x1, y1)
+    ```
+  * It does not include the TC264-style multi-row missing-side fallback in ordinary `process_image()`.
+  * RT1064's robustness around cross is more about state/side continuity and separate farline search than ordinary seed multi-row fallback.
+
+* Current `front_car_mainline/code/tracking/imgproc.cpp:214-290`
+  * Current `find_seeds()` is stricter than TC264/Front_Car backup in one key way: it does not scan nearby rows to recover a missing side.
+  * It can return a single-side seed, but if the missing side appears only a few rows above `START_HIGH`, current code will not find it in this frame.
+
+External-source comparison:
+
+* Cytron's camera line-following tutorial describes multiple fixed horizontal scanlines and explicitly says multi-scanline sampling improves robustness against noise, uneven illumination, and partial occlusion. This supports multi-row/scanline ideas in general vision line following, but it uses centroid/scanline averaging rather than our seed + maze trace contract.
+  * Source: https://sg.cytron.io/tutorial/differential-line-following-algorithm
+* Pixy2 line tracking documentation emphasizes tracking the currently followed line/vector across frames rather than switching to every new line that appears. This supports preserving continuity and avoiding broad side-border pickup, but it is not direct code guidance for our seed search.
+  * Source: https://docs.pixycam.com/wiki/doku.php?id=wiki%3Av2%3Aline_tracking
+* Existing Branch B smart-search research also found Chinese smart-car sources describing scan-start/search-start as a separate stage before boundary following, and distinguishing center scan, edge scan, and element-specific starts.
+  * Local note: `research/branch-b-border-seed-acquisition.md`
+
+Mechanism conclusion:
+
+* Multi-row horizontal补搜 is a conservative candidate because it keeps the same seed semantics: find a white/black boundary on a row, then let `trace_single()` validate.
+* It is less invasive than side-border seed because it does not create a new seed topology.
+* It is not a full fix for a true side-border entrant if no useful row near `START_HIGH` intersects the boundary.
+* It is also not a direct RT1064 ordinary-line copy; it is closer to TC264/Front_Car backup.
+
+If this branch becomes a code patch later, it should start as a missing-side recovery, not a broad search:
+
+```text
+try current START_HIGH row
+if one side exists and the opposite side is missing:
+    scan a limited number of rows above START_HIGH for the missing side only
+    keep the found seed only if trace_single() accepts it
+if both sides are missing:
+    do not perform a broad multi-row rescue in the first patch
+```
+
+Open design detail:
+
+* If left and right seeds come from different rows, current `seed_pair_accepted()` rejects the pair because it requires equal `y` and uses one `seeds->row`. A multi-row missing-side patch must either keep such a frame as single-side for trace/midline, or deliberately relax pair acceptance. Relaxing pair acceptance is broader and should not be first.
+
+### Branch C: Ring Selected-Side Midline Failure
+
+Question: after ring state forces inner/outer side, which state first produces `TRACK_REJECT_NO_MIDLINE`?
+
+Likely code surfaces:
+
+* `code/tracking/ring.cpp`
+* `code/tracking/mainline.cpp:559-635`
+
+Why this matters:
+
+* Ring entry is already close to RT1064, but current code has a stricter midline/lookahead reject gate after forced side choice.
+* Opposite-side fallback is still risky because it can steer the wrong ring arc.
+
+### Branch D: Control-Layer Bad-Frame Tolerance
+
+Question: should control tolerate a tiny number of invalid element frames, and under what exact conditions?
+
+Likely code surfaces:
+
+* `code/core/control.cpp`
+* `code/drivers/drive_output.cpp`
+
+Why this matters:
+
+* This can hide a visible pause, but it can also keep driving on a genuinely blind frame.
+* It should not be the next patch unless the visual-side bad frame is proven brief, bounded, and element-local.
+
+Recommended next branch: Branch A first, then Branch B, then Branch C. Branch D should remain deferred.
+
+## Branch Selection Update
+
+User selected Branch B first: Ordinary Border-Entry Seed Acquisition.
+
+Reasoning:
+
+* The cross farline failure in Branch A may be downstream of Branch B. If a clear border-entering line is not acquired as an ordinary boundary, then near-line point lists and L corners can disappear before cross farline logic has enough stable context.
+* The observed cross failure may also involve state-machine timing or direct pause behavior that is not fully aligned with the RT1064 reference; therefore Branch A should not be treated as the only root cause.
+* The baseline-version patch table is guidance only and should not be copied wholesale into the current branch.
+
+Branch B current evidence:
+
+* `code/tracking/imgproc.cpp::find_seeds()` searches one fixed row `START_HIGH` from `mid_position ± ROAD_HALF_WIDTH`.
+* A boundary whose first visible point enters from the image left/right border can be visually clear while not crossing that fixed seed row at the expected x-range.
+* `code/tracking/imgproc.cpp::find_column_seed()` already implements vertical fixed-column seed search, but current ordinary seed acquisition does not use it.
+* `code/tracking/imgproc.cpp::trace_single()` rejects seeds too close to image border via `kTraceBorderMargin`, so a naive "seed exactly on border" fix can still fail downstream.
+
+Branch B design constraints:
+
+* Do not globally retain stale trace/boundary arrays as a first fix.
+* Do not weaken final `TRACK_REJECT_NO_MIDLINE -> input_valid=0 -> drive_output_stop()` safety chain.
+* Do not change cross entry to single-L as part of this branch.
+* Any border-entry recovery must produce a current-frame seed and trace, not reuse old geometry blindly.
+
+## Branch B Smart Search Result
+
+Detailed research note: `research/branch-b-border-seed-acquisition.md`.
+
+Smart-search conclusion:
+
+* External smart-car sources support the same layered mechanism: seed acquisition first, boundary trace second, line repair/midline third.
+* A visually clear side-border boundary can still fail if the seed acquisition stage only checks one bottom row and one expected center-offset window.
+* General boundary tracing sources also support the same algorithmic dependency: tracing starts after locating an initial boundary pixel.
+* RT1064 ordinary `process_image()` is also fixed-row, so ordinary side-border recovery is not a direct copied reference feature.
+* RT1064 cross farline does provide a reference-aligned mechanism for vertical fixed-column current-frame seed acquisition.
+
+Branch B current best direction:
+
+* Prefer a small current-frame side-column seed supplement after the existing fixed-row seed search misses a side.
+* Do not seed exactly on the image edge, because `trace_single()` rejects seeds within `kTraceBorderMargin`.
+* Keep `trace_single()`, midline validity, control `line_ok()`, and motor stop gates unchanged.
+* Before editing source, decide whether the supplement is always available for missing sides, only element-suspect, or only active cross/ring.
+
+## Cross Farline Begin-Y Patch
+
+User decision: use the reference-scaled cross farline start row `84`.
+
+Implementation:
+
+* `code/tracking/cross.cpp` now defines `k_cross_far_begin_y = (RAW_H * 167 + 120) / 240`.
+* `find_far_seed()` now starts cross farline vertical scanning from `k_cross_far_begin_y`.
+* Ordinary `START_HIGH = 116` remains unchanged for normal seed search, zebra bottom scan, ring start geometry, and control reference usage.
+* `rt->seeds.row` no longer overrides the cross farline scan start row; this keeps cross farline aligned to the RT1064 `begin_y` ratio instead of binding it to the near-line seed row.
+
+Reference basis:
+
+* RT1064 `Project/CODE/flash_param.c` default `begin_y = 167`.
+* RT1064 image height is `240`; current `RAW_H = 120`.
+* Scaled row: `167 * 120 / 240 = 83.5`, rounded to `84`.
+
+Validation:
+
+* `git diff --check -- code/tracking/cross.cpp .trellis/tasks/06-04-cross-ring-l-loss-stop/prd.md` passed.
+* `cmake --build code/build --target CMakeFiles/front_car_mainline.dir/tracking/cross.cpp.o -j1` passed.
+* `./code/test.sh --host` compiled through `tracking/cross.cpp.o`, then failed in existing dependency path: `seekfree_assistant.cpp:37:10: fatal error: vision2_core.hpp: No such file or directory`.
+* `./code/test.sh` compiled through `tracking/cross.cpp.o`, then failed at the same existing `vision2_core.hpp` missing include.
+
+Rollback:
+
+* Revert the one `k_cross_far_begin_y` constant and `find_far_seed()` start-row change, or switch `find_far_seed()` back to `START_HIGH`.

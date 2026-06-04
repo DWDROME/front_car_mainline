@@ -141,7 +141,7 @@ NONE   END 阶段先累计 lost，重新满足 have 后直接退出 ring
 ```text
 当前 cross 已收成参考版单状态：`CROSS_STATE_NONE -> CROSS_STATE_BEGIN -> CROSS_STATE_IN`，不再额外保留 `kind + state` 双层十字状态。
 当前元素互斥顺序也已收回参考版语义：十字优先级高于环岛；已有 cross 先跑，cross 仍在时清掉 ring；空闲或 cross 本帧退出后再尝试 ring。
-当前 cross 的 farline 已按参考版收成固定双列主链：左侧固定列 `86/376 * RAW_W`，右侧固定列 `280/376 * RAW_W`；每侧都只在这一列向上找“先白后黑” seed，不再保留多列候选搜索壳。
+当前 cross 的 farline 已按参考版收成固定双列主链：左侧固定列 `86/376 * RAW_W`，右侧固定列 `280/376 * RAW_W`；远线起扫行单独按参考版 `begin_y = 167/240 * RAW_H` 缩放，当前为 `84`，不复用普通近线 `START_HIGH = 116`；每侧都只在这一列从远线起扫行向上找“先白后黑” seed，不再保留多列候选搜索壳。
 当前 cross 的 farline 主流程是：固定列 seed -> trace_single -> IPM 投影 -> 平滑 -> 重采样 -> far L 点；远线只要 `rt->has_matrix` 就按 IPM 投影，不再依赖近线 seed pair 是否完整；当前 `rt->cross.left_pts/right_pts` 保存整条 farline sampled 点列，`left_l/right_l` 单独记录 far L 点位置；十字 IN 阶段主线现在直接从 `rt->cross.left_pts/right_pts + left_l/right_l` 这一段消费 farline，不再先搬进通用工作数组，也不再回到 raw trace 重做点列处理。
 当前普通主线的左右边界点列也只要 `rt->has_matrix` 就按 IPM 投影；`seed_pair_accepted()` 只保留为 seed 宽度/IPM 几何诊断，不再决定单边外扩是否进入 IPM。
 当前 farline 的“整条线构建成功”和“L 点命中成功”也已经拆成两层行为：`left_far_found/right_far_found` 只表示 farline 本身是否建出来，`left_l/right_l >= 0` 才表示当前这条 farline 上真的找到了 far L 点；十字选边时先看 L 点，再看近线丢失侧用于保持参考版 track_type 语义。
@@ -208,6 +208,7 @@ matrix_loaded / ipm_geometry_reject_reason
 RAW_W / RAW_H              utils/tuning.hpp
 CONTROL_CENTER_X           utils/tuning.hpp / SMARTCAR_CONTROL_CENTER_X
 START_HIGH / MINI_HIGH     utils/tuning.hpp
+cross farline begin_y      tracking/cross.cpp 局部常量，按 RT1064 167/240 缩放；不要和普通 START_HIGH 合并
 ROAD_HALF_WIDTH            utils/tuning.hpp
 LOOKAHEAD_DIST             utils/tuning.hpp
 TRACE_MIN_STEP             utils/tuning.hpp
