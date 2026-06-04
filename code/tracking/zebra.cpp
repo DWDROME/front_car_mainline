@@ -114,7 +114,8 @@ void zebra_process(runtime_t *rt, const midline_t *scan_mid)
         return;
     }
 
-    const int th = frame_seed_threshold(rt->gray, rt->mid_position);
+    // otsu 取阈区域分界用稳定几何中心 MID_X，避免跟随的 mid_position 让阈值帧间抖动。
+    const int th = frame_seed_threshold(rt->gray, MID_X);
     rt->zebra.detected = 0;
 
     if(scan_mid != nullptr && scan_mid->step > k_scan_min_i)

@@ -418,6 +418,44 @@ double lookahead_error(midline_t *mid, int look, point_t ref)
     return err;
 }
 
+// 搜索中心跟随的路宽基准限幅，对齐 imgproc 的 kSeedMinWidth/kSeedMaxWidth 语义。
+const int k_width_base_min = 10;
+const int k_width_base_max = RAW_W - ROAD_HALF_WIDTH;
+const int k_center_margin = 1;  // mid_position 写回留白，落在 find_seeds 读取校验 [0,RAW_W) 内
+
+// 用本帧 seed 结果更新下一帧起搜中心(mid_position)：
+//  - 全失：直接返回，保持上一帧中心(Front_Car 语义，勿学 TC264 重置回中点)。
+//  - 双边(两侧 bit 都置位)：中心取左右中点，即使宽度超出成对区间(如十字开口处
+//    左右远边相距过宽)也优于单边外推；width_base 仅在常态且合法成对时低通标定。
+//  - 单边：用 width_base 把已知侧外推出虚拟中心，让中心随外圈平移。
+void update_search_center(runtime_t *rt, int seed_ok)
+{
+    if(rt == nullptr || !seed_ok)
+    {
+        return;
+    }
+    int mid = rt->mid_position;
+    if((rt->seed_state & 3) == 3)
+    {
+        mid = (rt->seeds.left.x + rt->seeds.right.x) / 2;
+        if(rt->ring.kind == RING_KIND_NONE && rt->cross.state == CROSS_STATE_NONE &&
+           seed_pair_accepted(&rt->seeds, rt->seed_state))
+        {
+            const int wb = clip_i(rt->seeds.width, k_width_base_min, k_width_base_max);
+            rt->width_base = (rt->width_base * 3 + wb) / 4;
+        }
+    }
+    else if(rt->seed_state & 1)
+    {
+        mid = rt->seeds.left.x + rt->width_base / 2;
+    }
+    else if(rt->seed_state & 2)
+    {
+        mid = rt->seeds.right.x - rt->width_base / 2;
+    }
+    rt->mid_position = clip_i(mid, k_center_margin, RAW_W - 1 - k_center_margin);
+}
+
 } // namespace
 
 // 清空巡线状态，恢复默认控制中心和几何中心。
@@ -431,6 +469,7 @@ void tracking_reset(runtime_t *rt)
     rt->has_matrix = 0;
     rt->control_center_x = CONTROL_CENTER_X;
     rt->mid_position = MID_X;
+    rt->width_base = ROAD_HALF_WIDTH * 2;
     track_type_keep = TRACK_TYPE_RIGHT;
 }
 
@@ -462,6 +501,8 @@ int tracking_process_frame(runtime_t *rt)
                              &rt->mid_position,
                              &rt->seed_state,
                              &rt->seeds);
+    // 搜索中心跟随：用本帧 seed 结果更新下一帧起搜中心(全失则保持上一帧)。
+    update_search_center(rt, seed_ok);
     if(!seed_ok)
     {
         if(rt->cross.state != CROSS_STATE_IN)

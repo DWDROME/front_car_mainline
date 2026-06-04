@@ -117,7 +117,10 @@ void profile_report_and_reset(live_profile_t *prof)
     prof->print_us = 0;
 }
 
-// 每帧识别前写入图像有效标记、控制中心和 seed 起搜中心。
+// 每帧识别前写入图像有效标记和控制中心。
+// mid_position/width_base 是搜索中心跟随的跨帧状态，这里不再逐帧重置：
+// 与 live() 主循环一致(它也不调 init_frame)，让 replay 多帧能复现中心跟随；
+// 单图 analyze/offline 的初值由启动时 tracking_reset 提供，单帧行为不变。
 void init_frame(runtime_t *rt)
 {
     rt->gray_valid = 1;
@@ -125,7 +128,6 @@ void init_frame(runtime_t *rt)
                                                 default_control_center_x(),
                                                 0,
                                                 RAW_W - 1);
-    rt->mid_position = MID_X;
 }
 
 // 单帧离线处理：读图 -> tracking -> 无反馈控制 -> 详细打印。
@@ -315,6 +317,7 @@ int live(runtime_t *rt)
                                                 0,
                                                 RAW_W - 1);
     rt->mid_position = MID_X;
+    rt->width_base = ROAD_HALF_WIDTH * 2;
     if(div < 1)
     {
         div = 1;

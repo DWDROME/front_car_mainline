@@ -1,0 +1,4 @@
+{"file": ".trellis/tasks/06-05-seed-acquisition-overhaul/research/mainline-gap-and-ripple.md", "reason": "核对 zebra.cpp:117 / ring.cpp:174,177 涟漪是否正确隔离、width_base 是否仅常态双边帧更新、限幅是否到位"}
+{"file": ".trellis/tasks/06-05-seed-acquisition-overhaul/research/element-coupling.md", "reason": "核对状态机连锁未回归(十字双 L 进入/环岛入环依赖 l_ok 转发)、corner_pair_ok 未被误改"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "跨层一致性核对：mid_position 新写入点不破坏 imgproc 读取校验与下游读者"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "质量门：无静默降级、无死分支、命名与注释符合项目约定"}

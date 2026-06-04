@@ -170,11 +170,11 @@ int build_opp(runtime_t &rt,
     }
 
     const int w = ROAD_HALF_WIDTH * 2;
-    // 直线补点起点按当前边界横移一个全路宽：左环补右边，右环补左边。
-    int x0 = clip_i(rt.mid_position - w / 2, 3, RAW_W - 4);
+    // 无边界点时的补点起点用稳定几何中心 MID_X(而非跟随的 mid_position)，避免动态中心污染环岛对称补点：左环补右边，右环补左边。
+    int x0 = clip_i(MID_X - w / 2, 3, RAW_W - 4);
     if(left)
     {
-        x0 = clip_i(rt.mid_position + w / 2, 3, RAW_W - 4);
+        x0 = clip_i(MID_X + w / 2, 3, RAW_W - 4);
     }
     int y0 = START_HIGH;
     if(cur.original_step > 0)
