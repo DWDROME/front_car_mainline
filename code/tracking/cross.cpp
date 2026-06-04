@@ -132,6 +132,23 @@ int far_l_index(const double pts[POINT_MAX][2], int num)
     return -1;
 }
 
+int far_l_index_usable(int index, int num)
+{
+    if(index < 0)
+    {
+        return 0;
+    }
+    if(index >= num)
+    {
+        return 0;
+    }
+    if(num - index < k_cross_min_front_step)
+    {
+        return 0;
+    }
+    return 1;
+}
+
 //-------------------------------------------------------------------------------------------------------------------
 //  @brief      按参考 cross_farline 的固定列扫描远线 seed：先看到白，再遇黑时返回上一行白点
 //  @return     int          1 找到 seed / 0 未找到
@@ -223,12 +240,13 @@ int build_cross_farline(runtime_t *rt, int left_side)
         far_l = &rt->cross.left_l;
     }
 
+    const int old_l = *far_l;
     *far_num = 0;
-    *far_l = -1;
     std::memset(far_pts, 0, sizeof(double[POINT_MAX][2]));
     point_t seed = {-1, -1};
     if(!find_far_seed(rt, left_side, &seed))
     {
+        *far_l = -1;
         return 0;
     }
 
@@ -236,10 +254,12 @@ int build_cross_farline(runtime_t *rt, int left_side)
     int trace_ok = trace_single(rt->gray, seed, left_side, &tr0);
     if(!trace_ok)
     {
+        *far_l = -1;
         return 0;
     }
     if(tr0.step < k_cross_min_front_step)
     {
+        *far_l = -1;
         return 0;
     }
 
@@ -249,6 +269,7 @@ int build_cross_farline(runtime_t *rt, int left_side)
     int num0 = perspective_points(tr0.pts, tr0.step, rt->matrix, has_matrix, ipm0);
     if(num0 < k_cross_min_front_step)
     {
+        *far_l = -1;
         return 0;
     }
 
@@ -265,9 +286,22 @@ int build_cross_farline(runtime_t *rt, int left_side)
     }
     if(*far_num < k_cross_min_front_step)
     {
+        *far_l = -1;
         return 0;
     }
-    *far_l = far_l_index(far_pts, *far_num);
+    const int new_l = far_l_index(far_pts, *far_num);
+    if(new_l >= 0)
+    {
+        *far_l = new_l;
+    }
+    else if(far_l_index_usable(old_l, *far_num))
+    {
+        *far_l = old_l;
+    }
+    else
+    {
+        *far_l = -1;
+    }
     return 1;
 }
 
@@ -350,12 +384,9 @@ void cross_evolve(runtime_t *rt)
         return;
     }
 
-    // 清空十字步线跟踪相关数据
-    rt->cross.track_type = TRACK_TYPE_NONE;
+    // 清空本帧远线点列；track_type 和可复用的 L 索引由 build_cross_farline() 按当前远线校验。
     rt->cross.left_far_found = 0;
     rt->cross.right_far_found = 0;
-    rt->cross.left_l = -1;
-    rt->cross.right_l = -1;
     rt->cross.left_num = 0;
     rt->cross.right_num = 0;
     std::memset(rt->cross.left_pts, 0, sizeof(rt->cross.left_pts));

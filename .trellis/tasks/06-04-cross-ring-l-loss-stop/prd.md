@@ -567,3 +567,36 @@ Out of this MVP:
 * Seed acquisition changes for border-entry lines.
 * `CONTROL_CENTER_X` tuning.
 * Control-layer tolerance or delayed stop.
+
+## Implementation Record
+
+Decision implemented: V2 Minimal Current-Farline L Reuse.
+
+Changed source:
+
+* `code/tracking/cross.cpp`
+
+Actual behavior after implementation:
+
+* `cross_evolve()` still clears the current-frame farline found flags, point counts, and point arrays.
+* `cross_evolve()` no longer clears `rt->cross.track_type`, `rt->cross.left_l`, or `rt->cross.right_l` at the start of every `CROSS_IN` frame.
+* `build_cross_farline()` saves the previous side-specific L index before rebuilding the current farline.
+* If current farline generation fails at seed, trace, IPM, or point-count stages, the side-specific L index is cleared to `-1`.
+* If current farline generation succeeds and a fresh far L is found, the fresh index is used.
+* If current farline generation succeeds but no fresh far L is found, the previous L index is reused only when:
+  * `old_l >= 0`
+  * `old_l < current_far_num`
+  * `current_far_num - old_l >= k_cross_min_front_step`
+* If those checks fail, the side-specific L index is cleared to `-1`.
+
+Unchanged safety gates:
+
+* `code/tracking/mainline.cpp` still rejects `CROSS_IN` when `cross.track_type == TRACK_TYPE_NONE`, `solve_cross_mid()` is too short, or the midline lacks lookahead.
+* `code/core/control.cpp` still treats `TRACK_TYPE_NONE` or nonzero `reject_reason` as invalid input.
+* `code/drivers/drive_output.cpp` still stops output when control input is invalid.
+
+Validation:
+
+* `make CMakeFiles/front_car_mainline.dir/tracking/cross.cpp.o -j1` in `code/build` passed.
+* Full `./test.sh` was attempted. It compiled through `tracking/cross.cpp.o`, then failed in the existing assistant dependency path: `libraries/zf_components/seekfree_assistant/seekfree_assistant.cpp:37:10: fatal error: vision2_core.hpp: No such file or directory`.
+* The full-build failure is outside this patch surface and is not caused by the `cross.cpp` change.
