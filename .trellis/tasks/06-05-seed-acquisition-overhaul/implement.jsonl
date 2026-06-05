@@ -1,6 +1,0 @@
-{"file": ".trellis/tasks/06-05-seed-acquisition-overhaul/research/search-center-contract.md", "reason": "Front_Car 搜索中心完整契约(双边中点/单边 width_base 外推/全失保持)与当前项目 4 个缺口逐项对照，是写回逻辑的直接实现依据"}
-{"file": ".trellis/tasks/06-05-seed-acquisition-overhaul/research/mainline-gap-and-ripple.md", "reason": "落地差距清单 + width_base 字段设计(位置/写读/初值/限幅/失效) + mid_position 三读者涟漪逐点评估，最直接的实现指南"}
-{"file": ".trellis/tasks/06-05-seed-acquisition-overhaul/research/element-coupling.md", "reason": "seed 层→十字/环岛状态机连锁分析，确认状态机不改、corner_pair_ok 与 seed 解耦的依据"}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "mid_position 动态化跨 imgproc/zebra/ring 多读者，需按跨层数据流思考避免涟漪回归"}
-{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "复用现成 seed_pair_accepted/clip_i 而非新造；改常量(width_base 限幅)前先 grep"}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "C++ 代码标准与禁止模式(不静默降级/不吞错误)，写回与涟漪改动须遵循"}

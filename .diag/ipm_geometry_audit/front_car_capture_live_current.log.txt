@@ -1,9 +1,0 @@
-front_car_mainline: matrix=/root/ipm_matrix.txt (default)
-Seed: left=(4,80) right=(132,114) row=114 width=0
-SeedSt: state=3 mid=80 track=3
-CtlX: x=60
-IPM: loaded=0 frame=0 reason=2
-Trace: left=160 right=160
-Mid: step=44 center=60 guide=-5.44 rej=0
-Loop: valid=1 stop=0 target_yaw=26 actual_yaw=0 duty=14/15
-Elem: ring=0/0 cross=0/0 zebra=0 stop=0
