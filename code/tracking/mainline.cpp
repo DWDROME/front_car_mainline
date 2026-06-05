@@ -423,14 +423,14 @@ const int k_width_base_min = 10;
 const int k_width_base_max = RAW_W - ROAD_HALF_WIDTH;
 const int k_center_margin = 1;  // mid_position 写回留白，落在 find_seeds 读取校验 [0,RAW_W) 内
 
-// 用本帧 seed 结果更新下一帧起搜中心(mid_position)：
+// 用本帧追线成功后保留下来的 seed 结果更新下一帧起搜中心(mid_position)：
 //  - 全失：直接返回，保持上一帧中心(Front_Car 语义，勿学 TC264 重置回中点)。
 //  - 双边(两侧 bit 都置位)：中心取左右中点，即使宽度超出成对区间(如十字开口处
 //    左右远边相距过宽)也优于单边外推；width_base 仅在常态且合法成对时低通标定。
 //  - 单边：用 width_base 把已知侧外推出虚拟中心，让中心随外圈平移。
-void update_search_center(runtime_t *rt, int seed_ok)
+void update_search_center(runtime_t *rt)
 {
-    if(rt == nullptr || !seed_ok)
+    if(rt == nullptr)
     {
         return;
     }
@@ -501,8 +501,6 @@ int tracking_process_frame(runtime_t *rt)
                              &rt->mid_position,
                              &rt->seed_state,
                              &rt->seeds);
-    // 搜索中心跟随：用本帧 seed 结果更新下一帧起搜中心(全失则保持上一帧)。
-    update_search_center(rt, seed_ok);
     if(!seed_ok)
     {
         if(rt->cross.state != CROSS_STATE_IN)
@@ -529,6 +527,8 @@ int tracking_process_frame(runtime_t *rt)
         }
         else
         {
+            // 搜索中心跟随：只用本帧追线成功后保留下来的 seed 结果更新下一帧起搜中心。
+            update_search_center(rt);
             build_boundary_from_trace(&rt->left_trace, rt->matrix, use_matrix, &rt->track.left);
             build_boundary_from_trace(&rt->right_trace, rt->matrix, use_matrix, &rt->track.right);
             clear_rpts();
