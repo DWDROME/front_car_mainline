@@ -38,6 +38,9 @@ namespace
 {
 const int k_mid_resample_dist = 3;     // 中线重采样步长，单位 工作坐标像素
 const int k_min_border_step = 6;       // 生成有效中线所需的最小点数
+
+// 元素帧(十字/环岛)允许短中线继续输出；普通帧仍按 k_min_border_step + 前瞻硬停。
+const int k_element_min_mid_step = 3;  // 元素态允许的最短有效中线点数
 const int k_dual_min_step = 12;        // 左右都达到此点数才算"两边都够长"
 const double k_lookahead_min = 15.0;   // 预瞄距离下限，单位 累计弧长像素
 const double k_lookahead_max = 80.0;   // 预瞄距离上限，单位 累计弧长像素
@@ -187,7 +190,7 @@ int solve_cross_mid(runtime_t *rt, point_t ref)
             if(start < rt->cross.left_num)
             {
                 const int num = clip_i(rt->cross.left_num - start, 0, POINT_MAX);
-                if(num >= k_min_border_step)
+                if(num >= k_element_min_mid_step)
                 {
                     return track_leftline_from_start(rt->cross.left_pts + start,
                                                      num,
@@ -221,7 +224,7 @@ int solve_cross_mid(runtime_t *rt, point_t ref)
             if(start < rt->cross.right_num)
             {
                 const int num = clip_i(rt->cross.right_num - start, 0, POINT_MAX);
-                if(num >= k_min_border_step)
+                if(num >= k_element_min_mid_step)
                 {
                     return track_rightline_from_start(rt->cross.right_pts + start,
                                                       num,
@@ -489,13 +492,15 @@ int tracking_process_frame(runtime_t *rt)
     std::memset(&rt->left_trace, 0, sizeof(rt->left_trace));
     std::memset(&rt->right_trace, 0, sizeof(rt->right_trace));
 
+    // 动作所有者：本帧动作只依据帧首已成立的元素状态计算；element_process 推进状态机后，
+    // 新阶段留到下一帧才生效，避免"同帧改状态又用新状态"造成的时序错位。
+    const int cross_state0 = rt->cross.state;
     int normal_ok = 0;
-    // 本帧开始前已在 IN，才允许本帧直接走远线；刚从 BEGIN 切 IN 的帧仍走截短近线。
-    int cross_in0 = 0;
-    if(rt->cross.state == CROSS_STATE_IN)
-    {
-        cross_in0 = 1;
-    }
+    int ordinary_track_type0 = TRACK_TYPE_NONE;
+    int ring_track_type0 = TRACK_TYPE_NONE;
+    int ring_run_crop_side0 = TRACK_TYPE_NONE;
+    int ring_run_crop_index0 = -1;
+
     int seed_ok = find_seeds(rt->gray,
                              START_HIGH,
                              &rt->mid_position,
@@ -548,109 +553,134 @@ int tracking_process_frame(runtime_t *rt)
                                      rpts1s_num,
                                      rt->matrix,
                                      use_matrix);
-            const int cross_state0 = rt->cross.state;
-            element_process(rt);
-            // 对齐参考 run_cross()：BEGIN 先截 rpts0s/rpts1s，随后才可能切进 CROSS_IN。
-            if(rt->cross.state != CROSS_STATE_NONE)
+            ordinary_track_type0 = pick_track_type();
+            // ring_process() 会推进状态；这里先把本帧要走的 side/crop 算成动作值。
+            if(rt->ring.kind != RING_KIND_NONE)
             {
-                if(cross_state0 == CROSS_STATE_NONE || cross_state0 == CROSS_STATE_BEGIN)
+                const int left_ring = (rt->ring.kind == RING_KIND_LEFT);
+                if(rt->ring.state == RING_STATE_BEGIN ||
+                   rt->ring.state == RING_STATE_RUN ||
+                   rt->ring.state == RING_STATE_END)
                 {
-                    rpts0s_num = clip_i(rt->track.left.now_step, 0, rpts0s_num);
-                    rpts1s_num = clip_i(rt->track.right.now_step, 0, rpts1s_num);
+                    ring_track_type0 = left_ring ? TRACK_TYPE_RIGHT : TRACK_TYPE_LEFT;
+                }
+                else if(rt->ring.state == RING_STATE_IN ||
+                        rt->ring.state == RING_STATE_OUT)
+                {
+                    ring_track_type0 = left_ring ? TRACK_TYPE_LEFT : TRACK_TYPE_RIGHT;
+                }
+
+                if(rt->ring.state == RING_STATE_RUN)
+                {
+                    if(rt->ring.kind == RING_KIND_LEFT && rt->track.right.l_ok)
+                    {
+                        ring_run_crop_side0 = TRACK_TYPE_RIGHT;
+                        ring_run_crop_index0 = rt->track.right.l_now_index;
+                    }
+                    else if(rt->ring.kind == RING_KIND_RIGHT && rt->track.left.l_ok)
+                    {
+                        ring_run_crop_side0 = TRACK_TYPE_LEFT;
+                        ring_run_crop_index0 = rt->track.left.l_now_index;
+                    }
                 }
             }
+            element_process(rt);
             normal_ok = 1;
         }
 
     }
 
     point_t ref = {rt->control_center_x, START_HIGH};
-    // 十字态对齐 RT1064：不为中线过短停车，夹取可用点列即可（BEGIN 截短近线也放行）。
-    const int in_cross = (rt->cross.state != CROSS_STATE_NONE);
-    if(cross_in0 && rt->cross.state == CROSS_STATE_IN)
+    // 把本帧归为三类元素动作帧，决定中线来源与 reject 门：
+    //   cross_far  : 帧首已在 CROSS_IN，本帧走远线 farline；
+    //   cross_near : 十字 BEGIN，或同帧刚 BEGIN->IN，本帧仍走截短近线；
+    //   ring       : 环岛态，按状态选内/外圈（下方用帧首算好的动作值选边）。
+    const int cross_far_frame =
+        (cross_state0 == CROSS_STATE_IN && rt->cross.state == CROSS_STATE_IN);
+    const int cross_near_frame =
+        (normal_ok && !cross_far_frame && rt->cross.state != CROSS_STATE_NONE);
+
+    // 同帧 BEGIN -> IN 仍走截短近线；只有帧开始已是 CROSS_IN 才走远线。
+    if(cross_near_frame)
     {
-        const int track_type = rt->cross.track_type;
-        if(track_type == TRACK_TYPE_NONE)
-        {
-            rt->track.reject_reason = TRACK_REJECT_NO_MIDLINE;
-            return 0;
-        }
-        const int mid_ok = solve_cross_mid(rt, ref);
-        // 十字态对齐 RT1064：放宽最小点数门，不为中线过短停车。
-        if(mid_ok < (in_cross ? 3 : k_min_border_step))
-        {
-            rt->track.reject_reason = TRACK_REJECT_NO_MIDLINE;
-            return 0;
-        }
-        // 十字态对齐 RT1064：跳过前瞻硬停，直接用现有点列算 guide_error（lookahead_error 内部已 clip）。
-        if(!in_cross && !midline_has_lookahead(&rt->track.mid, LOOKAHEAD_DIST))
-        {
-            rt->track.reject_reason = TRACK_REJECT_NO_MIDLINE;
-            return 0;
-        }
-        rt->track.reject_reason = TRACK_REJECT_NONE;
-        rt->track.track_type = track_type;
-        rt->track.center_x = rt->track.mid.pts[0].x;
-        rt->track.guide_error = lookahead_error(&rt->track.mid, LOOKAHEAD_DIST, ref);
-        zebra_process(rt, nullptr);
-        return 1;
+        rpts0s_num = clip_i(rt->track.left.now_step, 0, rpts0s_num);
+        rpts1s_num = clip_i(rt->track.right.now_step, 0, rpts1s_num);
     }
-    if(!normal_ok)
+
+    const int ring_active_frame =
+        (normal_ok &&
+         !cross_far_frame &&
+         !cross_near_frame &&
+         (ring_track_type0 != TRACK_TYPE_NONE || rt->ring.kind != RING_KIND_NONE));
+
+    if(!normal_ok && !cross_far_frame)
     {
         rt->track.reject_reason = TRACK_REJECT_NO_MIDLINE;
         return 0;
     }
 
-    int track_type = TRACK_TYPE_NONE;
-    if(rt->ring.kind != RING_KIND_NONE)
-    {
-        int left_ring = 0;
-        if(rt->ring.kind == RING_KIND_LEFT)
-        {
-            left_ring = 1;
-        }
+    int work_track_type = TRACK_TYPE_NONE;
 
-        // 对齐参考版 circle.c：BEGIN/RUN/END 跟外圈，IN/OUT 跟内圈。
-        // 左环：右(外) -> 左(内) -> 右(外) -> 左(内) -> 右(外)
-        // 右环：左(外) -> 右(内) -> 左(外) -> 右(内) -> 左(外)
-        if(rt->ring.state == RING_STATE_BEGIN ||
-           rt->ring.state == RING_STATE_RUN ||
-           rt->ring.state == RING_STATE_END)
+    if(cross_far_frame)
+    {
+        work_track_type = rt->cross.track_type;
+    }
+    else if(cross_near_frame)
+    {
+        work_track_type = ordinary_track_type0;
+    }
+    else if(ring_active_frame)
+    {
+        if(ring_track_type0 != TRACK_TYPE_NONE)
         {
-            if(left_ring)
-            {
-                track_type = TRACK_TYPE_RIGHT;
-            }
-            else
-            {
-                track_type = TRACK_TYPE_LEFT;
-            }
+            work_track_type = ring_track_type0;
         }
-        else if(rt->ring.state == RING_STATE_IN ||
-                rt->ring.state == RING_STATE_OUT)
+        else if(rt->ring.kind != RING_KIND_NONE)
         {
-            if(left_ring)
+            // 本帧才新进入 ring（帧首未算 ring_track_type0）时，用推进后的 ring 状态补选边。
+            const int left_ring = (rt->ring.kind == RING_KIND_LEFT);
+            if(rt->ring.state == RING_STATE_BEGIN ||
+               rt->ring.state == RING_STATE_RUN ||
+               rt->ring.state == RING_STATE_END)
             {
-                track_type = TRACK_TYPE_LEFT;
+                work_track_type = left_ring ? TRACK_TYPE_RIGHT : TRACK_TYPE_LEFT;
             }
-            else
+            else if(rt->ring.state == RING_STATE_IN ||
+                    rt->ring.state == RING_STATE_OUT)
             {
-                track_type = TRACK_TYPE_RIGHT;
+                work_track_type = left_ring ? TRACK_TYPE_LEFT : TRACK_TYPE_RIGHT;
             }
         }
     }
     else
     {
-        track_type = pick_track_type();
+        work_track_type = ordinary_track_type0;
     }
-    if(track_type == TRACK_TYPE_NONE)
+
+    if(ring_active_frame && ring_run_crop_index0 >= 0)
+    {
+        if(ring_run_crop_side0 == TRACK_TYPE_LEFT)
+        {
+            rpts0s_num = clip_i(ring_run_crop_index0, 0, rpts0s_num);
+        }
+        else if(ring_run_crop_side0 == TRACK_TYPE_RIGHT)
+        {
+            rpts1s_num = clip_i(ring_run_crop_index0, 0, rpts1s_num);
+        }
+    }
+
+    if(work_track_type == TRACK_TYPE_NONE)
     {
         rt->track.reject_reason = TRACK_REJECT_NO_MIDLINE;
         return 0;
     }
 
     int mid_ok = 0;
-    if(track_type == TRACK_TYPE_LEFT)
+    if(cross_far_frame)
+    {
+        mid_ok = solve_cross_mid(rt, ref);
+    }
+    else if(work_track_type == TRACK_TYPE_LEFT)
     {
         mid_ok = track_leftline(rpts0s,
                                 rpts0s_num,
@@ -659,7 +689,7 @@ int tracking_process_frame(runtime_t *rt)
                                 ref.y,
                                 &rt->track.mid);
     }
-    else if(track_type == TRACK_TYPE_RIGHT)
+    else if(work_track_type == TRACK_TYPE_RIGHT)
     {
         mid_ok = track_rightline(rpts1s,
                                  rpts1s_num,
@@ -668,27 +698,33 @@ int tracking_process_frame(runtime_t *rt)
                                  ref.y,
                                  &rt->track.mid);
     }
-    if(mid_ok < (in_cross ? 3 : k_min_border_step))
+    // 共同元素合同(对齐 RT1064)：十字/环岛元素态只要中线 >= k_element_min_mid_step 即放行，
+    // 并跳过前瞻硬停（lookahead_error 内部已按可用弧长 clip）；普通道路仍需 >= k_min_border_step
+    // 且满足前瞻，确保真正无线时照常停车。
+    const int element_action_frame = cross_far_frame || cross_near_frame || ring_active_frame;
+    const int min_mid_step = element_action_frame ? k_element_min_mid_step : k_min_border_step;
+    const int require_lookahead = !element_action_frame;
+    if(mid_ok < min_mid_step)
     {
         rt->track.reject_reason = TRACK_REJECT_NO_MIDLINE;
         return 0;
     }
-    // 十字态对齐 RT1064：BEGIN 截短近线产出的中线也放行，不为前瞻不足停车。
-    if(!in_cross && !midline_has_lookahead(&rt->track.mid, LOOKAHEAD_DIST))
+    if(require_lookahead && !midline_has_lookahead(&rt->track.mid, LOOKAHEAD_DIST))
     {
         rt->track.reject_reason = TRACK_REJECT_NO_MIDLINE;
         return 0;
     }
-    rt->track.track_type = track_type;
-    if(track_type == TRACK_TYPE_LEFT || track_type == TRACK_TYPE_RIGHT)
+    rt->track.reject_reason = TRACK_REJECT_NONE;
+    rt->track.track_type = work_track_type;
+    if(work_track_type == TRACK_TYPE_LEFT || work_track_type == TRACK_TYPE_RIGHT)
     {
-        track_type_keep = track_type;
+        track_type_keep = work_track_type;
     }
     rt->track.center_x = rt->track.mid.pts[0].x;
     rt->track.guide_error = lookahead_error(&rt->track.mid, LOOKAHEAD_DIST, ref);
     midline_t zebra_mid = {};
     const midline_t *zebra_scan = nullptr;
-    if(build_zebra_mid(rt, ref, &zebra_mid) >= k_min_border_step)
+    if(!cross_far_frame && build_zebra_mid(rt, ref, &zebra_mid) >= k_min_border_step)
     {
         zebra_scan = &zebra_mid;
     }
