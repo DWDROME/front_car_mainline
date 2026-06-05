@@ -565,6 +565,8 @@ int tracking_process_frame(runtime_t *rt)
     }
 
     point_t ref = {rt->control_center_x, START_HIGH};
+    // 十字态对齐 RT1064：不为中线过短停车，夹取可用点列即可（BEGIN 截短近线也放行）。
+    const int in_cross = (rt->cross.state != CROSS_STATE_NONE);
     if(cross_in0 && rt->cross.state == CROSS_STATE_IN)
     {
         const int track_type = rt->cross.track_type;
@@ -574,12 +576,14 @@ int tracking_process_frame(runtime_t *rt)
             return 0;
         }
         const int mid_ok = solve_cross_mid(rt, ref);
-        if(mid_ok < k_min_border_step)
+        // 十字态对齐 RT1064：放宽最小点数门，不为中线过短停车。
+        if(mid_ok < (in_cross ? 3 : k_min_border_step))
         {
             rt->track.reject_reason = TRACK_REJECT_NO_MIDLINE;
             return 0;
         }
-        if(!midline_has_lookahead(&rt->track.mid, LOOKAHEAD_DIST))
+        // 十字态对齐 RT1064：跳过前瞻硬停，直接用现有点列算 guide_error（lookahead_error 内部已 clip）。
+        if(!in_cross && !midline_has_lookahead(&rt->track.mid, LOOKAHEAD_DIST))
         {
             rt->track.reject_reason = TRACK_REJECT_NO_MIDLINE;
             return 0;
@@ -664,12 +668,13 @@ int tracking_process_frame(runtime_t *rt)
                                  ref.y,
                                  &rt->track.mid);
     }
-    if(mid_ok < k_min_border_step)
+    if(mid_ok < (in_cross ? 3 : k_min_border_step))
     {
         rt->track.reject_reason = TRACK_REJECT_NO_MIDLINE;
         return 0;
     }
-    if(!midline_has_lookahead(&rt->track.mid, LOOKAHEAD_DIST))
+    // 十字态对齐 RT1064：BEGIN 截短近线产出的中线也放行，不为前瞻不足停车。
+    if(!in_cross && !midline_has_lookahead(&rt->track.mid, LOOKAHEAD_DIST))
     {
         rt->track.reject_reason = TRACK_REJECT_NO_MIDLINE;
         return 0;
