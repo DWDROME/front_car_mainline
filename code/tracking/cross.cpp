@@ -28,6 +28,17 @@ const int k_cross_far_l_angle_min = 70; // 远 L 角置信度下限，小于这�
 const int k_cross_far_l_angle_max = 110; // 远 L 角置信度上限，大于这个更像噪声尖峰或异常折角。
 const int k_cross_far_edge_width = 4; // 固定列贴近边缘时，允许把 4 像素边带视作有效起扫边界。
 
+// 十字入口只接受参考版 strict double-L。单侧 l_ok 留给 ring/zebra/裁剪使用。
+// 如果后续实车/回放证明需要 weak entry，必须新建独立入口函数，不能把 l_ok 塞回这个 strict gate。
+int strict_double_l_ok(const boundary_t *left, const boundary_t *right)
+{
+    if(left == nullptr || right == nullptr)
+    {
+        return 0;
+    }
+    return left->l_pair_ok && right->l_pair_ok;
+}
+
 // 离开十字后清空状态，下一帧重新按双 L 点判断是否进入。
 void cross_leave(cross_state_t *cross)
 {
@@ -316,16 +327,16 @@ void cross_begin(runtime_t *rt)
 
     boundary_t *left = &rt->track.left;
     boundary_t *right = &rt->track.right;
-    const int left_l = left->l_ok;
-    const int right_l = right->l_ok;
+    const int left_strict_l = left->l_pair_ok;
+    const int right_strict_l = right->l_pair_ok;
     int both_l = 0;
-    if(left_l && right_l)
+    if(left_strict_l && right_strict_l)
     {
         both_l = 1;
     }
 
     int left_near = 0;
-    if(left_l && left->now_step > 0)
+    if(left_strict_l && left->now_step > 0)
     {
         const int id = clip_i(left->l_now_index, 0, left->now_step - 1);
         if(id <= k_cross_begin_near_step)
@@ -335,7 +346,7 @@ void cross_begin(runtime_t *rt)
     }
 
     int right_near = 0;
-    if(right_l && right->now_step > 0)
+    if(right_strict_l && right->now_step > 0)
     {
         const int id = clip_i(right->l_now_index, 0, right->now_step - 1);
         if(id <= k_cross_begin_near_step)
@@ -345,13 +356,13 @@ void cross_begin(runtime_t *rt)
     }
 
     // 截断左线
-    if(left_l && left->original_step > 0 && left->now_step > 0)
+    if(left_strict_l && left->original_step > 0 && left->now_step > 0)
     {
         left->original_step = clip_i(left->l_original_index, 0, left->original_step);
         left->now_step = clip_i(left->l_now_index, 0, left->now_step);
     }
     // 截断右线
-    if(right_l && right->original_step > 0 && right->now_step > 0)
+    if(right_strict_l && right->original_step > 0 && right->now_step > 0)
     {
         right->original_step = clip_i(right->l_original_index, 0, right->original_step);
         right->now_step = clip_i(right->l_now_index, 0, right->now_step);
@@ -486,7 +497,7 @@ void cross_process(runtime_t *rt)
         boundary_t *left = &rt->track.left;
         boundary_t *right = &rt->track.right;
         int both_l = 0;
-        if(left->l_ok && right->l_ok)
+        if(strict_double_l_ok(left, right))
         {
             both_l = 1;
         }

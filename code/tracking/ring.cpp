@@ -27,7 +27,7 @@ const int k_in_encoder_step = k_encoder_per_meter * 314 / 200; // 入环走行�
 //-------------------------------------------------------------------------------------------------------------------
 //  @brief      环岛过程中重算左右边界角点：raw 边界 -> IPM/pass-through -> 平滑 -> 重采样 -> 角点刷新
 //  @return     void
-//  @note       用于 build_opp() 或截断边界后，让 ring/cross 看到的角点语义继续和普通主线一致。
+//  @note       用于环岛内部补边或截断边界后，刷新检测/状态连续所需角点；不发布当前帧控制中线。
 //-------------------------------------------------------------------------------------------------------------------
 void refresh_ring_corners(runtime_t *rt, int has_matrix)
 {
@@ -71,15 +71,15 @@ void refresh_ring_corners(runtime_t *rt, int has_matrix)
 }
 
 //-------------------------------------------------------------------------------------------------------------------
-//  @brief      入环阶段补对侧边界：清空 opp，再找种子、跟踪、直线补点、拼接尾段
+//  @brief      入环阶段为检测/状态连续补对侧边界：清空 opp，再找种子、跟踪、直线补点、拼接尾段
 //  @return     int          1 成功补出对侧边界 / 0 seed、trace 或点数不足
-//  @note       left=1 表示左环，当前边界是左侧，补右侧；left=0 时相反。
+//  @note       只供 ring_process() 内部更新 boundary_t 与角点状态；mainline 不用这条补线生成当前帧控制中线。
 //-------------------------------------------------------------------------------------------------------------------
-int build_opp(runtime_t &rt,
-              const boundary_t &cur,
-              boundary_t &opp,
-              int left,
-              int has_matrix)
+int build_ring_opp_for_detection(runtime_t &rt,
+                                 const boundary_t &cur,
+                                 boundary_t &opp,
+                                 int left,
+                                 int has_matrix)
 {
     std::memset(&opp, 0, sizeof(opp));
 
@@ -353,7 +353,7 @@ void ring_process(runtime_t *rt)
             rt->ring.have_count = 0;
             return;
         }
-        if(build_opp(*rt, *cur, *opp, left, has_matrix))
+        if(build_ring_opp_for_detection(*rt, *cur, *opp, left, has_matrix))
         {
             refresh_ring_corners(rt, has_matrix);
         }

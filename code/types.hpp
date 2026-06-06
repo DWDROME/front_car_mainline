@@ -17,7 +17,6 @@ struct seed_pair_t
     point_t left;
     point_t right;
     int row;
-    int width;
 };
 
 struct trace_t
@@ -44,19 +43,22 @@ struct boundary_t
     int work_step;
     double work_pts[POINT_MAX][2];
 
-    // L 角结果。*_now_index 对应 now_pts，*_original_index 对应 original_pts。
+    // 单侧 L 角结果。*_now_index 对应 now_pts，*_original_index 对应 original_pts。
+    // l_found 只表示 boundary 几何扫描见到单侧 L 候选，用于诊断/直线判定。
+    // l_ok 表示该单侧 L 候选落在可消费前段，可供 ring、zebra 扫描选线和环岛裁剪使用。
+    // l_found/l_ok 都不是 cross 入口信号。
     int l_found;
     int l_ok;
     int l_now_index;
     int l_original_index;
     double l_angle_deg;
 
-    // 双 L 复核信息，只给 cross/ring 判断使用，不直接作为上位机角点显示。
+    // 双 L 复核信息。l_pair_ok 只表示左右 L 组成参考版 strict double-L 入口；
+    // cross 只消费 l_pair_ok；它不覆盖单侧 l_ok，也不直接参与控制中线生成。
+    int l_pair_ok;
     int l_pair_state;
     double l_pair_width0;
     double l_pair_width1;
-    point_t l_pair_base_pt;
-    point_t l_pair_open_pt;
 };
 
 struct midline_t
@@ -164,12 +166,12 @@ enum
 
 enum
 {
-    IPM_GEOMETRY_OK = 0,
-    IPM_GEOMETRY_NO_MATRIX = 1,
-    IPM_GEOMETRY_NO_SEED = 2,
-    IPM_GEOMETRY_MAP_FAILED = 3,
-    IPM_GEOMETRY_WIDTH_TOO_SMALL = 4,
-    IPM_GEOMETRY_WIDTH_TOO_LARGE = 5,
+    SEED_IPM_DIAG_OK = 0,
+    SEED_IPM_DIAG_NO_MATRIX = 1,
+    SEED_IPM_DIAG_NO_PAIR = 2,
+    SEED_IPM_DIAG_MAP_FAILED = 3,
+    SEED_IPM_DIAG_SPAN_TOO_SMALL = 4,
+    SEED_IPM_DIAG_SPAN_TOO_LARGE = 5,
 };
 
 struct control_state_t

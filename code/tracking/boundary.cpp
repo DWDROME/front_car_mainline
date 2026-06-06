@@ -248,7 +248,7 @@ double curvature(point_t p0, point_t p1, point_t p2)
     return r > 1e-9 ? 1.0 / r : 0.0;
 }
 
-// 清空一个边界上的 L 角和双 L 复核结果。
+// 清空一个边界上的单侧 L 角和双 L 复核结果。
 void clear_corner(boundary_t *bd)
 {
     if(bd == nullptr)
@@ -260,23 +260,33 @@ void clear_corner(boundary_t *bd)
     bd->l_now_index = 0;
     bd->l_original_index = 0;
     bd->l_angle_deg = 0.0;
+    bd->l_pair_ok = 0;
     bd->l_pair_state = k_pair_none;
     bd->l_pair_width0 = 0.0;
     bd->l_pair_width1 = 0.0;
-    bd->l_pair_base_pt = {-1, -1};
-    bd->l_pair_open_pt = {-1, -1};
+}
+
+int strict_pair_inputs_ready(const boundary_t *left, const boundary_t *right)
+{
+    if(left == nullptr || right == nullptr)
+    {
+        return 0;
+    }
+    if(!left->l_ok || !right->l_ok)
+    {
+        return 0;
+    }
+    return left->now_step > 0 && right->now_step > 0;
 }
 
 //-------------------------------------------------------------------------------------------------------------------
-//  @brief      双 L 角二次检查：记录宽度/张开状态，并判断左右 L 点是否组成有效十字入口
+//  @brief      双 L 角二次检查：记录宽度/张开状态，并判断左右 L 点是否组成参考版 strict 入口
 //  @return     int          1 双 L 复核通过 / 0 宽度、张开或方向不合格
-//  @note       l_pair_* 字段只用于复核和调试显示，不参与控制中线生成。
+//  @note       只写 l_pair_ok/l_pair_*；不覆盖单侧 l_ok，避免 cross/ring/zebra 语义耦合。
 //-------------------------------------------------------------------------------------------------------------------
 int corner_pair_ok(boundary_t *left, boundary_t *right)
 {
-    if(left == nullptr || right == nullptr ||
-       !left->l_found || !right->l_found ||
-       left->now_step <= 0 || right->now_step <= 0)
+    if(!strict_pair_inputs_ready(left, right))
     {
         return 0;
     }
@@ -285,8 +295,6 @@ int corner_pair_ok(boundary_t *left, boundary_t *right)
     const int ri = clip_i(right->l_now_index, 0, right->now_step - 1);
     const point_t lp = left->now_pts[li];
     const point_t rp = right->now_pts[ri];
-    left->l_pair_base_pt = lp;
-    right->l_pair_base_pt = rp;
     const int dx = lp.x - rp.x;
     const int dy = lp.y - rp.y;
     const double w0 = std::hypot((double)dx, (double)dy);
@@ -304,8 +312,6 @@ int corner_pair_ok(boundary_t *left, boundary_t *right)
     const int ri1 = clip_i(ri + k_corner_open_step, 0, right->now_step - 1);
     const point_t lp1 = left->now_pts[li1];
     const point_t rp1 = right->now_pts[ri1];
-    left->l_pair_open_pt = lp1;
-    right->l_pair_open_pt = rp1;
     const int dx1 = lp1.x - rp1.x;
     const int dy1 = lp1.y - rp1.y;
     const double w1 = std::hypot((double)dx1, (double)dy1);
@@ -323,6 +329,8 @@ int corner_pair_ok(boundary_t *left, boundary_t *right)
         right->l_pair_state = k_pair_dir_bad;
         return 0;
     }
+    left->l_pair_ok = 1;
+    right->l_pair_ok = 1;
     left->l_pair_state = k_pair_none;
     right->l_pair_state = k_pair_none;
     return 1;
@@ -423,9 +431,9 @@ int boundary_is_straight(const boundary_t *bd)
 }
 
 //-------------------------------------------------------------------------------------------------------------------
-//  @brief      在左右边界前段搜索 L 角，命中后记录第一个有效角点
+//  @brief      在左右边界前段搜索单侧 L 角，并独立刷新双 L 复核结果
 //  @return     void
-//  @note       L 角过远会被清掉；左右都找到 L 后，再做 corner_pair_ok() 双 L 复核。
+//  @note       l_ok 是单侧 L 语义；l_pair_ok 是 strict double-L 入口语义，二者不能混用。
 //-------------------------------------------------------------------------------------------------------------------
 void refresh_boundary_corners(boundary_t *left,
                               boundary_t *right,
@@ -484,27 +492,18 @@ void refresh_boundary_corners(boundary_t *left,
         if(li >= 0)
         {
             bd->l_found = 1;
-            bd->l_ok = 1;
             bd->l_now_index = li;
             bd->l_original_index = raw;
             bd->l_angle_deg = deg;
-        }
-
-        if(bd->l_found && bd->l_now_index >= k_corner_front_step)
-        {
-            bd->l_found = 0;
-            bd->l_ok = 0;
-            bd->l_now_index = 0;
-            bd->l_original_index = 0;
-            bd->l_angle_deg = 0.0;
+            if(li < k_corner_front_step)
+            {
+                bd->l_ok = 1;
+            }
         }
     }
 
-    if(left->l_found &&
-       right->l_found &&
-       !corner_pair_ok(left, right))
+    if(strict_pair_inputs_ready(left, right))
     {
-        left->l_ok = 0;
-        right->l_ok = 0;
+        corner_pair_ok(left, right);
     }
 }

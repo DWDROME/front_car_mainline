@@ -23,7 +23,7 @@ int region_otsu(const uint8_t gray[RAW_H][RAW_W], int x_start, int x_end, int y_
 //  @param      start_row  起线行
 //  @param      mid        输入/输出上一帧中心参考列，允许为空
 //  @param      state      输出 bit 状态：1 左 seed，2 右 seed，3 双 seed
-//  @param      sd         输出左右 seed、行号和宽度
+//  @param      sd         输出左右 seed 和行号；同排 span 由 seed_pair_accepted() 按需现算
 //  @return     int        1 至少找到一侧 seed / 0 未找到
 //  @note       这里只找原图 seed，不做 IPM，不生成中线。
 //----------------------------------------------------------------------------------------------------------------------
@@ -37,7 +37,7 @@ int find_seeds(const uint8_t gray[RAW_H][RAW_W],
 //  @brief      判断 find_seeds() 的左右 seed 是否可作为一对使用
 //  @param      sd     find_seeds() 输出的 seed 对
 //  @param      state  find_seeds() 输出的 bit 状态
-//  @return     int    1 双边 seed 同行且宽度合法 / 0 不可作为双边起线
+//  @return     int    1 双边 seed 同行且 span 合法 / 0 不可作为双边起线
 //----------------------------------------------------------------------------------------------------------------------
 int seed_pair_accepted(const seed_pair_t *sd, int state);
 

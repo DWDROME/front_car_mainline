@@ -2,7 +2,6 @@
 
 #include "cross.hpp"
 #include "ring.hpp"
-#include "zebra.hpp"
 
 namespace
 {

@@ -1,8 +1,8 @@
 # 主流程快照
 
-这份文档只保存当前 `front_car_mainline` 的活跃主链。详细阶段合同看 `../.agentdocs/tracking_mainline_contract.md`，复杂度判断看 `../.agentdocs/tracking_complexity_map.md`。
+这份文档只记录当前 `front_car_mainline` 的活跃主链。历史方案、已退休入口和阶段性推测不写进这里。
 
-## 1. 当前主链
+## 1. 当前一帧主链
 
 ```text
 app/main.cpp
@@ -11,45 +11,70 @@ app/main.cpp
       -> device_capture_gray() / device_load_gray()
       -> tracking_process_frame()
          -> find_seeds()
-         -> trace_edges() / trace_single()
-         -> build_boundary_from_trace()
+         -> trace_edges()
+         -> build_frame_boundaries_and_candidates()
+            -> build_boundary_from_trace(left/right)
+            -> build_rpts0() / build_rpts1()
+            -> refresh_boundary_corners()
+            -> track_leftline() / track_rightline() into rptsc0/rptsc1
+         -> snapshot_ring_frame_start_action()
          -> element_process()
-         -> perspective_points() / blur_points() / resample_points()
-         -> track_dualline() / track_leftline() / track_rightline()
+         -> classify_frame_mode()
+         -> apply_frame_start_element_crop()
+         -> build_selected_midline()
+         -> publish_track_result()
+         -> run_zebra_scan()
       -> solve_runtime()
       -> print / display / assistant stream
 ```
 
-主链只保留一条。不要再新增 parallel pipeline、shadow pipeline 或强制状态入口。
+主链只保留一条。不要新增 parallel pipeline、shadow pipeline 或强制元素状态入口。
 
-## 2. tracking 内部顺序
+## 2. tracking 内部合同
+
+当前控制中线发布链：
 
 ```text
-raw gray
--> find_seeds
--> trace_edges / trace_single
--> build_boundary_from_trace
--> refresh_boundary_corners
--> element_process
--> perspective_points / blur_points / resample_points
--> track_dualline / track_leftline / track_rightline
--> center_x / guide_error writeback
+raw boundary
+-> rpts0s/rpts1s
+-> rptsc0/rptsc1 or CROSS_IN far candidate
+-> build_rptsn()
+-> rt->track.mid
+-> guide_error
 ```
 
 关键边界：
 
-- `imgproc.cpp` 负责原图 seed / trace，以及点级 perspective/blur/resample/track 中线工具。
-- `boundary.cpp` 负责 boundary、corner、front boundary。
-- `element.cpp` 只做 zebra / ring / cross 互斥调度。
-- `cross.cpp`、`ring.cpp`、`zebra.cpp` 只处理各自状态树。
+- `imgproc.cpp` 负责 seed、trace、点列 perspective/blur/resample、单边候选外扩和 `build_rptsn()` 等底层工具。
+- `boundary.cpp` 负责解释边界几何：`l_found`、`l_ok`、`l_pair_ok`、直线判定。
+- `element.cpp` 只做元素互斥调度；当前顺序是 cross 优先，cross 不活动时才推进 ring。
+- `cross.cpp` 只维护 cross 状态、远线点列和 `cross.track_type`；不发布 `rt->track.mid`。
+- `ring.cpp` 只维护 ring 状态和检测/状态连续用边界；不重建当前帧控制候选。
+- `mainline.cpp` 是当前帧唯一的控制中线 owner。
+- `zebra.cpp` 只消费 mainline 给的 scan midline 和 raw image；不选择控制中线。
+- `report.cpp` / `runners.cpp` 只输出诊断字段；不定义算法门槛。
+- `control.cpp` 只消费 `track_line_found()`、`guide_error` 和停车状态；不重新解释视觉几何。
 
-当前范围说明：
+## 3. 元素对中线的影响
 
-- 当前工程没有 `yroad` / 三叉模块。
-- 当前“向参考工程对齐”只覆盖已存在的 `tracking / cross / ring / zebra / control` 主线。
-- 三叉属于参考工程额外能力，不当作当前主链里的收直项。
+```text
+build_frame_boundaries_and_candidates()
+  -> 当前帧 rptsc0/rptsc1 已经生成
+snapshot_ring_frame_start_action()
+  -> 捕获帧首 ring 选边和 RUN 裁剪动作
+element_process()
+  -> cross/ring 状态推进
+classify_frame_mode()
+  -> cross_far / cross_near / ring / ordinary
+apply_frame_start_element_crop()
+  -> 只裁剪已存在的 rptsc0/rptsc1 点数
+build_selected_midline()
+  -> CROSS_IN farline 或 rptsc0/rptsc1 -> rt->track.mid
+```
 
-## 3. 已删除的旁路
+`ring.cpp` 可能在 `element_process()` 内补边或截边并刷新角点，但这只服务 ring 检测和状态连续；当前帧控制候选不会从 ring 修改后的 `boundary_t` 重建。
+
+## 4. 已删除的旁路
 
 这些不再属于当前主线：
 
@@ -62,30 +87,19 @@ FRONT_CAR_ELEMENTS
 
 含义：元素状态必须从主链自然推进，不能靠 CLI 或环境变量伪造状态。
 
-## 4. 当前有效验证入口
+## 5. 当前有效验证入口
 
 ```bash
-bash "scripts/test.sh" --host
-bash "scripts/straight_baseline_audit.sh"
-bash "scripts/ipm_geometry_audit.sh"
+bash code/test.sh --host
 ```
 
-下面这些旧入口不再作为主线通过条件：
+如需离线行为证据，必须提供满足 `RAW_W x RAW_H` 的真实回放图像序列；文档截图不能作为 replay 输入。
 
-```text
-scripts/behavior_equivalence.sh
-```
+## 6. 当前仍重但边界已定的地方
 
-`cross_farline_audit.sh` 和 `ring_track_type_audit.sh` 已从仓库删除，因为它们过去依赖强制状态旁路。
-`behavior_equivalence.sh` 已退休，因为当前不再保留 `front_car_mainline_legacy` 旧路线。
+1. `mainline.cpp` 仍是帧级 orchestration owner；这是当前主链合同，不是未决边界。
+2. `boundary.cpp` 同时做边界点解释、L 角和直线判定；这是 boundary 几何 owner，不是元素 owner。
+3. `cross.cpp` 和 `ring.cpp` 保留状态树；是否调整 weak cross entry 或 ring 阈值属于行为证据门槛，不是 owner 未定。
+4. `track_dualline()` 保留为明确实验入口；普通主线不主动选择 `TRACK_TYPE_DUAL`。
 
-## 5. 当前还重的地方
-
-优先级从高到低：
-
-1. `boundary.cpp` 仍混合 boundary / corner / front boundary。
-2. `mainline.cpp` 已删 frame wrapper，但仍负责元素前后粘合。
-3. `imgproc.cpp` 已合并 seed / trace / midline，后续只清内部短函数名。
-4. `cross.cpp` / `ring.cpp` 暂时保留状态树，不先重写。
-
-不要把问题误判成“文件越少越好”。当前目标是职责清楚，而不是把核心算法硬塞回一个大文件。
+当前目标是职责清楚，而不是把核心算法硬塞回一个大文件。

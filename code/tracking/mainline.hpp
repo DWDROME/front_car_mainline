@@ -15,7 +15,7 @@ void tracking_reset(runtime_t *rt);
 //  @brief      执行当前帧主巡线流程
 //  @param      rt   运行时状态；输入图像必须已写入 rt->gray，且 gray_valid 为 1
 //  @return     int  1 本帧得到可用控制中线 / 0 seed、trace、中线或预瞄失败
-//  @note       主链顺序：seed -> trace -> boundary -> element -> midline -> guide_error。
+//  @note       主链顺序：seed/trace -> boundary+rptsc candidates -> element state -> selected midline -> guide_error。
 //              本函数只生成视觉控制结果，不直接输出电机 duty。
 //----------------------------------------------------------------------------------------------------------------------
 int tracking_process_frame(runtime_t *rt);

@@ -5,36 +5,46 @@
 #include "tracking/mainline.hpp"
 #include "tracking/perspective.hpp"
 
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
 
 namespace
 {
-// 计算两点之间的欧式距离，用于报告里的 IPM seed 几何检查。
+// 计算两点之间的欧式距离，用于报告里的 seed IPM 诊断。
 double point_distance(point_t a, point_t b)
 {
     return std::hypot((double)a.x - b.x, (double)a.y - b.y);
 }
 
+int report_seed_pair_span(const runtime_t *rt)
+{
+    if(rt == nullptr || !seed_pair_accepted(&rt->seeds, rt->seed_state))
+    {
+        return -1;
+    }
+    return rt->seeds.right.x - rt->seeds.left.x;
+}
+
 //-------------------------------------------------------------------------------------------------------------------
-//  @brief      校验 IPM 种子映射几何是否合法（种子有效、矩阵已加载、映射成功、左右间距合理）
-//  @return     int          IPM_GEOMETRY_xxx 枚举之一
-//  @note       这里只做诊断输出，不影响 tracking_process_frame() 的真实中线生成。
+//  @brief      诊断同排 seed pair 映射到 IPM 后的跨度是否异常
+//  @return     int          SEED_IPM_DIAG_xxx 枚举之一
+//  @note       这里只做报告输出；seed 仍只是 trace 起点，不是 tracking 成败门。
 //-------------------------------------------------------------------------------------------------------------------
-int inspect_ipm_seed_geometry(const runtime_t *rt)
+int report_seed_ipm_pair_diag(const runtime_t *rt)
 {
     if(rt == nullptr)
     {
-        return IPM_GEOMETRY_NO_SEED;
+        return SEED_IPM_DIAG_NO_PAIR;
     }
     if(!seed_pair_accepted(&rt->seeds, rt->seed_state))
     {
-        return IPM_GEOMETRY_NO_SEED;
+        return SEED_IPM_DIAG_NO_PAIR;
     }
     if(!rt->has_matrix)
     {
-        return IPM_GEOMETRY_NO_MATRIX;
+        return SEED_IPM_DIAG_NO_MATRIX;
     }
 
     point_t p0 = {-1, -1};
@@ -45,19 +55,19 @@ int inspect_ipm_seed_geometry(const runtime_t *rt)
     perspective_point(rt->matrix, &rt->seeds.right, &p1, &ok1);
     if(!ok0 || !ok1)
     {
-        return IPM_GEOMETRY_MAP_FAILED;
+        return SEED_IPM_DIAG_MAP_FAILED;
     }
 
     const double w = point_distance(p0, p1);
     if(w < ROAD_HALF_WIDTH)
     {
-        return IPM_GEOMETRY_WIDTH_TOO_SMALL;
+        return SEED_IPM_DIAG_SPAN_TOO_SMALL;
     }
     if(w > RAW_W - 2)
     {
-        return IPM_GEOMETRY_WIDTH_TOO_LARGE;
+        return SEED_IPM_DIAG_SPAN_TOO_LARGE;
     }
-    return IPM_GEOMETRY_OK;
+    return SEED_IPM_DIAG_OK;
 }
 
 // 取中线起点和预瞄附近点，供单行日志和报告输出。
@@ -106,15 +116,16 @@ void print_detail(const runtime_t *rt)
     const auto &cz = rt->cross;
     const auto &zb = rt->zebra;
     const int use_matrix = rt->has_matrix;
-    const int ipm_reason = inspect_ipm_seed_geometry(rt);
+    const int seed_span = report_seed_pair_span(rt);
+    const int ipm_reason = report_seed_ipm_pair_diag(rt);
 
-    std::printf("Seed: left=(%d,%d) right=(%d,%d) row=%d width=%d\n",
+    std::printf("Seed: left=(%d,%d) right=(%d,%d) row=%d pair_span=%d\n",
                 sd.left.x,
                 sd.left.y,
                 sd.right.x,
                 sd.right.y,
                 sd.row,
-                sd.width);
+                seed_span);
     std::printf("SeedSt: state=%d mid=%d track=%d\n",
                 rt->seed_state,
                 rt->mid_position,
@@ -125,32 +136,24 @@ void print_detail(const runtime_t *rt)
                 use_matrix,
                 ipm_reason);
     std::printf("Trace: left=%d right=%d\n", tr0.step, tr1.step);
-    std::printf("CornerL: left=%d/%d@%d/%.1f pair=%d w=%.1f/%.1f "
-                "base=(%d,%d) open=(%d,%d) "
-                "right=%d/%d@%d/%.1f pair=%d w=%.1f/%.1f "
-                "base=(%d,%d) open=(%d,%d)\n",
+    std::printf("CornerL: left=%d/%d@%d/%.1f pair=%d state=%d w=%.1f/%.1f "
+                "right=%d/%d@%d/%.1f pair=%d state=%d w=%.1f/%.1f\n",
                 tr.left.l_found,
                 tr.left.l_ok,
                 tr.left.l_now_index,
                 tr.left.l_angle_deg,
+                tr.left.l_pair_ok,
                 tr.left.l_pair_state,
                 tr.left.l_pair_width0,
                 tr.left.l_pair_width1,
-                tr.left.l_pair_base_pt.x,
-                tr.left.l_pair_base_pt.y,
-                tr.left.l_pair_open_pt.x,
-                tr.left.l_pair_open_pt.y,
                 tr.right.l_found,
                 tr.right.l_ok,
                 tr.right.l_now_index,
                 tr.right.l_angle_deg,
+                tr.right.l_pair_ok,
                 tr.right.l_pair_state,
                 tr.right.l_pair_width0,
-                tr.right.l_pair_width1,
-                tr.right.l_pair_base_pt.x,
-                tr.right.l_pair_base_pt.y,
-                tr.right.l_pair_open_pt.x,
-                tr.right.l_pair_open_pt.y);
+                tr.right.l_pair_width1);
     std::printf("Mid: step=%d center=%d guide=%.2f rej=%d\n",
                 tr.mid.step,
                 tr.center_x,
@@ -196,14 +199,13 @@ void print_live(uint32_t frame_id, const runtime_t *rt)
     mid_points_for_report(tr.mid, &m0, &ml);
 
     // 字段缩写：cf=左/右远线found，cn=左/右远线点数，cl=左/右远 L 索引；
-    //   l=左 found/ok/now_index @ 右 found/ok/now_index；lp/rp=左/右双 L 复核状态；
-    //   lb/la=左边界 pair 基点/张开点，rb/ra=右边界同；m0=中线起点，ml=预瞄点（均控制坐标）；
+    //   l=左 found/ok/now_index @ 右 found/ok/now_index；pair=左/右 strict double-L 复核结果；
+    //   ps=左/右 pair_state；pw=双 L 基准/张开宽度；m0=中线起点，ml=预瞄点（均控制坐标）；
     //   yaw=target_yaw(mrad/s)，duty=左/右占空。
     std::printf("frame=%u ring=%d/%d cross=%d cf=%d/%d cn=%d/%d cl=%d/%d "
                 "zebra=%d line=%d rej=%d track=%d mid=%d "
                 "seed=(%d,%d)-(%d,%d) trace=%d/%d "
-                "l=%d/%d@%d/%d/%d@%d lp=%d rp=%d "
-                "lb=(%d,%d) la=(%d,%d) rb=(%d,%d) ra=(%d,%d) "
+                "l=%d/%d@%d/%d/%d@%d pair=%d/%d ps=%d/%d pw=%.1f/%.1f "
                 "center=%d m0=(%d,%d) ml=(%d,%d) guide=%.2f "
                 "loop=%d stop=%d yaw=%d duty=%d/%d\n",
                 frame_id,
@@ -233,16 +235,12 @@ void print_live(uint32_t frame_id, const runtime_t *rt)
                 tr.right.l_found,
                 tr.right.l_ok,
                 tr.right.l_now_index,
+                tr.left.l_pair_ok,
+                tr.right.l_pair_ok,
                 tr.left.l_pair_state,
                 tr.right.l_pair_state,
-                tr.left.l_pair_base_pt.x,
-                tr.left.l_pair_base_pt.y,
-                tr.left.l_pair_open_pt.x,
-                tr.left.l_pair_open_pt.y,
-                tr.right.l_pair_base_pt.x,
-                tr.right.l_pair_base_pt.y,
-                tr.right.l_pair_open_pt.x,
-                tr.right.l_pair_open_pt.y,
+                tr.left.l_pair_width0,
+                tr.left.l_pair_width1,
                 tr.center_x,
                 m0.x,
                 m0.y,
@@ -278,9 +276,9 @@ int write_report(const runtime_t *rt, const char *report_path)
     out << "track_reject_reason=" << rt->track.reject_reason << "\n";
     out << "track_type=" << rt->track.track_type << "\n";
 
-    const int ipm_reason = inspect_ipm_seed_geometry(rt);
+    const int ipm_reason = report_seed_ipm_pair_diag(rt);
     out << "matrix_loaded=" << rt->has_matrix << "\n";
-    out << "ipm_geometry_reject_reason=" << ipm_reason << "\n";
+    out << "seed_ipm_pair_diag=" << ipm_reason << "\n";
 
     out << "ring_kind=" << rt->ring.kind << "\n";
     out << "ring_state=" << rt->ring.state << "\n";
@@ -300,7 +298,7 @@ int write_report(const runtime_t *rt, const char *report_path)
     out << "left_seed=" << rt->seeds.left.x << "," << rt->seeds.left.y << "\n";
     out << "right_seed=" << rt->seeds.right.x << "," << rt->seeds.right.y << "\n";
     out << "seed_row=" << rt->seeds.row << "\n";
-    out << "seed_width=" << rt->seeds.width << "\n";
+    out << "seed_pair_span=" << report_seed_pair_span(rt) << "\n";
 
     out << "left_trace_step=" << rt->left_trace.step << "\n";
     out << "right_trace_step=" << rt->right_trace.step << "\n";
@@ -309,21 +307,19 @@ int write_report(const runtime_t *rt, const char *report_path)
     out << "left_l_now_index=" << rt->track.left.l_now_index << "\n";
     out << "left_l_original_index=" << rt->track.left.l_original_index << "\n";
     out << "left_l_angle_deg=" << rt->track.left.l_angle_deg << "\n";
+    out << "left_l_pair_ok=" << rt->track.left.l_pair_ok << "\n";
     out << "left_l_pair_state=" << rt->track.left.l_pair_state << "\n";
     out << "left_l_pair_width0=" << rt->track.left.l_pair_width0 << "\n";
     out << "left_l_pair_width1=" << rt->track.left.l_pair_width1 << "\n";
-    out << "left_l_pair_base=" << rt->track.left.l_pair_base_pt.x << "," << rt->track.left.l_pair_base_pt.y << "\n";
-    out << "left_l_pair_open=" << rt->track.left.l_pair_open_pt.x << "," << rt->track.left.l_pair_open_pt.y << "\n";
     out << "right_l_found=" << rt->track.right.l_found << "\n";
     out << "right_l_ok=" << rt->track.right.l_ok << "\n";
     out << "right_l_now_index=" << rt->track.right.l_now_index << "\n";
     out << "right_l_original_index=" << rt->track.right.l_original_index << "\n";
     out << "right_l_angle_deg=" << rt->track.right.l_angle_deg << "\n";
+    out << "right_l_pair_ok=" << rt->track.right.l_pair_ok << "\n";
     out << "right_l_pair_state=" << rt->track.right.l_pair_state << "\n";
     out << "right_l_pair_width0=" << rt->track.right.l_pair_width0 << "\n";
     out << "right_l_pair_width1=" << rt->track.right.l_pair_width1 << "\n";
-    out << "right_l_pair_base=" << rt->track.right.l_pair_base_pt.x << "," << rt->track.right.l_pair_base_pt.y << "\n";
-    out << "right_l_pair_open=" << rt->track.right.l_pair_open_pt.x << "," << rt->track.right.l_pair_open_pt.y << "\n";
     out << "mid_step=" << rt->track.mid.step << "\n";
     point_t m0 = {-1, -1};
     point_t ml = {-1, -1};

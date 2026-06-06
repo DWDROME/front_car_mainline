@@ -161,14 +161,14 @@ int process_frame_quiet(runtime_t *rt, const char *image_path)
     return 1;
 }
 
-// 回放模式每帧单行摘要，主要看元素状态、远线、中线和 reject_reason。
+// 回放模式每帧单行摘要，主要看元素状态、strict double-L、远线、中线和 reject_reason。
 // 字段缩写：far=左/右远线found，far_num=左/右远线点数，far_l=左/右远 L 索引；
-//   lb/la=左边界双 L 基点/张开点，rb/ra=右边界同；mid=控制中线点数，guide=预瞄误差。
+//   pair=左/右 strict double-L 复核结果；ps=左/右 pair_state；pw=双 L 基准/张开宽度。
 void print_replay_frame(int frame, const runtime_t *rt)
 {
     std::printf("replay frame=%d line=%d ring=%d/%d cross=%d zebra=%d no_line=%d far=%d/%d "
                 "far_num=%d/%d far_l=%d/%d "
-                "lb=(%d,%d) la=(%d,%d) rb=(%d,%d) ra=(%d,%d) "
+                "l=%d/%d@%d/%d/%d@%d pair=%d/%d ps=%d/%d pw=%.1f/%.1f "
                 "track=%d mid=%d guide=%.2f reject=%d\n",
                 frame,
                 track_line_found(rt),
@@ -183,14 +183,18 @@ void print_replay_frame(int frame, const runtime_t *rt)
                 rt->cross.right_num,
                 rt->cross.left_l,
                 rt->cross.right_l,
-                rt->track.left.l_pair_base_pt.x,
-                rt->track.left.l_pair_base_pt.y,
-                rt->track.left.l_pair_open_pt.x,
-                rt->track.left.l_pair_open_pt.y,
-                rt->track.right.l_pair_base_pt.x,
-                rt->track.right.l_pair_base_pt.y,
-                rt->track.right.l_pair_open_pt.x,
-                rt->track.right.l_pair_open_pt.y,
+                rt->track.left.l_found,
+                rt->track.left.l_ok,
+                rt->track.left.l_now_index,
+                rt->track.right.l_found,
+                rt->track.right.l_ok,
+                rt->track.right.l_now_index,
+                rt->track.left.l_pair_ok,
+                rt->track.right.l_pair_ok,
+                rt->track.left.l_pair_state,
+                rt->track.right.l_pair_state,
+                rt->track.left.l_pair_width0,
+                rt->track.left.l_pair_width1,
                 rt->track.track_type,
                 rt->track.mid.step,
                 rt->track.guide_error,

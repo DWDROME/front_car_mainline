@@ -62,10 +62,13 @@ const int k_corner_front_step = 28;       // L角最远允许位置，单位 点
 作用：
 
 - 给 `scan_corner()`、`refresh_boundary_corners()` 用。
-- cross 和 ring 的入口都先吃这里识别出来的 `l_found / l_ok`。
+- 这里只产出单侧 L 候选/单侧 L 消费门；当前代码已经把 cross 的 strict 双 L 入口拆到 `l_pair_ok`。
 
 当前语义：
 
+- `l_found`：边界几何扫描看到了单侧 L 候选。
+- `l_ok`：单侧 L 消费门，供 ring、zebra 扫描选择和裁剪类逻辑使用。
+- `l_pair_ok`：双 L 二次复核通过；`cross.cpp::strict_double_l_ok()` 只消费这个字段。
 - `70~140`：什么角度范围算近线 L 角。
 - `k_corner_scan_step = 28`：只扫前约 0.8m。
 - `k_corner_front_step = 28`：就算扫到了，超过前约 0.8m 也作废。
@@ -86,8 +89,8 @@ const double k_corner_pair_open_ref = 70.0;    // 往前张开宽度门，单位
 
 作用：
 
-- 给 `corner_pair_ok()` 用。
-- 主要影响 cross 双 L 入口是否成立。
+- 给 `corner_pair_ok()` 用，结果写到 `l_pair_ok / l_pair_state / l_pair_width*`。
+- 主要影响 cross strict 双 L 入口是否成立；复核失败不会清掉单侧 `l_ok`。
 
 当前语义：
 
@@ -174,7 +177,7 @@ const int k_in_encoder_step = k_encoder_per_meter * 314 / 200; // 约 1.57m
 
 说明：
 
-- 这两项只在 `build_opp()` 里用。
+- 这两项只在 `build_ring_opp_for_detection()` 里用；旧文档里可能还写作 `build_opp()`。
 - 它们不是 ring 状态机门，而是补对侧边界时给种子点的偏移量。
 
 ### D. 编码器兜底门

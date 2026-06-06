@@ -260,7 +260,6 @@ int find_seeds(const uint8_t gray[RAW_H][RAW_W],
         seeds->left = {x0, y};
         seeds->right = {x1, y};
         seeds->row = y;
-        seeds->width = w;
         if(seed_state != nullptr)
         {
             *seed_state = 3;
@@ -326,7 +325,8 @@ int find_seeds(const uint8_t gray[RAW_H][RAW_W],
     return state != 0;
 }
 
-// 判断左右种子是否成对可用：state 含双边、行号一致、宽度合法。
+// 判断左右种子是否成对可用：state 含双边、行号一致、同排 span 合法。
+// seed 仍只是 trace 起点；这里的 span 只用于同排 pair 诊断和宽度基准更新。
 int seed_pair_accepted(const seed_pair_t *seeds, int seed_state)
 {
     if(seeds == nullptr)
@@ -341,8 +341,9 @@ int seed_pair_accepted(const seed_pair_t *seeds, int seed_state)
     {
         return 0;
     }
-    return seeds->width >= kSeedMinWidth &&
-           seeds->width <= kSeedMaxWidth;
+    const int span = seeds->right.x - seeds->left.x;
+    return span >= kSeedMinWidth &&
+           span <= kSeedMaxWidth;
 }
 
 // 从固定列找种子：沿 y 向上先看到白，再遇黑时返回前一个白点。

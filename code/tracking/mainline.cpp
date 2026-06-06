@@ -82,7 +82,7 @@ void build_rpts0(const point_t *pts, int num, const double matrix[9], int use_ma
 void build_rpts1(const point_t *pts, int num, const double matrix[9], int use_matrix);
 int pick_track_type();
 int solve_cross_mid(runtime_t *rt, point_t ref);
-int build_zebra_mid(runtime_t *rt, point_t ref, midline_t *mid);
+int build_zebra_scan_midline(runtime_t *rt, point_t ref, midline_t *mid);
 double lookahead_error(midline_t *mid, int look, point_t ref);
 point_t control_ref_point(const runtime_t *rt);
 
@@ -91,9 +91,9 @@ struct frame_action_t
     int cross_state0 = CROSS_STATE_NONE;
     int ordinary_track_type = TRACK_TYPE_NONE;
     int ring_track_type = TRACK_TYPE_NONE;
-    int ring_run_crop_side = TRACK_TYPE_NONE;
-    int ring_run_crop_index = -1;
-    int normal_ok = 0;
+    int ring_frame_start_crop_side = TRACK_TYPE_NONE;
+    int ring_frame_start_crop_index = -1;
+    int base_candidates_ready = 0;
 };
 
 struct frame_mode_t
@@ -152,7 +152,7 @@ int build_frame_boundaries_and_candidates(runtime_t *rt, int use_matrix)
     return ordinary_track_type;
 }
 
-void snapshot_ring_action(runtime_t *rt, frame_action_t *action)
+void snapshot_ring_frame_start_action(runtime_t *rt, frame_action_t *action)
 {
     if(action == nullptr || rt->ring.kind == RING_KIND_NONE)
     {
@@ -176,13 +176,13 @@ void snapshot_ring_action(runtime_t *rt, frame_action_t *action)
     {
         if(rt->ring.kind == RING_KIND_LEFT && rt->track.right.l_ok)
         {
-            action->ring_run_crop_side = TRACK_TYPE_RIGHT;
-            action->ring_run_crop_index = rt->track.right.l_now_index;
+            action->ring_frame_start_crop_side = TRACK_TYPE_RIGHT;
+            action->ring_frame_start_crop_index = rt->track.right.l_now_index;
         }
         else if(rt->ring.kind == RING_KIND_RIGHT && rt->track.left.l_ok)
         {
-            action->ring_run_crop_side = TRACK_TYPE_LEFT;
-            action->ring_run_crop_index = rt->track.left.l_now_index;
+            action->ring_frame_start_crop_side = TRACK_TYPE_LEFT;
+            action->ring_frame_start_crop_index = rt->track.left.l_now_index;
         }
     }
 }
@@ -215,9 +215,9 @@ frame_mode_t classify_frame_mode(runtime_t *rt, const frame_action_t *action)
     mode.cross_far =
         (action->cross_state0 == CROSS_STATE_IN && rt->cross.state == CROSS_STATE_IN);
     mode.cross_near =
-        (action->normal_ok && !mode.cross_far && rt->cross.state != CROSS_STATE_NONE);
+        (action->base_candidates_ready && !mode.cross_far && rt->cross.state != CROSS_STATE_NONE);
     mode.ring_active =
-        (action->normal_ok &&
+        (action->base_candidates_ready &&
          !mode.cross_far &&
          !mode.cross_near &&
          (action->ring_track_type != TRACK_TYPE_NONE || rt->ring.kind != RING_KIND_NONE));
@@ -250,7 +250,7 @@ frame_mode_t classify_frame_mode(runtime_t *rt, const frame_action_t *action)
     return mode;
 }
 
-void apply_element_crop(runtime_t *rt, const frame_mode_t *mode, const frame_action_t *action)
+void apply_frame_start_element_crop(runtime_t *rt, const frame_mode_t *mode, const frame_action_t *action)
 {
     if(mode->cross_near)
     {
@@ -258,15 +258,15 @@ void apply_element_crop(runtime_t *rt, const frame_mode_t *mode, const frame_act
         rptsc1_num = clip_i(rt->track.right.now_step, 0, rptsc1_num);
     }
 
-    if(mode->ring_active && action->ring_run_crop_index >= 0)
+    if(mode->ring_active && action->ring_frame_start_crop_index >= 0)
     {
-        if(action->ring_run_crop_side == TRACK_TYPE_LEFT)
+        if(action->ring_frame_start_crop_side == TRACK_TYPE_LEFT)
         {
-            rptsc0_num = clip_i(action->ring_run_crop_index, 0, rptsc0_num);
+            rptsc0_num = clip_i(action->ring_frame_start_crop_index, 0, rptsc0_num);
         }
-        else if(action->ring_run_crop_side == TRACK_TYPE_RIGHT)
+        else if(action->ring_frame_start_crop_side == TRACK_TYPE_RIGHT)
         {
-            rptsc1_num = clip_i(action->ring_run_crop_index, 0, rptsc1_num);
+            rptsc1_num = clip_i(action->ring_frame_start_crop_index, 0, rptsc1_num);
         }
     }
 }
@@ -318,7 +318,7 @@ void run_zebra_scan(runtime_t *rt, point_t ref, int cross_far_frame)
 {
     midline_t zebra_mid = {};
     const midline_t *zebra_scan = nullptr;
-    if(!cross_far_frame && build_zebra_mid(rt, ref, &zebra_mid) >= k_min_border_step)
+    if(!cross_far_frame && build_zebra_scan_midline(rt, ref, &zebra_mid) >= k_min_border_step)
     {
         zebra_scan = &zebra_mid;
     }
@@ -333,7 +333,6 @@ int trace_edges(runtime_t *rt, int *use_matrix)
         return 0;
     }
 
-    int pair_ok = seed_pair_accepted(&rt->seeds, rt->seed_state);
     *use_matrix = 0;
     if(rt->has_matrix)
     {
@@ -388,11 +387,6 @@ int trace_edges(runtime_t *rt, int *use_matrix)
         std::memset(&rt->right_trace, 0, sizeof(rt->right_trace));
         rt->seed_state &= ~2;
         rt->seeds.right = {-1, -1};
-    }
-    pair_ok = seed_pair_accepted(&rt->seeds, rt->seed_state);
-    if(!pair_ok)
-    {
-        rt->seeds.width = 0;
     }
 
     if(rt->left_trace.step <= 0 && rt->right_trace.step <= 0)
@@ -517,7 +511,7 @@ int solve_cross_mid(runtime_t *rt, point_t ref)
 
 // 斑马线按参考 garage 语义选扫描中线：
 // 只有单侧 L 点时才查；左 L 用右边线外扩中线，右 L 用左边线外扩中线。
-int build_zebra_mid(runtime_t *rt, point_t ref, midline_t *mid)
+int build_zebra_scan_midline(runtime_t *rt, point_t ref, midline_t *mid)
 {
     if(rt == nullptr || mid == nullptr)
     {
@@ -732,7 +726,8 @@ void update_search_center(runtime_t *rt)
         if(rt->ring.kind == RING_KIND_NONE && rt->cross.state == CROSS_STATE_NONE &&
            seed_pair_accepted(&rt->seeds, rt->seed_state))
         {
-            const int wb = clip_i(rt->seeds.width, k_width_base_min, k_width_base_max);
+            const int span = rt->seeds.right.x - rt->seeds.left.x;
+            const int wb = clip_i(span, k_width_base_min, k_width_base_max);
             rt->width_base = (rt->width_base * 3 + wb) / 4;
         }
     }
@@ -819,9 +814,9 @@ int tracking_process_frame(runtime_t *rt)
             // 搜索中心跟随：只用本帧追线成功后保留下来的 seed 结果更新下一帧起搜中心。
             update_search_center(rt);
             action.ordinary_track_type = build_frame_boundaries_and_candidates(rt, use_matrix);
-            snapshot_ring_action(rt, &action);
+            snapshot_ring_frame_start_action(rt, &action);
             element_process(rt);
-            action.normal_ok = 1;
+            action.base_candidates_ready = 1;
         }
 
     }
@@ -829,13 +824,13 @@ int tracking_process_frame(runtime_t *rt)
     point_t ref = control_ref_point(rt);
     const frame_mode_t mode = classify_frame_mode(rt, &action);
 
-    if(!action.normal_ok && !mode.cross_far)
+    if(!action.base_candidates_ready && !mode.cross_far)
     {
         rt->track.reject_reason = TRACK_REJECT_NO_MIDLINE;
         return 0;
     }
 
-    apply_element_crop(rt, &mode, &action);
+    apply_frame_start_element_crop(rt, &mode, &action);
 
     if(mode.work_track_type == TRACK_TYPE_NONE)
     {
