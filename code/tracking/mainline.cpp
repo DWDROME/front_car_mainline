@@ -45,7 +45,17 @@ const int k_element_min_mid_step = 3;  // 元素态允许的最短有效中线�
 const int k_dual_min_step = 12;        // 左右都达到此点数才算"两边都够长"
 const double k_lookahead_min = 15.0;   // 预瞄距离下限，单位 累计弧长像素
 const double k_lookahead_max = 80.0;   // 预瞄距离上限，单位 累计弧长像素
+// RT1064 误差计算使用 0.2m 前向偏置。当前 ROAD_HALF_WIDTH 约对应 0.225m，
+// 因此 0.2m 近似为 ROAD_HALF_WIDTH * 8/9。
+const double k_error_forward_bias = ROAD_HALF_WIDTH * 8.0 / 9.0;
 // 主入口直接写清每帧顺序，短函数只保留真实算法段。
+//
+// RT1064 点列命名对照：
+//   rpts0/rpts1     raw 边界经过 IPM/pass-through 后的左右工作点列
+//   rpts0b/rpts1b   左右工作点列的平滑结果
+//   rpts0s/rpts1s   左右平滑点列的等距重采样结果，也是角点/选边输入
+//   rptsc0/rptsc1   由左/右边界单边外扩得到的候选控制中线
+// 最终只发布 rt->track.mid；上述数组是本文件内的当前帧中间点列。
 
 double rpts0[POINT_MAX][2] = {};
 double rpts1[POINT_MAX][2] = {};
@@ -74,6 +84,7 @@ int pick_track_type();
 int solve_cross_mid(runtime_t *rt, point_t ref);
 int build_zebra_mid(runtime_t *rt, point_t ref, midline_t *mid);
 double lookahead_error(midline_t *mid, int look, point_t ref);
+point_t control_ref_point(const runtime_t *rt);
 
 struct frame_action_t
 {
@@ -644,7 +655,7 @@ int pick_track_type()
     return TRACK_TYPE_NONE;
 }
 
-// 在控制中线上取最接近 look 的点，输出相对参考点的角度误差，单位 degree。
+// 在控制中线上取最接近 look 的点，按 RT1064 的纯跟踪误差形式输出角度误差，单位 degree。
 double lookahead_error(midline_t *mid, int look, point_t ref)
 {
     if(mid == nullptr || mid->step <= 0)
@@ -670,9 +681,32 @@ double lookahead_error(midline_t *mid, int look, point_t ref)
     }
 
     double dx = mid->pts[best_i].x - ref.x;
-    double dy = ref.y - mid->pts[best_i].y;
-    double err = std::atan2(dx, dy) * 180.0 / 3.14159265358979323846;
+    double dy = ref.y - mid->pts[best_i].y + k_error_forward_bias;
+    double err = -std::atan2(dx, dy) * 180.0 / 3.14159265358979323846;
     return err;
+}
+
+// 对齐 RT1064：有 IPM 时，控制中线归一化起点来自 raw 车轮点映射后的 IPM 点，
+// 而不是 seed 起线行。查表失败或 raw pass-through 模式下才回退到当前硬件标定值。
+point_t control_ref_point(const runtime_t *rt)
+{
+    point_t ref = {CONTROL_CENTER_X, START_HIGH};
+    if(rt != nullptr)
+    {
+        ref.x = rt->control_center_x;
+    }
+
+    const int raw_x = RAW_W / 2;
+    const int raw_y = static_cast<int>(RAW_H * 0.78F);
+    double ix = 0.0;
+    double iy = 0.0;
+    if(rt != nullptr && rt->has_matrix &&
+       perspective_lookup_raw_to_ipm(raw_x, raw_y, &ix, &iy))
+    {
+        ref.x = clip_i(static_cast<int>(std::lround(ix)), 0, IPM_W - 1);
+        ref.y = clip_i(static_cast<int>(std::lround(iy)), 0, IPM_H - 1);
+    }
+    return ref;
 }
 
 // 搜索中心跟随的路宽基准限幅，对齐 imgproc 的 kSeedMinWidth/kSeedMaxWidth 语义。
@@ -730,7 +764,13 @@ void tracking_reset(runtime_t *rt)
     track_type_keep = TRACK_TYPE_RIGHT;
 }
 
-// 当前帧主巡线流程：seed -> trace -> boundary/element -> midline -> guide_error。
+// 当前帧主巡线流程：
+//   seed -> trace -> rpts0s/rpts1s -> rptsc0/rptsc1
+//   -> element_process() 更新元素状态
+//   -> 帧首 action 选择/裁剪候选中线
+//   -> build_rptsn() 归一化为 rt->track.mid
+//   -> guide_error / zebra scan
+// 注意：元素状态机只决定选边、裁剪或 CROSS_IN 远线；最终控制中线只从这里发布。
 int tracking_process_frame(runtime_t *rt)
 {
     if(rt == nullptr || !rt->gray_valid)
@@ -786,7 +826,7 @@ int tracking_process_frame(runtime_t *rt)
 
     }
 
-    point_t ref = {rt->control_center_x, START_HIGH};
+    point_t ref = control_ref_point(rt);
     const frame_mode_t mode = classify_frame_mode(rt, &action);
 
     if(!action.normal_ok && !mode.cross_far)

@@ -32,11 +32,11 @@ struct trace_t
 
 struct boundary_t
 {
-    // original_pts 是 raw 原图边界，assistant 黄/绿线也使用这组点。
+    // original_pts 是 raw 原图边界，assistant 黄/绿线也使用这组点；不参与控制中线归一化。
     int original_step;
     point_t original_pts[POINT_MAX];
 
-    // now_pts 是元素识别用的当前坐标边界：有 IPM 时为 IPM，无矩阵时为 raw pass-through。
+    // now_pts 是元素识别用的整数边界：有 IPM 时为 IPM，无矩阵时为 raw pass-through。
     int now_step;
     point_t now_pts[POINT_MAX];
 
@@ -138,7 +138,7 @@ struct track_result_t
     int reject_reason;
     int track_type;
 
-    // center_x 是当前视觉中心参考；guide_error 是给控制外环使用的预瞄误差。
+    // center_x 是已发布控制中线的起点 x；guide_error 是给控制外环使用的预瞄误差。
     int center_x;
     double guide_error;
     boundary_t left;
@@ -199,8 +199,10 @@ struct runtime_t
     uint8_t gray[RAW_H][RAW_W];
     int gray_valid;
     int64_t encoder_total;
+    // control_center_x 是控制参考点查表失败时的 fallback x，不等同于下一帧 seed 搜索中心。
     int control_center_x;
     int seed_state;
+    // mid_position 是下一帧 seed 搜索中心 x，和控制中线起点不是同一个概念。
     int mid_position;
     // 搜索中心跟随的路宽基准(像素)：常态双边帧低通标定，单边帧据此外推起搜中心。
     int width_base;

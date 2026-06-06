@@ -145,14 +145,15 @@ int track_rightline(const double pts_in[POINT_MAX][2],
 
 //----------------------------------------------------------------------------------------------------------------------
 //  @brief      候选中线归一化为最终控制中线
-//  @param      rpts        输入候选中线点列
+//  @param      rpts        输入候选中线点列，通常来自 rptsc0/rptsc1 或 CROSS_IN 远线外扩
 //  @param      rpts_num    输入点数
 //  @param      cx          固定控制起点 x
 //  @param      cy          固定控制起点 y
 //  @param      force_begin_id0  非 0 时强制从候选第 0 点开始，供 CROSS_IN 远线使用
 //  @param      midline     输出控制中线
 //  @return     int         控制中线点数；输入不足或无法形成有效点时返回 0
-//  @note       输出是 IPM/控制坐标，不是 assistant 原图红线。
+//  @note       唯一职责：选 begin_id、把起点固定到 cx/cy、重采样、填 midline->dist/step。
+//              输出是 IPM/控制坐标，不是 assistant 原图红线。
 //----------------------------------------------------------------------------------------------------------------------
 int build_rptsn(const double rpts[POINT_MAX][2],
                 int rpts_num,
