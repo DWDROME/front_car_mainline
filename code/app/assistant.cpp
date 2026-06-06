@@ -32,7 +32,7 @@ struct assistant_t_impl
     const char *ip;
     int port;
     zf_driver_tcp_client tcp;
-    // 三条显示线的 raw 坐标缓冲：0=左边线(黄)，1=视觉中线(红)，2=右边线(绿)。
+    // 三条显示线的 raw 坐标缓冲：0=左边线(黄)，1=控制中线反投影(红)，2=右边线(绿)。
     uint8_t x0[k_point_limit];
     uint8_t y0[k_point_limit];
     uint8_t x1[k_point_limit];
@@ -94,65 +94,6 @@ int copy_pts(const point_t *src, int step, uint8_t *xs, uint8_t *ys)
     {
         xs[i] = static_cast<uint8_t>(std::clamp(src[i].x, 0, RAW_W - 1));
         ys[i] = static_cast<uint8_t>(std::clamp(src[i].y, 0, RAW_H - 1));
-    }
-    return n;
-}
-
-// 上位机红线只做原图观察：按同一 raw y 行取左右边界中点。
-// 不要把 rt->track.mid.pts 直接发到这里；控制中线可能是 IPM/控制坐标，会误导图传判断。
-int copy_raw_mid_pts(const runtime_t *rt, uint8_t *xs, uint8_t *ys)
-{
-    if(rt == nullptr || xs == nullptr || ys == nullptr)
-    {
-        return 0;
-    }
-
-    int lx[RAW_H];
-    int rx[RAW_H];
-    for(int i = 0; i < RAW_H; ++i)
-    {
-        lx[i] = -1;
-        rx[i] = -1;
-    }
-
-    const int l_step = std::min(rt->track.left.original_step, k_point_limit);
-    for(int i = 0; i < l_step; ++i)
-    {
-        const point_t &p = rt->track.left.original_pts[i];
-        if(p.y < 0 || p.y >= RAW_H || p.x < 0 || p.x >= RAW_W)
-        {
-            continue;
-        }
-        if(lx[p.y] < 0 || p.x > lx[p.y])
-        {
-            lx[p.y] = p.x;
-        }
-    }
-
-    const int r_step = std::min(rt->track.right.original_step, k_point_limit);
-    for(int i = 0; i < r_step; ++i)
-    {
-        const point_t &p = rt->track.right.original_pts[i];
-        if(p.y < 0 || p.y >= RAW_H || p.x < 0 || p.x >= RAW_W)
-        {
-            continue;
-        }
-        if(rx[p.y] < 0 || p.x < rx[p.y])
-        {
-            rx[p.y] = p.x;
-        }
-    }
-
-    int n = 0;
-    for(int y = RAW_H - 1; y >= 0 && n < k_point_limit; --y)
-    {
-        if(lx[y] < 0 || rx[y] < 0 || lx[y] >= rx[y])
-        {
-            continue;
-        }
-        xs[n] = static_cast<uint8_t>((lx[y] + rx[y]) / 2);
-        ys[n] = static_cast<uint8_t>(y);
-        ++n;
     }
     return n;
 }
@@ -260,6 +201,51 @@ int ipm_to_raw_point(const runtime_t *rt, double ix, double iy, point_t *pt)
     return 1;
 }
 
+// 红线显示真实控制中线：rt->track.mid 是 IPM/控制坐标，必须反投影回 raw 后再发送。
+int control_mid_pts(const runtime_t *rt, uint8_t *xs, uint8_t *ys)
+{
+    if(rt == nullptr || xs == nullptr || ys == nullptr)
+    {
+        return 0;
+    }
+    if(rt->track.track_type == TRACK_TYPE_NONE)
+    {
+        return 0;
+    }
+    if(rt->track.reject_reason != TRACK_REJECT_NONE)
+    {
+        return 0;
+    }
+
+    const int step = std::min(rt->track.mid.step, k_point_limit);
+    if(step <= 0)
+    {
+        return 0;
+    }
+
+    int n = 0;
+    for(int i = 0; i < step && n < k_point_limit; ++i)
+    {
+        const point_t &mid = rt->track.mid.pts[i];
+
+        point_t raw = {-1, -1};
+        if(!ipm_to_raw_point(rt, mid.x, mid.y, &raw))
+        {
+            continue;
+        }
+
+        xs[n] = static_cast<uint8_t>(raw.x);
+        ys[n] = static_cast<uint8_t>(raw.y);
+        ++n;
+    }
+
+    if(n < 2)
+    {
+        return 0;
+    }
+    return n;
+}
+
 // 把一条远线点列反算回 raw 后逐点叠加到图上，并在 l_index 处画十字。
 void draw_far_points(uint8_t image[RAW_H][RAW_W],
                      const runtime_t *rt,
@@ -331,11 +317,11 @@ void config_points(const runtime_t *rt)
     }
 
     const int n0 = copy_pts(rt->track.left.original_pts, rt->track.left.original_step, g_asst.x0, g_asst.y0);
-    const int n1 = copy_raw_mid_pts(rt, g_asst.x1, g_asst.y1);
+    const int n1 = control_mid_pts(rt, g_asst.x1, g_asst.y1);
     const int n2 = copy_pts(rt->track.right.original_pts, rt->track.right.original_step, g_asst.x2, g_asst.y2);
 
     // 三条线使用同一个协议长度，必须取 max 后 pad。
-    // n0/n2 是 raw 原图边线；n1 是 raw 视觉观察中线，不是控制中线。
+    // n0/n2 是 raw 原图边线；n1 是控制中线反投影到 raw 后的红线。
     const int dot_num = std::max({n0, n1, n2});
 
     std::memcpy(g_asst.image, rt->gray, sizeof(g_asst.image));
