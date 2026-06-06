@@ -799,33 +799,34 @@ void resample_points(const double pts_in[POINT_MAX][2],
 }
 
 //-------------------------------------------------------------------------------------------------------------------
-//  @brief      左单边求中线：沿左边线法向外推 half_width，再从距参考点最近的位置开始输出
-//  @return     int          中线点数；输入不足或无法形成有效点时返回 0
-//  @note       输出坐标是 IPM/控制坐标，不是上位机原图红线坐标。
+//  @brief      左边线法向外扩生成候选中线；点数与输入边线一一对应
+//  @return     int          候选点数；输入不足或无法形成有效点时返回 0
 //-------------------------------------------------------------------------------------------------------------------
-int track_leftline(const double pts[POINT_MAX][2], int num, int half_width, int ref_x, int ref_y, midline_t *midline)
+int track_leftline(const double pts_in[POINT_MAX][2],
+                   int num,
+                   double pts_out[POINT_MAX][2],
+                   int approx_num,
+                   double dist)
 {
-    if(num < 2 || half_width <= 0 || midline == nullptr)
+    if(num < 2 || pts_out == nullptr || approx_num <= 0 || dist <= 0.0)
     {
         return 0;
     }
 
-    double mids[POINT_MAX][2] = {};
-    int begin = -1;
-    double best_d = 1e30;
     for(int i = 0; i < num; ++i)
     {
-        const int im = clamp_i(i - 5, 0, num - 1);
-        const int ip = clamp_i(i + 5, 0, num - 1);
-        if(!ipm_pt_valid(pts[im][0], pts[im][1]) ||
-           !ipm_pt_valid(pts[i][0], pts[i][1]) ||
-           !ipm_pt_valid(pts[ip][0], pts[ip][1]))
+        const int im = clamp_i(i - approx_num, 0, num - 1);
+        const int ip = clamp_i(i + approx_num, 0, num - 1);
+        if(!ipm_pt_valid(pts_in[im][0], pts_in[im][1]) ||
+           !ipm_pt_valid(pts_in[i][0], pts_in[i][1]) ||
+           !ipm_pt_valid(pts_in[ip][0], pts_in[ip][1]))
         {
             return 0;
         }
-        double dx = pts[ip][0] - pts[im][0];
-        double dy = pts[ip][1] - pts[im][1];
-        double dn = std::hypot(dx, dy);
+
+        double dx = pts_in[ip][0] - pts_in[im][0];
+        double dy = pts_in[ip][1] - pts_in[im][1];
+        const double dn = std::hypot(dx, dy);
         if(dn < k_mid_eps)
         {
             return 0;
@@ -833,74 +834,41 @@ int track_leftline(const double pts[POINT_MAX][2], int num, int half_width, int 
         dx /= dn;
         dy /= dn;
 
-        const double x = pts[i][0] - dy * half_width;
-        const double y = pts[i][1] + dx * half_width;
-        mids[i][0] = x;
-        mids[i][1] = y;
-        dx = x - ref_x;
-        dy = y - ref_y;
-        const double d = dx * dx + dy * dy;
-        if(d < best_d)
-        {
-            best_d = d;
-            begin = i;
-        }
+        pts_out[i][0] = pts_in[i][0] - dy * dist;
+        pts_out[i][1] = pts_in[i][1] + dx * dist;
     }
-    if(begin < 0)
-    {
-        return 0;
-    }
-
-    ref_x = clamp_i(ref_x, 0, IPM_W - 1);
-    ref_y = clamp_i(ref_y, 0, IPM_H - 1);
-    int len = 1;
-    point_t last = {ref_x, ref_y};
-    midline->pts[0] = last;
-    midline->dist[0] = 0;
-    mids[begin][0] = ref_x;
-    mids[begin][1] = ref_y;
-
-    double mids_sample[POINT_MAX][2] = {};
-    int mids_num = POINT_MAX;
-    resample_points(mids + begin, num - begin, mids_sample, &mids_num, kMidlineSampleDist);
-    for(int i = 1; i < mids_num && len < POINT_MAX; ++i)
-    {
-        push_mid(midline,
-                 &len,
-                 &last,
-                 mids_sample[i][0],
-                 mids_sample[i][1]);
-    }
-    midline->step = len;
-    return len;
+    return num;
 }
 
 //-------------------------------------------------------------------------------------------------------------------
-//  @brief      左单边求中线：从第 0 个外扩点开始输出，用于十字远线
-//  @return     int          中线点数；输入不足或无法形成有效点时返回 0
-//  @note       参考版 CROSS_IN 会强制 begin_id = 0，避免远线绕回时最近点截坏中线。
+//  @brief      右边线法向内扩生成候选中线；点数与输入边线一一对应
+//  @return     int          候选点数；输入不足或无法形成有效点时返回 0
 //-------------------------------------------------------------------------------------------------------------------
-int track_leftline_from_start(const double pts[POINT_MAX][2], int num, int half_width, int ref_x, int ref_y, midline_t *midline)
+int track_rightline(const double pts_in[POINT_MAX][2],
+                    int num,
+                    double pts_out[POINT_MAX][2],
+                    int approx_num,
+                    double dist)
 {
-    if(num < 2 || half_width <= 0 || midline == nullptr)
+    if(num < 2 || pts_out == nullptr || approx_num <= 0 || dist <= 0.0)
     {
         return 0;
     }
 
-    double mids[POINT_MAX][2] = {};
     for(int i = 0; i < num; ++i)
     {
-        const int im = clamp_i(i - 5, 0, num - 1);
-        const int ip = clamp_i(i + 5, 0, num - 1);
-        if(!ipm_pt_valid(pts[im][0], pts[im][1]) ||
-           !ipm_pt_valid(pts[i][0], pts[i][1]) ||
-           !ipm_pt_valid(pts[ip][0], pts[ip][1]))
+        const int im = clamp_i(i - approx_num, 0, num - 1);
+        const int ip = clamp_i(i + approx_num, 0, num - 1);
+        if(!ipm_pt_valid(pts_in[im][0], pts_in[im][1]) ||
+           !ipm_pt_valid(pts_in[i][0], pts_in[i][1]) ||
+           !ipm_pt_valid(pts_in[ip][0], pts_in[ip][1]))
         {
             return 0;
         }
-        double dx = pts[ip][0] - pts[im][0];
-        double dy = pts[ip][1] - pts[im][1];
-        double dn = std::hypot(dx, dy);
+
+        double dx = pts_in[ip][0] - pts_in[im][0];
+        double dy = pts_in[ip][1] - pts_in[im][1];
+        const double dn = std::hypot(dx, dy);
         if(dn < k_mid_eps)
         {
             return 0;
@@ -908,167 +876,98 @@ int track_leftline_from_start(const double pts[POINT_MAX][2], int num, int half_
         dx /= dn;
         dy /= dn;
 
-        mids[i][0] = pts[i][0] - dy * half_width;
-        mids[i][1] = pts[i][1] + dx * half_width;
+        pts_out[i][0] = pts_in[i][0] + dy * dist;
+        pts_out[i][1] = pts_in[i][1] - dx * dist;
     }
-
-    ref_x = clamp_i(ref_x, 0, IPM_W - 1);
-    ref_y = clamp_i(ref_y, 0, IPM_H - 1);
-    int len = 1;
-    point_t last = {ref_x, ref_y};
-    midline->pts[0] = last;
-    midline->dist[0] = 0;
-    mids[0][0] = ref_x;
-    mids[0][1] = ref_y;
-
-    double mids_sample[POINT_MAX][2] = {};
-    int mids_num = POINT_MAX;
-    resample_points(mids, num, mids_sample, &mids_num, kMidlineSampleDist);
-    for(int i = 1; i < mids_num && len < POINT_MAX; ++i)
-    {
-        push_mid(midline,
-                 &len,
-                 &last,
-                 mids_sample[i][0],
-                 mids_sample[i][1]);
-    }
-    midline->step = len;
-    return len;
+    return num;
 }
 
 //-------------------------------------------------------------------------------------------------------------------
-//  @brief      右单边求中线：沿右边线法向内推 half_width，再从距参考点最近的位置开始输出
-//  @return     int          中线点数；输入不足或无法形成有效点时返回 0
-//  @note       输出坐标是 IPM/控制坐标，不是上位机原图红线坐标。
+//  @brief      候选中线归一化为最终控制中线：固定起点、重采样、累计距离
+//  @return     int          控制中线点数；输入不足或无法形成有效点时返回 0
+//  @note       force_begin_id0 对齐参考版 CROSS_IN 的 begin_id = 0 特例。
 //-------------------------------------------------------------------------------------------------------------------
-int track_rightline(const double pts[POINT_MAX][2], int num, int half_width, int ref_x, int ref_y, midline_t *midline)
+int build_rptsn(const double rpts[POINT_MAX][2],
+                int rpts_num,
+                int cx,
+                int cy,
+                int force_begin_id0,
+                midline_t *midline)
 {
-    if(num < 2 || half_width <= 0 || midline == nullptr)
+    if(rpts == nullptr || rpts_num < 2 || midline == nullptr)
     {
         return 0;
     }
 
-    double mids[POINT_MAX][2] = {};
-    int begin = -1;
-    double best_d = 1e30;
-    for(int i = 0; i < num; ++i)
-    {
-        const int im = clamp_i(i - 5, 0, num - 1);
-        const int ip = clamp_i(i + 5, 0, num - 1);
-        if(!ipm_pt_valid(pts[im][0], pts[im][1]) ||
-           !ipm_pt_valid(pts[i][0], pts[i][1]) ||
-           !ipm_pt_valid(pts[ip][0], pts[ip][1]))
-        {
-            return 0;
-        }
-        double dx = pts[ip][0] - pts[im][0];
-        double dy = pts[ip][1] - pts[im][1];
-        double dn = std::hypot(dx, dy);
-        if(dn < k_mid_eps)
-        {
-            return 0;
-        }
-        dx /= dn;
-        dy /= dn;
+    std::memset(midline, 0, sizeof(*midline));
+    cx = clamp_i(cx, 0, IPM_W - 1);
+    cy = clamp_i(cy, 0, IPM_H - 1);
 
-        const double x = pts[i][0] + dy * half_width;
-        const double y = pts[i][1] - dx * half_width;
-        mids[i][0] = x;
-        mids[i][1] = y;
-        dx = x - ref_x;
-        dy = y - ref_y;
-        const double d = dx * dx + dy * dy;
-        if(d < best_d)
+    int begin = 0;
+    if(!force_begin_id0)
+    {
+        begin = -1;
+        double best_d = 1e30;
+        for(int i = 0; i < rpts_num; ++i)
         {
-            best_d = d;
-            begin = i;
+            if(!ipm_pt_valid(rpts[i][0], rpts[i][1]))
+            {
+                return 0;
+            }
+            const double dx = rpts[i][0] - cx;
+            const double dy = rpts[i][1] - cy;
+            const double d = dx * dx + dy * dy;
+            if(d < best_d)
+            {
+                best_d = d;
+                begin = i;
+            }
+        }
+        if(begin < 0)
+        {
+            return 0;
         }
     }
-    if(begin < 0)
+    else
+    {
+        for(int i = 0; i < rpts_num; ++i)
+        {
+            if(!ipm_pt_valid(rpts[i][0], rpts[i][1]))
+            {
+                return 0;
+            }
+        }
+    }
+
+    double work[POINT_MAX][2] = {};
+    const int work_num = clamp_i(rpts_num - begin, 0, POINT_MAX);
+    if(work_num < 2)
+    {
+        return 0;
+    }
+    for(int i = 0; i < work_num; ++i)
+    {
+        work[i][0] = rpts[begin + i][0];
+        work[i][1] = rpts[begin + i][1];
+    }
+    work[0][0] = cx;
+    work[0][1] = cy;
+
+    double sample[POINT_MAX][2] = {};
+    int sample_num = POINT_MAX;
+    resample_points(work, work_num, sample, &sample_num, kMidlineSampleDist);
+    if(sample_num <= 0)
     {
         return 0;
     }
 
-    ref_x = clamp_i(ref_x, 0, IPM_W - 1);
-    ref_y = clamp_i(ref_y, 0, IPM_H - 1);
     int len = 1;
-    point_t last = {ref_x, ref_y};
+    point_t last = {cx, cy};
     midline->pts[0] = last;
     midline->dist[0] = 0;
-    mids[begin][0] = ref_x;
-    mids[begin][1] = ref_y;
-
-    double mids_sample[POINT_MAX][2] = {};
-    int mids_num = POINT_MAX;
-    resample_points(mids + begin, num - begin, mids_sample, &mids_num, kMidlineSampleDist);
-    for(int i = 1; i < mids_num && len < POINT_MAX; ++i)
+    for(int i = 1; i < sample_num && len < POINT_MAX; ++i)
     {
-        push_mid(midline,
-                 &len,
-                 &last,
-                 mids_sample[i][0],
-                 mids_sample[i][1]);
-    }
-    midline->step = len;
-    return len;
-}
-
-//-------------------------------------------------------------------------------------------------------------------
-//  @brief      右单边求中线：从第 0 个外扩点开始输出，用于十字远线
-//  @return     int          中线点数；输入不足或无法形成有效点时返回 0
-//  @note       参考版 CROSS_IN 会强制 begin_id = 0，避免远线绕回时最近点截坏中线。
-//-------------------------------------------------------------------------------------------------------------------
-int track_rightline_from_start(const double pts[POINT_MAX][2], int num, int half_width, int ref_x, int ref_y, midline_t *midline)
-{
-    if(num < 2 || half_width <= 0 || midline == nullptr)
-    {
-        return 0;
-    }
-
-    double mids[POINT_MAX][2] = {};
-    for(int i = 0; i < num; ++i)
-    {
-        const int im = clamp_i(i - 5, 0, num - 1);
-        const int ip = clamp_i(i + 5, 0, num - 1);
-        if(!ipm_pt_valid(pts[im][0], pts[im][1]) ||
-           !ipm_pt_valid(pts[i][0], pts[i][1]) ||
-           !ipm_pt_valid(pts[ip][0], pts[ip][1]))
-        {
-            return 0;
-        }
-        double dx = pts[ip][0] - pts[im][0];
-        double dy = pts[ip][1] - pts[im][1];
-        double dn = std::hypot(dx, dy);
-        if(dn < k_mid_eps)
-        {
-            return 0;
-        }
-        dx /= dn;
-        dy /= dn;
-
-        mids[i][0] = pts[i][0] + dy * half_width;
-        mids[i][1] = pts[i][1] - dx * half_width;
-    }
-
-    ref_x = clamp_i(ref_x, 0, IPM_W - 1);
-    ref_y = clamp_i(ref_y, 0, IPM_H - 1);
-    int len = 1;
-    point_t last = {ref_x, ref_y};
-    midline->pts[0] = last;
-    midline->dist[0] = 0;
-    mids[0][0] = ref_x;
-    mids[0][1] = ref_y;
-
-    double mids_sample[POINT_MAX][2] = {};
-    int mids_num = POINT_MAX;
-    resample_points(mids, num, mids_sample, &mids_num, kMidlineSampleDist);
-    for(int i = 1; i < mids_num && len < POINT_MAX; ++i)
-    {
-        push_mid(midline,
-                 &len,
-                 &last,
-                 mids_sample[i][0],
-                 mids_sample[i][1]);
+        push_mid(midline, &len, &last, sample[i][0], sample[i][1]);
     }
     midline->step = len;
     return len;

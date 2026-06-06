@@ -114,56 +114,52 @@ void resample_points(const double pts_in[POINT_MAX][2],
                      int sample_dist);
 
 //----------------------------------------------------------------------------------------------------------------------
-//  @brief      左边线单边外扩生成控制中线
-//  @param      pts         输入左边线工作点列
+//  @brief      左边线单边外扩生成候选中线点列
+//  @param      pts_in      输入左边线工作点列
 //  @param      num         输入点数
-//  @param      half_width  半车道宽，单位为工作坐标像素
-//  @param      ref_x       中线起点参考 x
-//  @param      ref_y       中线起点参考 y
+//  @param      pts_out     输出候选中线点列，点数与输入一一对应
+//  @param      approx_num  切向估计使用的前后点间隔
+//  @param      dist        半车道宽，单位为工作坐标像素
+//  @return     int         候选点数；输入不足或无法形成有效点时返回 0
+//----------------------------------------------------------------------------------------------------------------------
+int track_leftline(const double pts_in[POINT_MAX][2],
+                   int num,
+                   double pts_out[POINT_MAX][2],
+                   int approx_num,
+                   double dist);
+
+//----------------------------------------------------------------------------------------------------------------------
+//  @brief      右边线单边内扩生成候选中线点列
+//  @param      pts_in      输入右边线工作点列
+//  @param      num         输入点数
+//  @param      pts_out     输出候选中线点列，点数与输入一一对应
+//  @param      approx_num  切向估计使用的前后点间隔
+//  @param      dist        半车道宽，单位为工作坐标像素
+//  @return     int         候选点数；输入不足或无法形成有效点时返回 0
+//----------------------------------------------------------------------------------------------------------------------
+int track_rightline(const double pts_in[POINT_MAX][2],
+                    int num,
+                    double pts_out[POINT_MAX][2],
+                    int approx_num,
+                    double dist);
+
+//----------------------------------------------------------------------------------------------------------------------
+//  @brief      候选中线归一化为最终控制中线
+//  @param      rpts        输入候选中线点列
+//  @param      rpts_num    输入点数
+//  @param      cx          固定控制起点 x
+//  @param      cy          固定控制起点 y
+//  @param      force_begin_id0  非 0 时强制从候选第 0 点开始，供 CROSS_IN 远线使用
 //  @param      midline     输出控制中线
-//  @return     int         中线点数；输入不足或无法形成有效点时返回 0
+//  @return     int         控制中线点数；输入不足或无法形成有效点时返回 0
 //  @note       输出是 IPM/控制坐标，不是 assistant 原图红线。
 //----------------------------------------------------------------------------------------------------------------------
-int track_leftline(const double pts[POINT_MAX][2], int num, int half_width, int ref_x, int ref_y, midline_t *midline);
-
-//----------------------------------------------------------------------------------------------------------------------
-//  @brief      左边线从第 0 个点开始单边外扩生成控制中线
-//  @param      pts         输入左边线工作点列
-//  @param      num         输入点数
-//  @param      half_width  半车道宽，单位为工作坐标像素
-//  @param      ref_x       中线起点参考 x
-//  @param      ref_y       中线起点参考 y
-//  @param      midline     输出控制中线
-//  @return     int         中线点数；输入不足或无法形成有效点时返回 0
-//  @note       用于 CROSS_IN 远线控制，对齐参考版 begin_id = 0。
-//----------------------------------------------------------------------------------------------------------------------
-int track_leftline_from_start(const double pts[POINT_MAX][2], int num, int half_width, int ref_x, int ref_y, midline_t *midline);
-
-//----------------------------------------------------------------------------------------------------------------------
-//  @brief      右边线单边内扩生成控制中线
-//  @param      pts         输入右边线工作点列
-//  @param      num         输入点数
-//  @param      half_width  半车道宽，单位为工作坐标像素
-//  @param      ref_x       中线起点参考 x
-//  @param      ref_y       中线起点参考 y
-//  @param      midline     输出控制中线
-//  @return     int         中线点数；输入不足或无法形成有效点时返回 0
-//  @note       输出是 IPM/控制坐标，不是 assistant 原图红线。
-//----------------------------------------------------------------------------------------------------------------------
-int track_rightline(const double pts[POINT_MAX][2], int num, int half_width, int ref_x, int ref_y, midline_t *midline);
-
-//----------------------------------------------------------------------------------------------------------------------
-//  @brief      右边线从第 0 个点开始单边内扩生成控制中线
-//  @param      pts         输入右边线工作点列
-//  @param      num         输入点数
-//  @param      half_width  半车道宽，单位为工作坐标像素
-//  @param      ref_x       中线起点参考 x
-//  @param      ref_y       中线起点参考 y
-//  @param      midline     输出控制中线
-//  @return     int         中线点数；输入不足或无法形成有效点时返回 0
-//  @note       用于 CROSS_IN 远线控制，对齐参考版 begin_id = 0。
-//----------------------------------------------------------------------------------------------------------------------
-int track_rightline_from_start(const double pts[POINT_MAX][2], int num, int half_width, int ref_x, int ref_y, midline_t *midline);
+int build_rptsn(const double rpts[POINT_MAX][2],
+                int rpts_num,
+                int cx,
+                int cy,
+                int force_begin_id0,
+                midline_t *midline);
 
 //----------------------------------------------------------------------------------------------------------------------
 //  @brief      双边配对取中点生成控制中线

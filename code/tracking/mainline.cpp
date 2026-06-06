@@ -38,6 +38,7 @@ namespace
 {
 const int k_mid_resample_dist = 3;     // 中线重采样步长，单位 工作坐标像素
 const int k_min_border_step = 6;       // 生成有效中线所需的最小点数
+const int k_track_approx_num = 5;      // 单边外扩时用前后各 5 个点估计切向
 
 // 元素帧(十字/环岛)允许短中线继续输出；普通帧仍按 k_min_border_step + 前瞻硬停。
 const int k_element_min_mid_step = 3;  // 元素态允许的最短有效中线点数
@@ -52,6 +53,8 @@ double rpts0b[POINT_MAX][2] = {};
 double rpts1b[POINT_MAX][2] = {};
 double rpts0s[POINT_MAX][2] = {};
 double rpts1s[POINT_MAX][2] = {};
+double rptsc0[POINT_MAX][2] = {};
+double rptsc1[POINT_MAX][2] = {};
 
 int rpts0_num = 0;
 int rpts1_num = 0;
@@ -59,6 +62,8 @@ int rpts0b_num = 0;
 int rpts1b_num = 0;
 int rpts0s_num = 0;
 int rpts1s_num = 0;
+int rptsc0_num = 0;
+int rptsc1_num = 0;
 
 int track_type_keep = TRACK_TYPE_RIGHT;
 
@@ -151,6 +156,8 @@ void clear_rpts()
     rpts1b_num = 0;
     rpts0s_num = 0;
     rpts1s_num = 0;
+    rptsc0_num = 0;
+    rptsc1_num = 0;
 }
 
 // 十字 IN 阶段求控制中线：
@@ -192,12 +199,18 @@ int solve_cross_mid(runtime_t *rt, point_t ref)
                 const int num = clip_i(rt->cross.left_num - start, 0, POINT_MAX);
                 if(num >= k_element_min_mid_step)
                 {
-                    return track_leftline_from_start(rt->cross.left_pts + start,
-                                                     num,
-                                                     ROAD_HALF_WIDTH,
-                                                     ref.x,
-                                                     ref.y,
-                                                     &rt->track.mid);
+                    double far_cand[POINT_MAX][2] = {};
+                    const int cand_num = track_leftline(rt->cross.left_pts + start,
+                                                        num,
+                                                        far_cand,
+                                                        k_track_approx_num,
+                                                        ROAD_HALF_WIDTH);
+                    return build_rptsn(far_cand,
+                                       cand_num,
+                                       ref.x,
+                                       ref.y,
+                                       1,
+                                       &rt->track.mid);
                 }
             }
         }
@@ -226,12 +239,18 @@ int solve_cross_mid(runtime_t *rt, point_t ref)
                 const int num = clip_i(rt->cross.right_num - start, 0, POINT_MAX);
                 if(num >= k_element_min_mid_step)
                 {
-                    return track_rightline_from_start(rt->cross.right_pts + start,
-                                                      num,
-                                                      ROAD_HALF_WIDTH,
-                                                      ref.x,
-                                                      ref.y,
-                                                      &rt->track.mid);
+                    double far_cand[POINT_MAX][2] = {};
+                    const int cand_num = track_rightline(rt->cross.right_pts + start,
+                                                         num,
+                                                         far_cand,
+                                                         k_track_approx_num,
+                                                         ROAD_HALF_WIDTH);
+                    return build_rptsn(far_cand,
+                                       cand_num,
+                                       ref.x,
+                                       ref.y,
+                                       1,
+                                       &rt->track.mid);
                 }
             }
         }
@@ -252,21 +271,11 @@ int build_zebra_mid(runtime_t *rt, point_t ref, midline_t *mid)
     std::memset(mid, 0, sizeof(*mid));
     if(rt->track.left.l_ok && !rt->track.right.l_ok)
     {
-        return track_rightline(rpts1s,
-                               rpts1s_num,
-                               ROAD_HALF_WIDTH,
-                               ref.x,
-                               ref.y,
-                               mid);
+        return build_rptsn(rptsc1, rptsc1_num, ref.x, ref.y, 0, mid);
     }
     if(!rt->track.left.l_ok && rt->track.right.l_ok)
     {
-        return track_leftline(rpts0s,
-                              rpts0s_num,
-                              ROAD_HALF_WIDTH,
-                              ref.x,
-                              ref.y,
-                              mid);
+        return build_rptsn(rptsc0, rptsc0_num, ref.x, ref.y, 0, mid);
     }
     return 0;
 }
@@ -554,6 +563,16 @@ int tracking_process_frame(runtime_t *rt)
                                      rt->matrix,
                                      use_matrix);
             ordinary_track_type0 = pick_track_type();
+            rptsc0_num = track_leftline(rpts0s,
+                                        rpts0s_num,
+                                        rptsc0,
+                                        k_track_approx_num,
+                                        ROAD_HALF_WIDTH);
+            rptsc1_num = track_rightline(rpts1s,
+                                         rpts1s_num,
+                                         rptsc1,
+                                         k_track_approx_num,
+                                         ROAD_HALF_WIDTH);
             // ring_process() 会推进状态；这里先把本帧要走的 side/crop 算成动作值。
             if(rt->ring.kind != RING_KIND_NONE)
             {
@@ -603,8 +622,8 @@ int tracking_process_frame(runtime_t *rt)
     // 同帧 BEGIN -> IN 仍走截短近线；只有帧开始已是 CROSS_IN 才走远线。
     if(cross_near_frame)
     {
-        rpts0s_num = clip_i(rt->track.left.now_step, 0, rpts0s_num);
-        rpts1s_num = clip_i(rt->track.right.now_step, 0, rpts1s_num);
+        rptsc0_num = clip_i(rt->track.left.now_step, 0, rptsc0_num);
+        rptsc1_num = clip_i(rt->track.right.now_step, 0, rptsc1_num);
     }
 
     const int ring_active_frame =
@@ -661,11 +680,11 @@ int tracking_process_frame(runtime_t *rt)
     {
         if(ring_run_crop_side0 == TRACK_TYPE_LEFT)
         {
-            rpts0s_num = clip_i(ring_run_crop_index0, 0, rpts0s_num);
+            rptsc0_num = clip_i(ring_run_crop_index0, 0, rptsc0_num);
         }
         else if(ring_run_crop_side0 == TRACK_TYPE_RIGHT)
         {
-            rpts1s_num = clip_i(ring_run_crop_index0, 0, rpts1s_num);
+            rptsc1_num = clip_i(ring_run_crop_index0, 0, rptsc1_num);
         }
     }
 
@@ -682,21 +701,11 @@ int tracking_process_frame(runtime_t *rt)
     }
     else if(work_track_type == TRACK_TYPE_LEFT)
     {
-        mid_ok = track_leftline(rpts0s,
-                                rpts0s_num,
-                                ROAD_HALF_WIDTH,
-                                ref.x,
-                                ref.y,
-                                &rt->track.mid);
+        mid_ok = build_rptsn(rptsc0, rptsc0_num, ref.x, ref.y, 0, &rt->track.mid);
     }
     else if(work_track_type == TRACK_TYPE_RIGHT)
     {
-        mid_ok = track_rightline(rpts1s,
-                                 rpts1s_num,
-                                 ROAD_HALF_WIDTH,
-                                 ref.x,
-                                 ref.y,
-                                 &rt->track.mid);
+        mid_ok = build_rptsn(rptsc1, rptsc1_num, ref.x, ref.y, 0, &rt->track.mid);
     }
     // 共同元素合同(对齐 RT1064)：十字/环岛元素态只要中线 >= k_element_min_mid_step 即放行，
     // 并跳过前瞻硬停（lookahead_error 内部已按可用弧长 clip）；普通道路仍需 >= k_min_border_step
