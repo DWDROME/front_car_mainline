@@ -47,7 +47,7 @@ raw boundary
 
 - `imgproc.cpp` 负责 seed、trace、点列 perspective/blur/resample、单边候选外扩和 `build_rptsn()` 等底层工具。
 - `boundary.cpp` 负责解释边界几何：`l_found`、`l_ok`、`l_pair_ok`、直线判定。
-- `element.cpp` 只做元素互斥调度；当前顺序是 cross 优先，cross 不活动时才推进 ring。
+- `element.cpp` 只做元素互斥调度；已有 cross 继续优先，但 ring pending second、false-wait 和已确认 ring 会挡新 cross 入口。
 - `cross.cpp` 只维护 cross 状态、远线点列和 `cross.track_type`；不发布 `rt->track.mid`。
 - `ring.cpp` 只维护 ring 状态和检测/状态连续用边界；不重建当前帧控制候选。
 - `mainline.cpp` 是当前帧唯一的控制中线 owner。

@@ -22,7 +22,7 @@ constexpr int k_live_beep_ms = 35;
 constexpr int k_report_near_lost_step = 5;
 constexpr int k_report_near_recover_step = 20;
 
-using live_state_signature_t = std::array<int, 45>;
+using live_state_signature_t = std::array<int, 47>;
 
 uint64_t report_monotonic_us()
 {
@@ -159,6 +159,8 @@ live_state_signature_t make_live_state_signature(const runtime_t *rt)
         positive_bucket(cz.right_num),
         cz.left_l >= 0 ? 1 : 0,
         cz.right_l >= 0 ? 1 : 0,
+        cz.left_far_l_source,
+        cz.right_far_l_source,
         tr.cross_mid_side,
         tr.cross_mid_fail,
         positive_bucket(tr.cross_mid_out),
@@ -346,7 +348,7 @@ void print_detail(const runtime_t *rt)
     std::printf("CrossDbg: mode=%d/%d/%d/%d/%d ref=(%d,%d) "
                 "near=%d/%d lost=%d rec=%d exit=%d far_ok=%d/%d "
                 "far_fail=%d/%d far_seed=(%d,%d)/(%d,%d) "
-                "far_n=%d/%d/%d/%d @ %d/%d/%d/%d "
+                "far_n=%d/%d/%d/%d @ %d/%d/%d/%d lsrc=%d/%d reuse=%d/%d "
                 "mid=%d/%d/%d/%d/%d/%d\n",
                 tr.action_cross_state0,
                 tr.action_base_ready,
@@ -376,6 +378,10 @@ void print_detail(const runtime_t *rt)
                 cz.right_far_ipm,
                 cz.right_far_blur,
                 cz.right_far_resample,
+                cz.left_far_l_source,
+                cz.right_far_l_source,
+                cz.left_far_l_reuse_count,
+                cz.right_far_l_reuse_count,
                 tr.cross_mid_side,
                 tr.cross_mid_fail,
                 tr.cross_mid_start,
@@ -440,14 +446,14 @@ void print_live(uint32_t frame_id, const runtime_t *rt)
     point_t ml = {-1, -1};
     mid_points_for_report(tr.mid, &m0, &ml);
 
-    // 字段缩写：cf=左/右远线found，cn=左/右远线点数，cl=左/右远 L 索引；
+    // 字段缩写：cf=左/右远线found，cn=左/右远线点数，cl=左/右远 L 索引，cs=远 L 来源，cr=连续复用帧数；
     //   l=左 found/ok/now_index @ 右 found/ok/now_index；pair=左/右 strict double-L 复核结果；
     //   ps=左/右 pair_state；pw=双 L 基准/张开宽度；
     //   xst=帧首cross/base/cross_far/cross_near/ring_active/work_track/ref；
     //   xfar=近线步数/lost/recover/exit/far_ok/far_fail/far_trace/ipm/blur/resample；
     //   xmid=远线中线 side/fail/start/tail/cand/out；m0=中线起点，ml=预瞄点（均控制坐标）；
     //   yaw=target_yaw(mrad/s)，duty=左/右占空。
-    std::printf("frame=%u ring=%d/%d rpend=%d/%d cross=%d cf=%d/%d cn=%d/%d cl=%d/%d "
+    std::printf("frame=%u ring=%d/%d rpend=%d/%d cross=%d cf=%d/%d cn=%d/%d cl=%d/%d cs=%d/%d cr=%d/%d "
                 "zebra=%d line=%d rej=%d track=%d mid=%d "
                 "seed=(%d,%d)-(%d,%d) trace=%d/%d idrej=%d "
                 "l=%d/%d@%d/%d/%d@%d pair=%d/%d ps=%d/%d pw=%.1f/%.1f "
@@ -468,6 +474,10 @@ void print_live(uint32_t frame_id, const runtime_t *rt)
                 rt->cross.right_num,
                 rt->cross.left_l,
                 rt->cross.right_l,
+                rt->cross.left_far_l_source,
+                rt->cross.right_far_l_source,
+                rt->cross.left_far_l_reuse_count,
+                rt->cross.right_far_l_reuse_count,
                 rt->zebra.detected,
                 track_line_found(rt),
                 tr.reject_reason,
@@ -575,6 +585,10 @@ int write_report(const runtime_t *rt, const char *report_path)
     out << "cross_right_num=" << rt->cross.right_num << "\n";
     out << "cross_left_l=" << rt->cross.left_l << "\n";
     out << "cross_right_l=" << rt->cross.right_l << "\n";
+    out << "cross_left_l_source=" << rt->cross.left_far_l_source << "\n";
+    out << "cross_right_l_source=" << rt->cross.right_far_l_source << "\n";
+    out << "cross_left_l_reuse_count=" << rt->cross.left_far_l_reuse_count << "\n";
+    out << "cross_right_l_reuse_count=" << rt->cross.right_far_l_reuse_count << "\n";
     out << "zebra_detected=" << rt->zebra.detected << "\n";
     out << "zebra_stop_line=" << rt->zebra.stop_line << "\n";
 

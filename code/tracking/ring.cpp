@@ -1134,3 +1134,21 @@ void ring_process(runtime_t *rt)
     }
     ring_reset(rt->ring);
 }
+
+//-------------------------------------------------------------------------------------------------------------------
+//  @brief      环岛 pending/活动阶段对新十字入口的互斥门
+//  @return     int          1 禁止新十字入口 / 0 允许 cross_process() 自己判断
+//  @note       参考版十字入口要求 ring_times < 2；当前 pending_second 和 false-ring 等待都不应被新十字抢掉。
+//-------------------------------------------------------------------------------------------------------------------
+int ring_blocks_cross_entry(const runtime_t *rt)
+{
+    if(rt == nullptr)
+    {
+        return 0;
+    }
+    if(rt->ring.kind != RING_KIND_NONE)
+    {
+        return 1;
+    }
+    return rt->ring.pending_stage >= k_ring_pending_second;
+}

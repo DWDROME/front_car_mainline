@@ -247,6 +247,8 @@ int build_cross_farline(runtime_t *rt, int left_side)
     int *far_ipm = &rt->cross.right_far_ipm;
     int *far_blur = &rt->cross.right_far_blur;
     int *far_resample = &rt->cross.right_far_resample;
+    int *far_l_source = &rt->cross.right_far_l_source;
+    int *far_l_reuse_count = &rt->cross.right_far_l_reuse_count;
     if(left_side)
     {
         far_pts = rt->cross.left_pts;
@@ -258,9 +260,13 @@ int build_cross_farline(runtime_t *rt, int left_side)
         far_ipm = &rt->cross.left_far_ipm;
         far_blur = &rt->cross.left_far_blur;
         far_resample = &rt->cross.left_far_resample;
+        far_l_source = &rt->cross.left_far_l_source;
+        far_l_reuse_count = &rt->cross.left_far_l_reuse_count;
     }
 
     const int old_l = *far_l;
+    const int old_l_source = *far_l_source;
+    const int old_reuse_count = *far_l_reuse_count;
     *far_num = 0;
     *far_fail = CROSS_FAR_FAIL_NONE;
     *far_seed = {-1, -1};
@@ -268,11 +274,13 @@ int build_cross_farline(runtime_t *rt, int left_side)
     *far_ipm = 0;
     *far_blur = 0;
     *far_resample = 0;
+    *far_l_source = CROSS_FAR_L_NONE;
     std::memset(far_pts, 0, sizeof(double[POINT_MAX][2]));
     point_t seed = {-1, -1};
     if(!find_far_seed(rt, left_side, &seed))
     {
         *far_l = -1;
+        *far_l_reuse_count = 0;
         *far_fail = CROSS_FAR_FAIL_NO_SEED;
         return 0;
     }
@@ -284,12 +292,14 @@ int build_cross_farline(runtime_t *rt, int left_side)
     if(!trace_ok)
     {
         *far_l = -1;
+        *far_l_reuse_count = 0;
         *far_fail = CROSS_FAR_FAIL_TRACE;
         return 0;
     }
     if(tr0.step < k_cross_min_front_step)
     {
         *far_l = -1;
+        *far_l_reuse_count = 0;
         *far_fail = CROSS_FAR_FAIL_TRACE_SHORT;
         return 0;
     }
@@ -302,6 +312,7 @@ int build_cross_farline(runtime_t *rt, int left_side)
     if(num0 < k_cross_min_front_step)
     {
         *far_l = -1;
+        *far_l_reuse_count = 0;
         *far_fail = CROSS_FAR_FAIL_IPM_SHORT;
         return 0;
     }
@@ -322,6 +333,7 @@ int build_cross_farline(runtime_t *rt, int left_side)
     if(*far_num < k_cross_min_front_step)
     {
         *far_l = -1;
+        *far_l_reuse_count = 0;
         *far_fail = CROSS_FAR_FAIL_RESAMPLE_SHORT;
         return 0;
     }
@@ -329,14 +341,19 @@ int build_cross_farline(runtime_t *rt, int left_side)
     if(new_l >= 0)
     {
         *far_l = new_l;
+        *far_l_source = CROSS_FAR_L_NEW;
+        *far_l_reuse_count = 0;
     }
-    else if(far_l_index_usable(old_l, *far_num))
+    else if(old_l_source != CROSS_FAR_L_NONE && far_l_index_usable(old_l, *far_num))
     {
         *far_l = old_l;
+        *far_l_source = CROSS_FAR_L_REUSED;
+        *far_l_reuse_count = old_reuse_count + 1;
     }
     else
     {
         *far_l = -1;
+        *far_l_reuse_count = 0;
     }
     return 1;
 }

@@ -163,7 +163,8 @@ int process_frame_quiet(runtime_t *rt, const char *image_path)
 
 // 回放模式每帧单行摘要，主要看元素状态、strict double-L、远线、中线和 reject_reason。
 // 字段缩写：rpend=ring pending kind/stage；
-//   far=左/右远线found，far_num=左/右远线点数，far_l=左/右远 L 索引；
+//   far=左/右远线found，far_num=左/右远线点数，far_l=左/右远 L 索引，far_src=新检出/复用旧索引；
+//   far_reuse=远 L 索引连续复用帧数，只用于诊断。
 //   pair=左/右 strict double-L 复核结果；ps=左/右 pair_state；pw=双 L 基准/张开宽度；
 //   xst=帧首cross/base/cross_far/cross_near/ring_active/work_track/ref；
 //   xfar=近线步数/lost/recover/exit/far_ok/far_fail/far_trace/ipm/blur/resample；
@@ -171,7 +172,7 @@ int process_frame_quiet(runtime_t *rt, const char *image_path)
 void print_replay_frame(int frame, const runtime_t *rt)
 {
     std::printf("replay frame=%d line=%d ring=%d/%d rpend=%d/%d cross=%d zebra=%d no_line=%d far=%d/%d "
-                "far_num=%d/%d far_l=%d/%d "
+                "far_num=%d/%d far_l=%d/%d far_src=%d/%d far_reuse=%d/%d "
                 "l=%d/%d@%d/%d/%d@%d pair=%d/%d ps=%d/%d pw=%.1f/%.1f "
                 "xst=%d/%d/%d/%d/%d/%d@%d,%d "
                 "xfar=%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d "
@@ -192,6 +193,10 @@ void print_replay_frame(int frame, const runtime_t *rt)
                 rt->cross.right_num,
                 rt->cross.left_l,
                 rt->cross.right_l,
+                rt->cross.left_far_l_source,
+                rt->cross.right_far_l_source,
+                rt->cross.left_far_l_reuse_count,
+                rt->cross.right_far_l_reuse_count,
                 rt->track.left.l_found,
                 rt->track.left.l_ok,
                 rt->track.left.l_now_index,

@@ -119,6 +119,10 @@ struct cross_state_t
     int right_far_blur;
     int left_far_resample;
     int right_far_resample;
+    int left_far_l_source;
+    int right_far_l_source;
+    int left_far_l_reuse_count;
+    int right_far_l_reuse_count;
 };
 
 enum
@@ -129,6 +133,13 @@ enum
     CROSS_FAR_FAIL_TRACE_SHORT = 3,
     CROSS_FAR_FAIL_IPM_SHORT = 4,
     CROSS_FAR_FAIL_RESAMPLE_SHORT = 5,
+};
+
+enum
+{
+    CROSS_FAR_L_NONE = 0,
+    CROSS_FAR_L_NEW = 1,
+    CROSS_FAR_L_REUSED = 2,
 };
 
 enum
