@@ -89,6 +89,7 @@ point_t control_ref_point(const runtime_t *rt);
 struct frame_action_t
 {
     int cross_state0 = CROSS_STATE_NONE;
+    int ring_kind0 = RING_KIND_NONE;
     int ordinary_track_type = TRACK_TYPE_NONE;
     int ring_track_type = TRACK_TYPE_NONE;
     int ring_frame_start_crop_side = TRACK_TYPE_NONE;
@@ -215,12 +216,16 @@ frame_mode_t classify_frame_mode(runtime_t *rt, const frame_action_t *action)
     mode.cross_far =
         (action->cross_state0 == CROSS_STATE_IN && rt->cross.state == CROSS_STATE_IN);
     mode.cross_near =
-        (action->base_candidates_ready && !mode.cross_far && rt->cross.state != CROSS_STATE_NONE);
+        (action->base_candidates_ready &&
+         !mode.cross_far &&
+         action->cross_state0 != CROSS_STATE_NONE &&
+         rt->cross.state != CROSS_STATE_NONE);
     mode.ring_active =
         (action->base_candidates_ready &&
          !mode.cross_far &&
          !mode.cross_near &&
-         (action->ring_track_type != TRACK_TYPE_NONE || rt->ring.kind != RING_KIND_NONE));
+         action->ring_kind0 != RING_KIND_NONE &&
+         rt->ring.kind != RING_KIND_NONE);
 
     if(mode.cross_far)
     {
@@ -827,6 +832,7 @@ int tracking_process_frame(runtime_t *rt)
     // 新阶段留到下一帧才生效，避免"同帧改状态又用新状态"造成的时序错位。
     frame_action_t action = {};
     action.cross_state0 = rt->cross.state;
+    action.ring_kind0 = rt->ring.kind;
 
     int seed_ok = find_seeds(rt->gray,
                              START_HIGH,

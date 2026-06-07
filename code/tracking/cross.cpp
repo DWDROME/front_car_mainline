@@ -362,6 +362,11 @@ void cross_begin(runtime_t *rt)
     {
         both_l = 1;
     }
+    if(!both_l)
+    {
+        cross_leave(&rt->cross);
+        return;
+    }
 
     int left_near = 0;
     if(left_strict_l && left->now_step > 0)
