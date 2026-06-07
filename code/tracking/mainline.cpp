@@ -885,7 +885,8 @@ int work_pair_order_ok(const double left[POINT_MAX][2],
     return !bad_order;
 }
 
-// 在控制中线上取最接近 look 的点，按 RT1064 的纯跟踪误差形式输出角度误差，单位 degree。
+// 在控制中线上取最接近 look 的点，输出相对车轮参考点的角度误差，单位 degree。
+// RT1064 同段还计算 pure_angle 给舵机；当前差速控制消费 guide_error -> target_yaw，不能直接等同。
 double lookahead_error(midline_t *mid, int look, point_t ref)
 {
     if(mid == nullptr || mid->step <= 0)

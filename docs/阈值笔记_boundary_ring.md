@@ -6,7 +6,7 @@
 
 这些参数看起来多，不代表都在独立调车。它们其实主要分成 4 组：
 
-1. 距离类阈值：按参考版物理长度换算成当前点数。
+1. 距离类阈值：按 RT1064 `circle.c` 的物理长度换算成当前点数。
 2. 角度/曲率类阈值：定义什么叫直线、什么叫 L 角。
 3. 状态计次类阈值：防止一帧误触发。
 4. 几何补线类阈值：给 ring 补对侧边界时找 seed、补起点用。
@@ -76,7 +76,7 @@ const int k_corner_front_step = 28;       // L角最远允许位置，单位 点
 说明：
 
 - 这组决定“能不能看见可用 L 角”。
-- 目前已经按参考版 `0.8m` 物理语义收到了 `28`。
+- 目前已经按 RT1064 近线 L 角 `0.8m` 物理语义收到了 `28`。
 
 ### C. 双 L 二次复核相关
 
@@ -155,8 +155,22 @@ const int k_in_encoder_step = k_encoder_per_meter * 314 / 200; // 约 1.57m
 
 说明：
 
-- 这 4 个值本质上都能从参考版物理距离换算出来。
-- 当前已经基本是对齐状态。
+- 这 4 个值本质上都能从 RT1064 `circle.c` 物理距离换算出来。
+- 当前 ring 主链按 RT1064 `circle.c::check_circle()` / `run_circle()` 对齐；Unity `CD.cpp` 的 `AIB/BW/pending/ring_times` 只保存在 `docs/reference/unity_CD_old.cpp` 里作 old 对照。
+
+RT1064 对照表：
+
+| 当前常量 | RT1064 `circle.c` 依据 | 说明 |
+| --- | --- | --- |
+| `k_lost_step = 7` | `rpts*s_num < 0.2 / sample_dist` | `0.2m / 0.03m ~= 6.7`，取 7 点。 |
+| `k_have_step = 34` | `rpts*s_num > 1.0 / sample_dist` | `1.0m / 0.03m ~= 33.3`，取 34 点。 |
+| `k_in_lost_step = 4` | `rpts*s_num < 0.1 / sample_dist` | `0.1m / 0.03m ~= 3.3`，取 4 点。 |
+| `k_run_corner_step = 14` | `Lpt*s_id < 0.4 / sample_dist` | `0.4m / 0.03m ~= 13.3`，取 14 点。 |
+| `k_in_encoder_step = 5800 * 314 / 200` | `ENCODER_PER_METER * (3.14 * 1 / 2)` | RT1064 注释为编码器打表过约 1/4 圆。 |
+| `k_lost_confirm_n = 2` | `none_*_line > 2` | BEGIN 阶段先丢线再有线。 |
+| `k_have_confirm_n = 1` | `have_*_line > 1` | BEGIN 阶段恢复有线后进入 IN。 |
+| `k_end_left_exit_lost_n = 3` | `none_left_line > 3` | 左环 END 退出。 |
+| `k_end_right_exit_lost_n = 2` | `none_right_line > 2` | 右环 END 退出。 |
 
 ### B. 状态计次门
 
@@ -180,15 +194,15 @@ const int k_in_encoder_step = k_encoder_per_meter * 314 / 200; // 约 1.57m
 - 这两项只在 `build_ring_opp_for_detection()` 里用；旧文档里可能还写作 `build_opp()`。
 - 它们不是 ring 状态机门，而是补对侧边界时给种子点的偏移量。
 
-### D. 编码器兜底门
+### D. 编码器里程门
 
 - `k_encoder_per_meter = 5800`
 - `k_in_encoder_step = 5800 * 314 / 200`
 
 说明：
 
-- 这条链不是视觉距离，而是里程兜底。
-- 语义接近参考版“跑过约四分之一圆”的阶段门。
+- 这条链不是视觉距离，而是 RT1064 `circle.c` 里已有的里程阶段门。
+- 语义是“跑过约四分之一圆”后进入 RUN；这里不是额外兜底，也不复用旧视觉几何。
 
 ---
 
@@ -209,7 +223,7 @@ const int k_in_encoder_step = k_encoder_per_meter * 314 / 200; // 约 1.57m
 1. 距离类状态门
 2. 连续计次门
 3. 补线 seed 偏移
-4. 编码器兜底门
+4. 编码器里程门
 
 所以后面真调参时，不应该一个一个零散改，而应该按组看：
 
@@ -294,7 +308,7 @@ const int k_in_encoder_step = k_encoder_per_meter * 314 / 200; // 约 1.57m
 
 位置：`code/tracking/cross.cpp`
 
-这部分这轮没有继续大改，只把十字入口近角门收成了显式常量，方便后面继续核对参考版语义。
+这部分这轮没有继续大改，只把十字入口近角门收成了显式常量，方便后面继续核对 RT1064 `cross.c` 语义。
 
 ```cpp
 const int k_cross_min_front_step = 8;    // 远线最短有效长度
@@ -309,7 +323,7 @@ const int k_cross_far_l_angle_max = 110; // 远 L 角上限
 
 说明：
 
-- `k_cross_begin_near_step = 4` 已按参考版 `0.1m` 近角门收成当前 3px 重采样下的等效值。
+- `k_cross_begin_near_step = 4` 已按 RT1064 `cross.c` 的 `0.1m` 近角门收成当前 3px 重采样下的等效值。
 - `k_cross_near_lost_step = 5`、`k_cross_near_recover_step = 20` 这轮先不动。
 - 原因不是算不出来，而是它们直接影响 `CROSS_IN` 的退出时机，属于状态门，不适合在几何层还在收口时一起乱改。
 
@@ -341,7 +355,7 @@ const int k_cross_far_l_angle_max = 110; // 远 L 角上限
 - 直线判定只看前约 `1.0m`
 - L 角只在前约 `0.8m` 内算有效
 - 双 L 张开复核只看前约 `1.0m`
-- 先把当前 `160x120 + 3px` 重采样下的物理长度语义收回到参考版附近
+- 先把当前 `160x120 + 3px` 重采样下的物理长度语义收回到 RT1064 附近
 
 #### `cross.cpp`
 
@@ -365,7 +379,7 @@ const int k_cross_far_l_angle_max = 110; // 远 L 角上限
 
 原因：
 
-- 这几项已经基本能按参考版物理长度换算回当前点数。
+- 这几项已经基本能按 RT1064 `circle.c` 物理长度换算回当前点数。
 - 在几何层还没彻底跑现场之前，先不去动 ring 状态机门槛，避免把“几何识别问题”和“状态切换问题”搅在一起。
 
 #### `cross.cpp` 的退出门

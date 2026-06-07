@@ -22,7 +22,7 @@ constexpr int k_live_beep_ms = 35;
 constexpr int k_report_near_lost_step = 5;
 constexpr int k_report_near_recover_step = 20;
 
-using live_state_signature_t = std::array<int, 47>;
+using live_state_signature_t = std::array<int, 45>;
 
 uint64_t report_monotonic_us()
 {
@@ -128,8 +128,6 @@ live_state_signature_t make_live_state_signature(const runtime_t *rt)
         track_line_found(rt),
         rt->ring.kind,
         rt->ring.state,
-        rt->ring.pending_kind,
-        rt->ring.pending_stage,
         cz.state,
         cz.track_type,
         positive_bucket(cz.not_have_line),
@@ -395,13 +393,11 @@ void print_detail(const runtime_t *rt)
                 rt->control.actual_yaw_rate_mrad_s,
                 rt->control.left_duty,
                 rt->control.right_duty);
-    std::printf("Elem: ring=%d/%d pending=%d/%d "
+    std::printf("Elem: ring=%d/%d "
                 "cross=%d nf=%d far=%d/%d num=%d/%d l=%d/%d "
                 "zebra=%d stop=%d\n",
                 rg.kind,
                 rg.state,
-                rg.pending_kind,
-                rg.pending_stage,
                 cz.state,
                 cz.not_have_line,
                 cz.left_far_found,
@@ -453,7 +449,7 @@ void print_live(uint32_t frame_id, const runtime_t *rt)
     //   xfar=近线步数/lost/recover/exit/far_ok/far_fail/far_trace/ipm/blur/resample；
     //   xmid=远线中线 side/fail/start/tail/cand/out；m0=中线起点，ml=预瞄点（均控制坐标）；
     //   yaw=target_yaw(mrad/s)，duty=左/右占空。
-    std::printf("frame=%u ring=%d/%d rpend=%d/%d cross=%d cf=%d/%d cn=%d/%d cl=%d/%d cs=%d/%d cr=%d/%d "
+    std::printf("frame=%u ring=%d/%d cross=%d cf=%d/%d cn=%d/%d cl=%d/%d cs=%d/%d cr=%d/%d "
                 "zebra=%d line=%d rej=%d track=%d mid=%d "
                 "seed=(%d,%d)-(%d,%d) trace=%d/%d idrej=%d "
                 "l=%d/%d@%d/%d/%d@%d pair=%d/%d ps=%d/%d pw=%.1f/%.1f "
@@ -465,8 +461,6 @@ void print_live(uint32_t frame_id, const runtime_t *rt)
                 frame_id,
                 rt->ring.kind,
                 rt->ring.state,
-                rt->ring.pending_kind,
-                rt->ring.pending_stage,
                 rt->cross.state,
                 rt->cross.left_far_found,
                 rt->cross.right_far_found,
@@ -575,8 +569,6 @@ int write_report(const runtime_t *rt, const char *report_path)
 
     out << "ring_kind=" << rt->ring.kind << "\n";
     out << "ring_state=" << rt->ring.state << "\n";
-    out << "ring_pending_kind=" << rt->ring.pending_kind << "\n";
-    out << "ring_pending_stage=" << rt->ring.pending_stage << "\n";
     out << "cross_state=" << rt->cross.state << "\n";
     out << "cross_not_have_line=" << rt->cross.not_have_line << "\n";
     out << "cross_left_far_found=" << rt->cross.left_far_found << "\n";

@@ -164,11 +164,6 @@ struct ring_state_t
     int kind;
     int state;
 
-    // 参考版 ring_times=1/2 的入口确认阶段；pending 期间 kind 仍为 NONE。
-    int pending_kind;
-    int pending_stage;
-    int64_t pending_encoder0;
-
     // 连续丢线/有线计数，配合编码器累计值推进环岛阶段。
     int lost_count;
     int have_count;

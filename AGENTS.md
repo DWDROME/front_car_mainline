@@ -45,7 +45,18 @@ Managed by Trellis. Edits outside this block are preserved; edits inside may be 
 - Tracking fixes must be evidence-backed: compare the reference version, inspect
   the current code and recent diff, then run targeted validation. Do not reuse
   last-frame midlines or drift thresholds without a documented reason.
+- For ring/circle behavior, RT1064 `circle.c` is the active mainline reference.
+  Unity `CD.cpp` is archived old comparison evidence only; do not treat
+  `check_ring/AIB/BW/pending/ring_times` as the active tracking contract.
+- When comparing RT1064 control code, keep the actuator boundary explicit:
+  RT1064 `pure_angle -> servo_pid` is a steering-servo path, while this project
+  uses differential `guide_error -> target_yaw -> yaw_cmd`; do not port
+  `pure_angle` into the current outer loop as a tracking alignment fix.
 - Every tracking behavior change must include a fixed rationale table in the
   task research note or final handoff: `参考版怎么样`, `当前代码差异`,
   `我修改什么`, `原因`, and `不是兜底的证据`. If no direct reference
   equivalent exists, say that explicitly instead of implying one.
+- When committing multi-file or high-impact tracking changes, use a clear
+  Chinese commit body, not only a short title. The body must state why the
+  change is needed, what active reference contract it follows, what changed,
+  why it is not fallback-style behavior, and which validations passed.

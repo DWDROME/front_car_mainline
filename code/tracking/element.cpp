@@ -5,26 +5,10 @@
 
 namespace
 {
-// 元素状态互斥：已有十字继续优先；环岛二次确认/活动阶段按参考版挡住新十字入口。
+// 元素状态互斥：十字优先级最高；十字仍在时清掉环岛，十字退出后继续检查环岛。
 int run_state(runtime_t *rt)
 {
-    if(rt->cross.state != CROSS_STATE_NONE)
-    {
-        // cross_process() 每帧只跑一次；已有十字退出后，不在同一帧立刻重进十字。
-        cross_process(rt);
-        if(rt->cross.state != CROSS_STATE_NONE)
-        {
-            rt->ring = {};
-            return 1;
-        }
-    }
-
-    if(ring_blocks_cross_entry(rt))
-    {
-        ring_process(rt);
-        return 1;
-    }
-
+    // cross_process() 每帧只跑一次；已有十字退出后，不在同一帧立刻重进十字。
     cross_process(rt);
     if(rt->cross.state != CROSS_STATE_NONE)
     {
