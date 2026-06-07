@@ -159,6 +159,45 @@ void print_detail(const runtime_t *rt)
                 tr.center_x,
                 tr.guide_error,
                 tr.reject_reason);
+    std::printf("CrossDbg: mode=%d/%d/%d/%d/%d ref=(%d,%d) "
+                "near=%d/%d lost=%d rec=%d exit=%d far_ok=%d/%d "
+                "far_fail=%d/%d far_seed=(%d,%d)/(%d,%d) "
+                "far_n=%d/%d/%d/%d @ %d/%d/%d/%d "
+                "mid=%d/%d/%d/%d/%d/%d\n",
+                tr.action_cross_state0,
+                tr.action_base_ready,
+                tr.mode_cross_far,
+                tr.mode_cross_near,
+                tr.mode_work_track_type,
+                tr.control_ref.x,
+                tr.control_ref.y,
+                cz.left_near_step,
+                cz.right_near_step,
+                cz.both_near_lost,
+                cz.both_near_recover,
+                cz.exit_ready,
+                cz.left_far_ok,
+                cz.right_far_ok,
+                cz.left_far_fail,
+                cz.right_far_fail,
+                cz.left_far_seed.x,
+                cz.left_far_seed.y,
+                cz.right_far_seed.x,
+                cz.right_far_seed.y,
+                cz.left_far_trace,
+                cz.left_far_ipm,
+                cz.left_far_blur,
+                cz.left_far_resample,
+                cz.right_far_trace,
+                cz.right_far_ipm,
+                cz.right_far_blur,
+                cz.right_far_resample,
+                tr.cross_mid_side,
+                tr.cross_mid_fail,
+                tr.cross_mid_start,
+                tr.cross_mid_tail,
+                tr.cross_mid_cand,
+                tr.cross_mid_out);
     std::printf("Loop: valid=%d stop=%d target_yaw=%d actual_yaw=%d duty=%d/%d\n",
                 rt->control.input_valid,
                 rt->control.stop_request,
@@ -200,12 +239,18 @@ void print_live(uint32_t frame_id, const runtime_t *rt)
 
     // 字段缩写：cf=左/右远线found，cn=左/右远线点数，cl=左/右远 L 索引；
     //   l=左 found/ok/now_index @ 右 found/ok/now_index；pair=左/右 strict double-L 复核结果；
-    //   ps=左/右 pair_state；pw=双 L 基准/张开宽度；m0=中线起点，ml=预瞄点（均控制坐标）；
+    //   ps=左/右 pair_state；pw=双 L 基准/张开宽度；
+    //   xst=帧首cross/base/cross_far/cross_near/ring_active/work_track/ref；
+    //   xfar=近线步数/lost/recover/exit/far_ok/far_fail/far_trace/ipm/blur/resample；
+    //   xmid=远线中线 side/fail/start/tail/cand/out；m0=中线起点，ml=预瞄点（均控制坐标）；
     //   yaw=target_yaw(mrad/s)，duty=左/右占空。
     std::printf("frame=%u ring=%d/%d cross=%d cf=%d/%d cn=%d/%d cl=%d/%d "
                 "zebra=%d line=%d rej=%d track=%d mid=%d "
                 "seed=(%d,%d)-(%d,%d) trace=%d/%d "
                 "l=%d/%d@%d/%d/%d@%d pair=%d/%d ps=%d/%d pw=%.1f/%.1f "
+                "xst=%d/%d/%d/%d/%d/%d@%d,%d "
+                "xfar=%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d "
+                "xmid=%d/%d/%d/%d/%d/%d "
                 "center=%d m0=(%d,%d) ml=(%d,%d) guide=%.2f "
                 "loop=%d stop=%d yaw=%d duty=%d/%d\n",
                 frame_id,
@@ -241,6 +286,37 @@ void print_live(uint32_t frame_id, const runtime_t *rt)
                 tr.right.l_pair_state,
                 tr.left.l_pair_width0,
                 tr.left.l_pair_width1,
+                tr.action_cross_state0,
+                tr.action_base_ready,
+                tr.mode_cross_far,
+                tr.mode_cross_near,
+                tr.mode_ring_active,
+                tr.mode_work_track_type,
+                tr.control_ref.x,
+                tr.control_ref.y,
+                rt->cross.left_near_step,
+                rt->cross.right_near_step,
+                rt->cross.both_near_lost,
+                rt->cross.both_near_recover,
+                rt->cross.exit_ready,
+                rt->cross.left_far_ok,
+                rt->cross.right_far_ok,
+                rt->cross.left_far_fail,
+                rt->cross.right_far_fail,
+                rt->cross.left_far_trace,
+                rt->cross.right_far_trace,
+                rt->cross.left_far_ipm,
+                rt->cross.right_far_ipm,
+                rt->cross.left_far_blur,
+                rt->cross.right_far_blur,
+                rt->cross.left_far_resample,
+                rt->cross.right_far_resample,
+                tr.cross_mid_side,
+                tr.cross_mid_fail,
+                tr.cross_mid_start,
+                tr.cross_mid_tail,
+                tr.cross_mid_cand,
+                tr.cross_mid_out,
                 tr.center_x,
                 m0.x,
                 m0.y,

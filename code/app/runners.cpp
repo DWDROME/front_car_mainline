@@ -163,12 +163,18 @@ int process_frame_quiet(runtime_t *rt, const char *image_path)
 
 // 回放模式每帧单行摘要，主要看元素状态、strict double-L、远线、中线和 reject_reason。
 // 字段缩写：far=左/右远线found，far_num=左/右远线点数，far_l=左/右远 L 索引；
-//   pair=左/右 strict double-L 复核结果；ps=左/右 pair_state；pw=双 L 基准/张开宽度。
+//   pair=左/右 strict double-L 复核结果；ps=左/右 pair_state；pw=双 L 基准/张开宽度；
+//   xst=帧首cross/base/cross_far/cross_near/ring_active/work_track/ref；
+//   xfar=近线步数/lost/recover/exit/far_ok/far_fail/far_trace/ipm/blur/resample；
+//   xmid=远线中线 side/fail/start/tail/cand/out。
 void print_replay_frame(int frame, const runtime_t *rt)
 {
     std::printf("replay frame=%d line=%d ring=%d/%d cross=%d zebra=%d no_line=%d far=%d/%d "
                 "far_num=%d/%d far_l=%d/%d "
                 "l=%d/%d@%d/%d/%d@%d pair=%d/%d ps=%d/%d pw=%.1f/%.1f "
+                "xst=%d/%d/%d/%d/%d/%d@%d,%d "
+                "xfar=%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d "
+                "xmid=%d/%d/%d/%d/%d/%d "
                 "track=%d mid=%d guide=%.2f reject=%d\n",
                 frame,
                 track_line_found(rt),
@@ -195,6 +201,37 @@ void print_replay_frame(int frame, const runtime_t *rt)
                 rt->track.right.l_pair_state,
                 rt->track.left.l_pair_width0,
                 rt->track.left.l_pair_width1,
+                rt->track.action_cross_state0,
+                rt->track.action_base_ready,
+                rt->track.mode_cross_far,
+                rt->track.mode_cross_near,
+                rt->track.mode_ring_active,
+                rt->track.mode_work_track_type,
+                rt->track.control_ref.x,
+                rt->track.control_ref.y,
+                rt->cross.left_near_step,
+                rt->cross.right_near_step,
+                rt->cross.both_near_lost,
+                rt->cross.both_near_recover,
+                rt->cross.exit_ready,
+                rt->cross.left_far_ok,
+                rt->cross.right_far_ok,
+                rt->cross.left_far_fail,
+                rt->cross.right_far_fail,
+                rt->cross.left_far_trace,
+                rt->cross.right_far_trace,
+                rt->cross.left_far_ipm,
+                rt->cross.right_far_ipm,
+                rt->cross.left_far_blur,
+                rt->cross.right_far_blur,
+                rt->cross.left_far_resample,
+                rt->cross.right_far_resample,
+                rt->track.cross_mid_side,
+                rt->track.cross_mid_fail,
+                rt->track.cross_mid_start,
+                rt->track.cross_mid_tail,
+                rt->track.cross_mid_cand,
+                rt->track.cross_mid_out,
                 rt->track.track_type,
                 rt->track.mid.step,
                 rt->track.guide_error,

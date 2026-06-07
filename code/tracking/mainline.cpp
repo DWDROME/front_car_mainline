@@ -420,8 +420,17 @@ int solve_cross_mid(runtime_t *rt, point_t ref)
     {
         return 0;
     }
+
+    rt->track.cross_mid_side = rt->cross.track_type;
+    rt->track.cross_mid_fail = CROSS_MID_FAIL_NONE;
+    rt->track.cross_mid_start = -1;
+    rt->track.cross_mid_tail = 0;
+    rt->track.cross_mid_cand = 0;
+    rt->track.cross_mid_out = 0;
+
     if(rt->cross.state != CROSS_STATE_IN)
     {
+        rt->track.cross_mid_fail = CROSS_MID_FAIL_NOT_IN;
         return 0;
     }
 
@@ -444,9 +453,11 @@ int solve_cross_mid(runtime_t *rt, point_t ref)
             {
                 start = 0;
             }
+            rt->track.cross_mid_start = start;
             if(start < rt->cross.left_num)
             {
                 const int num = clip_i(rt->cross.left_num - start, 0, POINT_MAX);
+                rt->track.cross_mid_tail = num;
                 if(num >= k_element_min_mid_step)
                 {
                     double far_cand[POINT_MAX][2] = {};
@@ -455,15 +466,32 @@ int solve_cross_mid(runtime_t *rt, point_t ref)
                                                         far_cand,
                                                         k_track_approx_num,
                                                         ROAD_HALF_WIDTH);
-                    return build_rptsn(far_cand,
-                                       cand_num,
-                                       ref.x,
-                                       ref.y,
-                                       1,
-                                       &rt->track.mid);
+                    rt->track.cross_mid_cand = cand_num;
+                    if(cand_num <= 0)
+                    {
+                        rt->track.cross_mid_fail = CROSS_MID_FAIL_OFFSET;
+                        return 0;
+                    }
+                    const int out = build_rptsn(far_cand,
+                                                cand_num,
+                                                ref.x,
+                                                ref.y,
+                                                1,
+                                                &rt->track.mid);
+                    rt->track.cross_mid_out = out;
+                    if(out <= 0)
+                    {
+                        rt->track.cross_mid_fail = CROSS_MID_FAIL_BUILD;
+                    }
+                    return out;
                 }
+                rt->track.cross_mid_fail = CROSS_MID_FAIL_SHORT_TAIL;
+                return 0;
             }
+            rt->track.cross_mid_fail = CROSS_MID_FAIL_BAD_START;
+            return 0;
         }
+        rt->track.cross_mid_fail = CROSS_MID_FAIL_NO_FAR;
         return 0;
     }
     if(t == TRACK_TYPE_RIGHT)
@@ -484,9 +512,11 @@ int solve_cross_mid(runtime_t *rt, point_t ref)
             {
                 start = 0;
             }
+            rt->track.cross_mid_start = start;
             if(start < rt->cross.right_num)
             {
                 const int num = clip_i(rt->cross.right_num - start, 0, POINT_MAX);
+                rt->track.cross_mid_tail = num;
                 if(num >= k_element_min_mid_step)
                 {
                     double far_cand[POINT_MAX][2] = {};
@@ -495,17 +525,35 @@ int solve_cross_mid(runtime_t *rt, point_t ref)
                                                          far_cand,
                                                          k_track_approx_num,
                                                          ROAD_HALF_WIDTH);
-                    return build_rptsn(far_cand,
-                                       cand_num,
-                                       ref.x,
-                                       ref.y,
-                                       1,
-                                       &rt->track.mid);
+                    rt->track.cross_mid_cand = cand_num;
+                    if(cand_num <= 0)
+                    {
+                        rt->track.cross_mid_fail = CROSS_MID_FAIL_OFFSET;
+                        return 0;
+                    }
+                    const int out = build_rptsn(far_cand,
+                                                cand_num,
+                                                ref.x,
+                                                ref.y,
+                                                1,
+                                                &rt->track.mid);
+                    rt->track.cross_mid_out = out;
+                    if(out <= 0)
+                    {
+                        rt->track.cross_mid_fail = CROSS_MID_FAIL_BUILD;
+                    }
+                    return out;
                 }
+                rt->track.cross_mid_fail = CROSS_MID_FAIL_SHORT_TAIL;
+                return 0;
             }
+            rt->track.cross_mid_fail = CROSS_MID_FAIL_BAD_START;
+            return 0;
         }
+        rt->track.cross_mid_fail = CROSS_MID_FAIL_NO_FAR;
         return 0;
     }
+    rt->track.cross_mid_fail = CROSS_MID_FAIL_NO_SIDE;
     return 0;
 }
 
@@ -823,6 +871,13 @@ int tracking_process_frame(runtime_t *rt)
 
     point_t ref = control_ref_point(rt);
     const frame_mode_t mode = classify_frame_mode(rt, &action);
+    rt->track.action_cross_state0 = action.cross_state0;
+    rt->track.action_base_ready = action.base_candidates_ready;
+    rt->track.mode_cross_far = mode.cross_far;
+    rt->track.mode_cross_near = mode.cross_near;
+    rt->track.mode_ring_active = mode.ring_active;
+    rt->track.mode_work_track_type = mode.work_track_type;
+    rt->track.control_ref = ref;
 
     if(!action.base_candidates_ready && !mode.cross_far)
     {

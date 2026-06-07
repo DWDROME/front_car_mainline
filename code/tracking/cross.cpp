@@ -241,33 +241,56 @@ int build_cross_farline(runtime_t *rt, int left_side)
     double (*far_pts)[2] = rt->cross.right_pts;
     int *far_num = &rt->cross.right_num;
     int *far_l = &rt->cross.right_l;
+    int *far_fail = &rt->cross.right_far_fail;
+    point_t *far_seed = &rt->cross.right_far_seed;
+    int *far_trace = &rt->cross.right_far_trace;
+    int *far_ipm = &rt->cross.right_far_ipm;
+    int *far_blur = &rt->cross.right_far_blur;
+    int *far_resample = &rt->cross.right_far_resample;
     if(left_side)
     {
         far_pts = rt->cross.left_pts;
         far_num = &rt->cross.left_num;
         far_l = &rt->cross.left_l;
+        far_fail = &rt->cross.left_far_fail;
+        far_seed = &rt->cross.left_far_seed;
+        far_trace = &rt->cross.left_far_trace;
+        far_ipm = &rt->cross.left_far_ipm;
+        far_blur = &rt->cross.left_far_blur;
+        far_resample = &rt->cross.left_far_resample;
     }
 
     const int old_l = *far_l;
     *far_num = 0;
+    *far_fail = CROSS_FAR_FAIL_NONE;
+    *far_seed = {-1, -1};
+    *far_trace = 0;
+    *far_ipm = 0;
+    *far_blur = 0;
+    *far_resample = 0;
     std::memset(far_pts, 0, sizeof(double[POINT_MAX][2]));
     point_t seed = {-1, -1};
     if(!find_far_seed(rt, left_side, &seed))
     {
         *far_l = -1;
+        *far_fail = CROSS_FAR_FAIL_NO_SEED;
         return 0;
     }
+    *far_seed = seed;
 
     trace_t tr0 = {};
     int trace_ok = trace_single(rt->gray, seed, left_side, &tr0);
+    *far_trace = tr0.step;
     if(!trace_ok)
     {
         *far_l = -1;
+        *far_fail = CROSS_FAR_FAIL_TRACE;
         return 0;
     }
     if(tr0.step < k_cross_min_front_step)
     {
         *far_l = -1;
+        *far_fail = CROSS_FAR_FAIL_TRACE_SHORT;
         return 0;
     }
 
@@ -275,9 +298,11 @@ int build_cross_farline(runtime_t *rt, int left_side)
     double ipm1[POINT_MAX][2] = {};
     double ipm2[POINT_MAX][2] = {};
     int num0 = perspective_points(tr0.pts, tr0.step, rt->matrix, has_matrix, ipm0);
+    *far_ipm = num0;
     if(num0 < k_cross_min_front_step)
     {
         *far_l = -1;
+        *far_fail = CROSS_FAR_FAIL_IPM_SHORT;
         return 0;
     }
 
@@ -285,6 +310,8 @@ int build_cross_farline(runtime_t *rt, int left_side)
     int num2 = 0;
     blur_points(ipm0, num0, ipm1, &num1);
     resample_points(ipm1, num1, ipm2, &num2, k_cross_far_resample_dist);
+    *far_blur = num1;
+    *far_resample = num2;
     *far_num = 0;
     for(int i = 0; i < num2 && *far_num < POINT_MAX; ++i)
     {
@@ -295,6 +322,7 @@ int build_cross_farline(runtime_t *rt, int left_side)
     if(*far_num < k_cross_min_front_step)
     {
         *far_l = -1;
+        *far_fail = CROSS_FAR_FAIL_RESAMPLE_SHORT;
         return 0;
     }
     const int new_l = far_l_index(far_pts, *far_num);
@@ -397,6 +425,13 @@ void cross_evolve(runtime_t *rt)
     rt->cross.right_far_found = 0;
     rt->cross.left_num = 0;
     rt->cross.right_num = 0;
+    rt->cross.left_near_step = 0;
+    rt->cross.right_near_step = 0;
+    rt->cross.both_near_lost = 0;
+    rt->cross.both_near_recover = 0;
+    rt->cross.left_far_ok = 0;
+    rt->cross.right_far_ok = 0;
+    rt->cross.exit_ready = 0;
     std::memset(rt->cross.left_pts, 0, sizeof(rt->cross.left_pts));
     std::memset(rt->cross.right_pts, 0, sizeof(rt->cross.right_pts));
 
@@ -407,6 +442,8 @@ void cross_evolve(runtime_t *rt)
     // 获取当前最近侧左右线可用点数
     const int left_near_step = rt->track.left.now_step;
     const int right_near_step = rt->track.right.now_step;
+    rt->cross.left_near_step = left_near_step;
+    rt->cross.right_near_step = right_near_step;
 
     // 检查两侧近线是否都短于丢失阈值
     int both_near_lost = 0;
@@ -417,6 +454,7 @@ void cross_evolve(runtime_t *rt)
             both_near_lost = 1;
         }
     }
+    rt->cross.both_near_lost = both_near_lost;
     if(both_near_lost)
     {
         rt->cross.not_have_line++;
@@ -431,6 +469,7 @@ void cross_evolve(runtime_t *rt)
             left_ok = 1;
         }
     }
+    rt->cross.left_far_ok = left_ok;
 
     int right_ok = 0;
     if(rt->cross.right_far_found)
@@ -440,6 +479,7 @@ void cross_evolve(runtime_t *rt)
             right_ok = 1;
         }
     }
+    rt->cross.right_far_ok = right_ok;
 
     // 选边顺序对齐参考版：右远 L 优先、左远 L 次之、最后按近线丢失侧定侧。
     if(right_ok)
@@ -471,8 +511,10 @@ void cross_evolve(runtime_t *rt)
             both_near_recover = 1;
         }
     }
+    rt->cross.both_near_recover = both_near_recover;
+    rt->cross.exit_ready = (rt->cross.not_have_line > 2 && both_near_recover);
     // 如果 not_have_line 连续大于2，且两侧近线都恢复，退出十字
-    if(rt->cross.not_have_line > 2 && both_near_recover)
+    if(rt->cross.exit_ready)
     {
         cross_leave(&rt->cross);
     }

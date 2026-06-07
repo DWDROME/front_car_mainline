@@ -96,6 +96,39 @@ struct cross_state_t
     int right_num;
     double left_pts[POINT_MAX][2];
     double right_pts[POINT_MAX][2];
+
+    // CROSS_IN 状态机诊断：near_* 是本帧近线门判定，far_ok 是远线是否可用于选边。
+    int left_near_step;
+    int right_near_step;
+    int both_near_lost;
+    int both_near_recover;
+    int left_far_ok;
+    int right_far_ok;
+    int exit_ready;
+
+    // 远线构建诊断：seed/trace/ipm/blur/resample/L 点阶段，左右各一份。
+    int left_far_fail;
+    int right_far_fail;
+    point_t left_far_seed;
+    point_t right_far_seed;
+    int left_far_trace;
+    int right_far_trace;
+    int left_far_ipm;
+    int right_far_ipm;
+    int left_far_blur;
+    int right_far_blur;
+    int left_far_resample;
+    int right_far_resample;
+};
+
+enum
+{
+    CROSS_FAR_FAIL_NONE = 0,
+    CROSS_FAR_FAIL_NO_SEED = 1,
+    CROSS_FAR_FAIL_TRACE = 2,
+    CROSS_FAR_FAIL_TRACE_SHORT = 3,
+    CROSS_FAR_FAIL_IPM_SHORT = 4,
+    CROSS_FAR_FAIL_RESAMPLE_SHORT = 5,
 };
 
 enum
@@ -146,6 +179,36 @@ struct track_result_t
     boundary_t left;
     boundary_t right;
     midline_t mid;
+
+    // CROSS_IN 远线中线诊断：side 为本帧尝试侧，fail 标记失败阶段；
+    // start/tail/cand/out 分别是 L 后起点、剩余远线点、外扩候选点和最终中线点。
+    int cross_mid_side;
+    int cross_mid_fail;
+    int cross_mid_start;
+    int cross_mid_tail;
+    int cross_mid_cand;
+    int cross_mid_out;
+
+    // 主线帧分类诊断：记录本帧动作来源、mode 和控制参考点。
+    int action_cross_state0;
+    int action_base_ready;
+    int mode_cross_far;
+    int mode_cross_near;
+    int mode_ring_active;
+    int mode_work_track_type;
+    point_t control_ref;
+};
+
+enum
+{
+    CROSS_MID_FAIL_NONE = 0,
+    CROSS_MID_FAIL_NOT_IN = 1,
+    CROSS_MID_FAIL_NO_SIDE = 2,
+    CROSS_MID_FAIL_NO_FAR = 3,
+    CROSS_MID_FAIL_BAD_START = 4,
+    CROSS_MID_FAIL_SHORT_TAIL = 5,
+    CROSS_MID_FAIL_OFFSET = 6,
+    CROSS_MID_FAIL_BUILD = 7,
 };
 
 enum
