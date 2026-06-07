@@ -1049,8 +1049,6 @@ int tracking_process_frame(runtime_t *rt)
         }
         else
         {
-            // 搜索中心跟随：只用本帧追线成功后保留下来的 seed 结果更新下一帧起搜中心。
-            update_search_center(rt);
             action.ordinary_track_type = build_frame_boundaries_and_candidates(rt, use_matrix);
             if(rt->track.trace_identity_reject & TRACE_IDENTITY_REJECT_IPM_SIDE_CROSS)
             {
@@ -1064,6 +1062,8 @@ int tracking_process_frame(runtime_t *rt)
             }
             else
             {
+                // 搜索中心跟随：只用本帧 trace 和身份复核后保留下来的 seed 更新下一帧起搜中心。
+                update_search_center(rt);
                 snapshot_ring_frame_start_action(rt, &action);
                 element_process(rt);
                 action.base_candidates_ready = 1;
