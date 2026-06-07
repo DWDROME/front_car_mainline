@@ -36,6 +36,7 @@ const double k_ring_first_side_min = 0.95;
 const double k_ring_second_side_min = 0.3;
 const double k_ring_first_line_degree = 0.995;
 const double k_ring_second_line_degree = 0.999;
+const int k_ring_degree_min_rows = 12;
 const int k_ring_degree_first_start_y = RAW_H - 10;
 const int k_ring_degree_second_start_y = RAW_H - 20;
 const int k_ring_degree_end_y = 70;
@@ -189,7 +190,7 @@ double boundary_line_degree_like_reference(const boundary_t *bd, int left_bounda
         count++;
     }
 
-    if(count < 2)
+    if(count < k_ring_degree_min_rows)
     {
         return 0.0;
     }
@@ -612,13 +613,12 @@ void ring_process(runtime_t *rt)
 
         if(rt->ring.pending_stage == k_ring_pending_first)
         {
-            if(!ring_pending_straight_ok(rt))
-            {
-                enter_false_ring_suppression(rt->ring);
-                return;
-            }
             if(rt->encoder_total - rt->ring.pending_encoder0 < k_ring_first_confirm_encoder)
             {
+                if(!ring_pending_straight_ok(rt))
+                {
+                    enter_false_ring_suppression(rt->ring);
+                }
                 return;
             }
             rt->ring.pending_stage = k_ring_pending_second;
