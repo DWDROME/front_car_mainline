@@ -316,7 +316,10 @@ void print_detail(const runtime_t *rt)
                 rt->has_matrix,
                 use_matrix,
                 ipm_reason);
-    std::printf("Trace: left=%d right=%d\n", tr0.step, tr1.step);
+    std::printf("Trace: left=%d right=%d idrej=%d\n",
+                tr0.step,
+                tr1.step,
+                tr.trace_identity_reject);
     std::printf("CornerL: left=%d/%d@%d/%.1f pair=%d state=%d w=%.1f/%.1f "
                 "right=%d/%d@%d/%.1f pair=%d state=%d w=%.1f/%.1f\n",
                 tr.left.l_found,
@@ -446,7 +449,7 @@ void print_live(uint32_t frame_id, const runtime_t *rt)
     //   yaw=target_yaw(mrad/s)，duty=左/右占空。
     std::printf("frame=%u ring=%d/%d rpend=%d/%d cross=%d cf=%d/%d cn=%d/%d cl=%d/%d "
                 "zebra=%d line=%d rej=%d track=%d mid=%d "
-                "seed=(%d,%d)-(%d,%d) trace=%d/%d "
+                "seed=(%d,%d)-(%d,%d) trace=%d/%d idrej=%d "
                 "l=%d/%d@%d/%d/%d@%d pair=%d/%d ps=%d/%d pw=%.1f/%.1f "
                 "xst=%d/%d/%d/%d/%d/%d@%d,%d "
                 "xfar=%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d "
@@ -476,6 +479,7 @@ void print_live(uint32_t frame_id, const runtime_t *rt)
                 sd.right.y,
                 tr0.step,
                 tr1.step,
+                tr.trace_identity_reject,
                 tr.left.l_found,
                 tr.left.l_ok,
                 tr.left.l_now_index,
@@ -583,6 +587,7 @@ int write_report(const runtime_t *rt, const char *report_path)
 
     out << "left_trace_step=" << rt->left_trace.step << "\n";
     out << "right_trace_step=" << rt->right_trace.step << "\n";
+    out << "trace_identity_reject=" << rt->track.trace_identity_reject << "\n";
     out << "left_l_found=" << rt->track.left.l_found << "\n";
     out << "left_l_ok=" << rt->track.left.l_ok << "\n";
     out << "left_l_now_index=" << rt->track.left.l_now_index << "\n";

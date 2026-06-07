@@ -293,6 +293,100 @@ int build_selected_midline(runtime_t *rt, const frame_mode_t *mode, point_t ref)
     return 0;
 }
 
+void trace_x_range(const trace_t *trace, int *min_x, int *max_x)
+{
+    if(min_x == nullptr || max_x == nullptr)
+    {
+        return;
+    }
+    *min_x = RAW_W;
+    *max_x = -1;
+    if(trace == nullptr)
+    {
+        return;
+    }
+    for(int i = 0; i < trace->step; ++i)
+    {
+        *min_x = std::min(*min_x, trace->pts[i].x);
+        *max_x = std::max(*max_x, trace->pts[i].x);
+    }
+    if(trace->step <= 0)
+    {
+        *min_x = -1;
+        *max_x = -1;
+    }
+}
+
+int traces_cross_on_same_row(const trace_t *left, const trace_t *right)
+{
+    if(left == nullptr || right == nullptr || left->step <= 0 || right->step <= 0)
+    {
+        return 0;
+    }
+
+    int left_x[RAW_H];
+    int right_x[RAW_H];
+    for(int y = 0; y < RAW_H; ++y)
+    {
+        left_x[y] = -1;
+        right_x[y] = RAW_W;
+    }
+    for(int i = 0; i < left->step; ++i)
+    {
+        const int y = left->pts[i].y;
+        if(y >= 0 && y < RAW_H)
+        {
+            left_x[y] = std::max(left_x[y], left->pts[i].x);
+        }
+    }
+    for(int i = 0; i < right->step; ++i)
+    {
+        const int y = right->pts[i].y;
+        if(y >= 0 && y < RAW_H)
+        {
+            right_x[y] = std::min(right_x[y], right->pts[i].x);
+        }
+    }
+    for(int y = 0; y < RAW_H; ++y)
+    {
+        if(left_x[y] >= 0 && right_x[y] < RAW_W && left_x[y] >= right_x[y])
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+int trace_identity_reject_bits(const runtime_t *rt, int left_ok, int right_ok)
+{
+    if(rt == nullptr)
+    {
+        return TRACE_IDENTITY_REJECT_NONE;
+    }
+
+    int reject = TRACE_IDENTITY_REJECT_NONE;
+    int left_min = -1;
+    int left_max = -1;
+    int right_min = -1;
+    int right_max = -1;
+    trace_x_range(&rt->left_trace, &left_min, &left_max);
+    trace_x_range(&rt->right_trace, &right_min, &right_max);
+
+    if(left_ok && (rt->seed_state & 2) && rt->seeds.right.x >= 0 && left_max >= rt->seeds.right.x)
+    {
+        reject |= TRACE_IDENTITY_REJECT_LEFT_PASSED_RIGHT_SEED;
+    }
+    if(right_ok && (rt->seed_state & 1) && rt->seeds.left.x >= 0 && right_min <= rt->seeds.left.x)
+    {
+        reject |= TRACE_IDENTITY_REJECT_RIGHT_PASSED_LEFT_SEED;
+    }
+    if(left_ok && right_ok && traces_cross_on_same_row(&rt->left_trace, &rt->right_trace))
+    {
+        reject |= TRACE_IDENTITY_REJECT_ROW_CROSS;
+    }
+    return reject;
+}
+
 int publish_track_result(runtime_t *rt, const frame_mode_t *mode, int mid_ok, point_t ref)
 {
     const int min_mid_step = mode->element_action ? k_element_min_mid_step : k_min_border_step;
@@ -378,6 +472,22 @@ int trace_edges(runtime_t *rt, int *use_matrix)
     if(has_right_seed)
     {
         right_ok = trace_single(rt->gray, rt->seeds.right, 0, &rt->right_trace);
+    }
+
+    const int identity_reject = trace_identity_reject_bits(rt, left_ok, right_ok);
+    rt->track.trace_identity_reject = identity_reject;
+    if(identity_reject & TRACE_IDENTITY_REJECT_LEFT_PASSED_RIGHT_SEED)
+    {
+        left_ok = 0;
+    }
+    if(identity_reject & TRACE_IDENTITY_REJECT_RIGHT_PASSED_LEFT_SEED)
+    {
+        right_ok = 0;
+    }
+    if(identity_reject & TRACE_IDENTITY_REJECT_ROW_CROSS)
+    {
+        left_ok = 0;
+        right_ok = 0;
     }
 
     if(!left_ok)

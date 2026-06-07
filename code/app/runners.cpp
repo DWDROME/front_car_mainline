@@ -176,7 +176,7 @@ void print_replay_frame(int frame, const runtime_t *rt)
                 "xst=%d/%d/%d/%d/%d/%d@%d,%d "
                 "xfar=%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d "
                 "xmid=%d/%d/%d/%d/%d/%d "
-                "track=%d mid=%d guide=%.2f reject=%d\n",
+                "track=%d mid=%d guide=%.2f reject=%d idrej=%d\n",
                 frame,
                 track_line_found(rt),
                 rt->ring.kind,
@@ -238,7 +238,8 @@ void print_replay_frame(int frame, const runtime_t *rt)
                 rt->track.track_type,
                 rt->track.mid.step,
                 rt->track.guide_error,
-                rt->track.reject_reason);
+                rt->track.reject_reason,
+                rt->track.trace_identity_reject);
 }
 
 //-------------------------------------------------------------------------------------------------------------------
