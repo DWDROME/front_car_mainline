@@ -247,10 +247,8 @@ void publish_completed_live_frame(uint32_t frame_id, const runtime_t *rt, int di
 {
     // 同步点：识别、反馈读取、控制求解和电机下发都完成后，调试输出只消费这一份 runtime 快照。
     const uint64_t t0 = (prof != nullptr && prof->enabled) ? monotonic_us() : 0;
-    if((frame_id % static_cast<uint32_t>(div)) == 0U)
-    {
-        print_live(frame_id, rt);
-    }
+    (void)div;
+    print_live(frame_id, rt);
     if(prof != nullptr && prof->enabled)
     {
         const uint64_t t1 = monotonic_us();

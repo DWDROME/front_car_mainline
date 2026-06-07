@@ -6,12 +6,191 @@
 #include "tracking/perspective.hpp"
 
 #include <cmath>
+#include <array>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
+#include <fcntl.h>
+#include <unistd.h>
 
 namespace
 {
+constexpr const char *k_live_beep_path = "/dev/zf_gpio_beep";
+constexpr int k_live_beep_ms = 35;
+constexpr int k_report_near_lost_step = 5;
+constexpr int k_report_near_recover_step = 20;
+
+using live_state_signature_t = std::array<int, 43>;
+
+uint64_t report_monotonic_us()
+{
+    using clock = std::chrono::steady_clock;
+    return static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::microseconds>(clock::now().time_since_epoch()).count());
+}
+
+int live_beep_fd()
+{
+    static int fd = -2;
+    if(fd != -2)
+    {
+        return fd;
+    }
+
+    const char *enabled = std::getenv("FRONT_CAR_STATE_BEEP");
+    if(enabled != nullptr && enabled[0] == '0')
+    {
+        fd = -1;
+        return fd;
+    }
+
+    const char *path = std::getenv("FRONT_CAR_BEEP_PATH");
+    if(path == nullptr || path[0] == '\0')
+    {
+        path = k_live_beep_path;
+    }
+    fd = open(path, O_WRONLY | O_CLOEXEC);
+    return fd;
+}
+
+uint64_t &live_beep_off_at_us()
+{
+    static uint64_t value = 0;
+    return value;
+}
+
+void write_live_beep_level(int level)
+{
+    const int fd = live_beep_fd();
+    if(fd < 0)
+    {
+        return;
+    }
+
+    char c = level ? '1' : '0';
+    lseek(fd, 0, SEEK_SET);
+    const ssize_t written = write(fd, &c, 1);
+    (void)written;
+}
+
+void live_beep_tick()
+{
+    uint64_t &off_at_us = live_beep_off_at_us();
+    if(off_at_us == 0)
+    {
+        return;
+    }
+
+    if(report_monotonic_us() >= off_at_us)
+    {
+        write_live_beep_level(0);
+        off_at_us = 0;
+    }
+}
+
+void live_beep_once()
+{
+    if(live_beep_fd() < 0)
+    {
+        return;
+    }
+
+    write_live_beep_level(1);
+    uint64_t &off_at_us = live_beep_off_at_us();
+    off_at_us = report_monotonic_us() + static_cast<uint64_t>(k_live_beep_ms) * 1000U;
+}
+
+int near_step_bucket(int step)
+{
+    if(step < k_report_near_lost_step)
+    {
+        return 0;
+    }
+    if(step > k_report_near_recover_step)
+    {
+        return 2;
+    }
+    return 1;
+}
+
+int positive_bucket(int value)
+{
+    return value > 0 ? 1 : 0;
+}
+
+live_state_signature_t make_live_state_signature(const runtime_t *rt)
+{
+    const auto &tr = rt->track;
+    const auto &cz = rt->cross;
+    return {
+        track_line_found(rt),
+        rt->ring.kind,
+        rt->ring.state,
+        cz.state,
+        cz.track_type,
+        positive_bucket(cz.not_have_line),
+        rt->zebra.detected,
+        rt->zebra.stop_line,
+        tr.reject_reason,
+        tr.track_type,
+        positive_bucket(tr.mid.step),
+        tr.action_cross_state0,
+        tr.action_base_ready,
+        tr.mode_cross_far,
+        tr.mode_cross_near,
+        tr.mode_ring_active,
+        tr.mode_work_track_type,
+        near_step_bucket(cz.left_near_step),
+        near_step_bucket(cz.right_near_step),
+        cz.both_near_lost,
+        cz.both_near_recover,
+        cz.exit_ready,
+        cz.left_far_found,
+        cz.right_far_found,
+        cz.left_far_ok,
+        cz.right_far_ok,
+        cz.left_far_fail,
+        cz.right_far_fail,
+        positive_bucket(cz.left_num),
+        positive_bucket(cz.right_num),
+        cz.left_l >= 0 ? 1 : 0,
+        cz.right_l >= 0 ? 1 : 0,
+        tr.cross_mid_side,
+        tr.cross_mid_fail,
+        positive_bucket(tr.cross_mid_out),
+        tr.left.l_found,
+        tr.left.l_ok,
+        tr.left.l_pair_ok,
+        tr.left.l_pair_state,
+        tr.right.l_found,
+        tr.right.l_ok,
+        tr.right.l_pair_ok,
+        tr.right.l_pair_state
+    };
+}
+
+int live_state_changed(const live_state_signature_t &sig)
+{
+    static int initialized = 0;
+    static live_state_signature_t last = {};
+    if(!initialized)
+    {
+        last = sig;
+        initialized = 1;
+        return 1;
+    }
+
+    if(sig == last)
+    {
+        return 0;
+    }
+
+    last = sig;
+    return 1;
+}
+
 // 计算两点之间的欧式距离，用于报告里的 seed IPM 诊断。
 double point_distance(point_t a, point_t b)
 {
@@ -229,6 +408,23 @@ void print_detail(const runtime_t *rt)
 //-------------------------------------------------------------------------------------------------------------------
 void print_live(uint32_t frame_id, const runtime_t *rt)
 {
+    live_beep_tick();
+    if(rt == nullptr)
+    {
+        return;
+    }
+
+    const live_state_signature_t sig = make_live_state_signature(rt);
+    const int changed = live_state_changed(sig);
+    if(!changed)
+    {
+        return;
+    }
+    if(frame_id != 0U)
+    {
+        live_beep_once();
+    }
+
     const auto &sd = rt->seeds;
     const auto &tr = rt->track;
     const auto &tr0 = rt->left_trace;
@@ -328,6 +524,7 @@ void print_live(uint32_t frame_id, const runtime_t *rt)
                 rt->control.target_yaw_rate_mrad_s,
                 rt->control.left_duty,
                 rt->control.right_duty);
+    std::fflush(stdout);
 }
 
 //-------------------------------------------------------------------------------------------------------------------
