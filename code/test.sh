@@ -77,6 +77,10 @@ fi
 
 make -j"${MAKE_JOBS}"
 
+if [[ ${HOST} -eq 1 ]]; then
+    "${OUT}/cross_farline_reuse_test"
+fi
+
 if [[ ${UPLOAD} -eq 1 ]]; then
     TMP="/tmp"
     ssh "${REMOTE_USER}@${REMOTE_IP}" "mkdir -p ${REMOTE_PATH}"

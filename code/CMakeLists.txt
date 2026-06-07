@@ -108,3 +108,23 @@ target_link_libraries(
     pthread
     m
 )
+
+if(NOT SMARTCAR_CROSS_COMPILE)
+    add_executable(cross_farline_reuse_test
+        test/cross_farline_reuse_test.cpp
+        tracking/imgproc.cpp
+        tracking/perspective.cpp
+        tracking/ipm_table_generated.cpp
+    )
+    target_include_directories(cross_farline_reuse_test PRIVATE
+        ${OpenCV_INCLUDE_DIRS}
+        .
+        ..
+        tracking
+    )
+    target_link_libraries(
+        cross_farline_reuse_test
+        ${OpenCV_LIBS}
+        m
+    )
+endif()
