@@ -36,10 +36,13 @@ const double k_ring_first_side_min = 0.95;
 const double k_ring_second_side_min = 0.3;
 const double k_ring_first_line_degree = 0.995;
 const double k_ring_second_line_degree = 0.999;
-const int k_ring_degree_min_rows = 12;
 const int k_ring_degree_first_start_y = RAW_H - 10;
 const int k_ring_degree_second_start_y = RAW_H - 20;
 const int k_ring_degree_end_y = 70;
+const int k_ring_otsu_add = 3; // 参考版注释：仿真 25，真实车 3。
+const int k_ring_top_fill = 30;
+const int k_ring_black_region_area = 25;
+const int k_ring_inner_border = 30;
 const int64_t k_ring_first_confirm_encoder = k_encoder_per_meter * 8 / 10; // 参考版 set_ED(0.8f)
 const int64_t k_ring_second_confirm_encoder = k_encoder_per_meter * 15 / 10; // 参考版 set_ED(1.5f)
 const int64_t k_ring_false_exit_encoder = k_encoder_per_meter * 13 / 10; // 参考版非圆环路径 set_ED(1.3f)
@@ -57,20 +60,28 @@ struct ring_scan_t
     int white;
 };
 
-int ring_pixel_is_white(const uint8_t gray[RAW_H][RAW_W], int x, int y)
+struct ring_reference_frame_t
 {
-    if(gray == nullptr || x < 0 || x >= RAW_W || y < 0 || y >= RAW_H)
-    {
-        return 0;
-    }
-    const int th = calc_th(gray, x, y);
-    return gray[y][x] > th;
+    uint8_t bw[RAW_H][RAW_W];
+    uint8_t aib[RAW_H][RAW_W];
+    int leftedge[RAW_H];
+    int rightedge[RAW_H];
+};
+
+int g_ring_queue[RAW_H * RAW_W];
+uint8_t g_ring_seen[RAW_H][RAW_W];
+uint8_t g_ring_mask[RAW_H][RAW_W];
+uint16_t g_ring_distance[RAW_H][RAW_W];
+
+int ring_pixel_is_white(uint8_t pixel)
+{
+    return pixel != 0 && pixel != 9 && pixel != 6;
 }
 
-ring_scan_t ring_scan_line_blank(const uint8_t gray[RAW_H][RAW_W], int x0, int y0, int x1, int y1)
+ring_scan_t ring_scan_line_blank(const uint8_t image[RAW_H][RAW_W], int x0, int y0, int x1, int y1)
 {
     ring_scan_t out = {0.0, -1, -1, 0, 0};
-    if(gray == nullptr)
+    if(image == nullptr)
     {
         return out;
     }
@@ -88,7 +99,7 @@ ring_scan_t ring_scan_line_blank(const uint8_t gray[RAW_H][RAW_W], int x0, int y
         if(x0 >= 0 && x0 < RAW_W && y0 >= 0 && y0 < RAW_H)
         {
             out.total++;
-            if(ring_pixel_is_white(gray, x0, y0))
+            if(ring_pixel_is_white(image[y0][x0]))
             {
                 out.white++;
                 sum_x += x0;
@@ -126,6 +137,391 @@ ring_scan_t ring_scan_line_blank(const uint8_t gray[RAW_H][RAW_W], int x0, int y
     return out;
 }
 
+void ring_binarize_like_reference(const uint8_t gray[RAW_H][RAW_W], uint8_t bw[RAW_H][RAW_W])
+{
+    int hist[256] = {};
+    const int total = RAW_W * RAW_H;
+    for(int y = 0; y < RAW_H; ++y)
+    {
+        for(int x = 0; x < RAW_W; ++x)
+        {
+            hist[gray[y][x]]++;
+        }
+    }
+
+    double pixel_prob[256] = {};
+    double global_mean = 0.0;
+    for(int i = 0; i < 256; ++i)
+    {
+        pixel_prob[i] = (double)hist[i] / (double)total;
+        global_mean += (double)i * pixel_prob[i];
+    }
+
+    int best = 0;
+    double max_variance = 0.0;
+    double w0 = 0.0;
+    double mean0 = 0.0;
+    for(int t = 0; t < 256; ++t)
+    {
+        w0 += pixel_prob[t];
+        mean0 += (double)t * pixel_prob[t];
+        if(w0 <= 0.0 || w0 >= 1.0)
+        {
+            continue;
+        }
+
+        const double mean1 = (global_mean - mean0) / (1.0 - w0);
+        const double d = mean0 / w0 - mean1;
+        const double variance = w0 * (1.0 - w0) * d * d;
+        if(variance > max_variance)
+        {
+            max_variance = variance;
+            best = t;
+        }
+    }
+
+    const int th = clip_i(best + k_ring_otsu_add, 0, 255);
+    for(int y = 0; y < RAW_H; ++y)
+    {
+        for(int x = 0; x < RAW_W; ++x)
+        {
+            int v = gray[y][x];
+            if(y < k_ring_top_fill)
+            {
+                v = 0;
+            }
+            bw[y][x] = (v > th) ? 1 : 0;
+        }
+    }
+}
+
+void ring_flood_fill_like_reference(uint8_t image[RAW_H][RAW_W], ring_scan_t bottom)
+{
+    int start_x = bottom.x;
+    int start_y = bottom.y;
+    int found = 0;
+    for(int dx = -9; dx <= 9 && !found; ++dx)
+    {
+        for(int dy = -18; dy <= 0; ++dy)
+        {
+            const int nx = start_x + dx;
+            const int ny = start_y + dy;
+            if(nx >= 0 && nx < RAW_W && ny >= 0 && ny < RAW_H && image[ny][nx] != 0)
+            {
+                start_x = nx;
+                start_y = ny;
+                found = 1;
+                break;
+            }
+        }
+    }
+    if(!found)
+    {
+        return;
+    }
+
+    const uint8_t fill_value = image[start_y][start_x] & 0x7F;
+    int head = 0;
+    int tail = 0;
+    image[start_y][start_x] |= 0x80;
+    g_ring_queue[tail++] = start_y * RAW_W + start_x;
+    while(head < tail)
+    {
+        const int index = g_ring_queue[head++];
+        const int x = index % RAW_W;
+        const int y = index / RAW_W;
+        const int dx[4] = {0, -1, 1, 0};
+        const int dy[4] = {-1, 0, 0, 1};
+        for(int dir = 0; dir < 4; ++dir)
+        {
+            const int nx = x + dx[dir];
+            const int ny = y + dy[dir];
+            if(nx < 0 || nx >= RAW_W || ny < 0 || ny >= RAW_H)
+            {
+                continue;
+            }
+            if((image[ny][nx] & 0x80) == 0 && (image[ny][nx] & 0x7F) == fill_value)
+            {
+                image[ny][nx] |= 0x80;
+                if(tail < RAW_W * RAW_H)
+                {
+                    g_ring_queue[tail++] = ny * RAW_W + nx;
+                }
+            }
+        }
+    }
+
+    for(int y = 0; y < RAW_H; ++y)
+    {
+        for(int x = 0; x < RAW_W; ++x)
+        {
+            if(image[y][x] & 0x80)
+            {
+                image[y][x] = fill_value;
+            }
+            else
+            {
+                const uint8_t original = image[y][x] & 0x7F;
+                image[y][x] = (original <= 1) ? 0 : original;
+            }
+        }
+    }
+}
+
+void ring_remove_small_black_like_reference(uint8_t image[RAW_H][RAW_W])
+{
+    std::memset(g_ring_seen, 0, sizeof(g_ring_seen));
+    const int dx[4] = {0, -1, 1, 0};
+    const int dy[4] = {-1, 0, 0, 1};
+
+    for(int y = 0; y < RAW_H; ++y)
+    {
+        for(int x = 0; x < RAW_W; ++x)
+        {
+            if(image[y][x] != 0 || g_ring_seen[y][x])
+            {
+                continue;
+            }
+
+            int head = 0;
+            int tail = 0;
+            g_ring_seen[y][x] = 1;
+            g_ring_queue[tail++] = y * RAW_W + x;
+            while(head < tail)
+            {
+                const int index = g_ring_queue[head++];
+                const int cx = index % RAW_W;
+                const int cy = index / RAW_W;
+                for(int dir = 0; dir < 4; ++dir)
+                {
+                    const int nx = cx + dx[dir];
+                    const int ny = cy + dy[dir];
+                    if(nx < 0 || nx >= RAW_W || ny < 0 || ny >= RAW_H)
+                    {
+                        continue;
+                    }
+                    if(image[ny][nx] == 0 && !g_ring_seen[ny][nx])
+                    {
+                        g_ring_seen[ny][nx] = 1;
+                        if(tail < RAW_W * RAW_H)
+                        {
+                            g_ring_queue[tail++] = ny * RAW_W + nx;
+                        }
+                    }
+                }
+            }
+
+            if(tail < k_ring_black_region_area)
+            {
+                for(int i = 0; i < tail; ++i)
+                {
+                    const int index = g_ring_queue[i];
+                    image[index / RAW_W][index % RAW_W] = 1;
+                }
+            }
+        }
+    }
+}
+
+void ring_apply_inner_border_like_reference(uint8_t image[RAW_H][RAW_W])
+{
+    const uint16_t inf = 10000;
+    for(int y = 0; y < RAW_H; ++y)
+    {
+        for(int x = 0; x < RAW_W; ++x)
+        {
+            g_ring_mask[y][x] = (image[y][x] != 0 && image[y][x] != 9) ? 1 : 0;
+            g_ring_distance[y][x] = g_ring_mask[y][x] ? inf : 0;
+        }
+    }
+
+    for(int y = 0; y < RAW_H; ++y)
+    {
+        for(int x = 0; x < RAW_W; ++x)
+        {
+            if(!g_ring_mask[y][x])
+            {
+                continue;
+            }
+            if(y > 0)
+            {
+                g_ring_distance[y][x] = std::min<uint16_t>(g_ring_distance[y][x],
+                                                           g_ring_distance[y - 1][x] + 1);
+            }
+            if(x > 0)
+            {
+                g_ring_distance[y][x] = std::min<uint16_t>(g_ring_distance[y][x],
+                                                           g_ring_distance[y][x - 1] + 1);
+            }
+        }
+    }
+
+    for(int y = RAW_H - 1; y >= 0; --y)
+    {
+        for(int x = RAW_W - 1; x >= 0; --x)
+        {
+            if(!g_ring_mask[y][x])
+            {
+                continue;
+            }
+            if(y < RAW_H - 1)
+            {
+                g_ring_distance[y][x] = std::min<uint16_t>(g_ring_distance[y][x],
+                                                           g_ring_distance[y + 1][x] + 1);
+            }
+            if(x < RAW_W - 1)
+            {
+                g_ring_distance[y][x] = std::min<uint16_t>(g_ring_distance[y][x],
+                                                           g_ring_distance[y][x + 1] + 1);
+            }
+        }
+    }
+
+    for(int y = 0; y < RAW_H; ++y)
+    {
+        for(int x = 0; x < RAW_W; ++x)
+        {
+            if((g_ring_distance[y][x] <= k_ring_inner_border || x == RAW_W - 1) &&
+               image[y][x] != 0)
+            {
+                image[y][x] = 9;
+            }
+        }
+    }
+}
+
+int ring_has_background_neighbor(uint8_t image[RAW_H][RAW_W], int y, int x)
+{
+    for(int dy = -1; dy <= 1; ++dy)
+    {
+        for(int dx = -1; dx <= 1; ++dx)
+        {
+            const int nx = x + dx;
+            const int ny = y + dy;
+            if(nx >= 0 && nx < RAW_W && ny >= 0 && ny < RAW_H)
+            {
+                if(image[ny][nx] == 0 || image[ny][nx] == 9)
+                {
+                    return 1;
+                }
+            }
+        }
+    }
+    return 0;
+}
+
+void ring_detect_track_boundaries_like_reference(const uint8_t aib[RAW_H][RAW_W],
+                                                 int leftedge[RAW_H],
+                                                 int rightedge[RAW_H])
+{
+    uint8_t work[RAW_H][RAW_W];
+    std::memcpy(work, aib, sizeof(work));
+    for(int i = 0; i < RAW_H; ++i)
+    {
+        leftedge[i] = -1;
+        rightedge[i] = RAW_W;
+    }
+
+    const int dx[8] = {0, -1, 1, -1, 1, -1, 1, 0};
+    const int dy[8] = {-1, -1, -1, 0, 0, 1, 1, 1};
+    for(int i = k_ring_degree_first_start_y; i > 60; --i)
+    {
+        if(leftedge[i] == -1)
+        {
+            int found = 0;
+            for(int j = 4; j < RAW_W; ++j)
+            {
+                if(work[i][j] == 1 &&
+                   ((work[i][j - 1] == 0 || work[i][j - 1] == 9) &&
+                    (work[i][j - 2] == 0 || work[i][j - 2] == 9)))
+                {
+                    leftedge[i] = j;
+                    work[i][j] = 4;
+                    found = 1;
+                    break;
+                }
+            }
+            if(!found)
+            {
+                leftedge[i] = 0;
+                work[i][0] = 4;
+            }
+        }
+
+        if(rightedge[i] == RAW_W)
+        {
+            int found = 0;
+            for(int j = RAW_W - 5; j > 0; --j)
+            {
+                if(work[i][j] == 1 &&
+                   ((work[i][j + 1] == 0 || work[i][j + 1] == 9) &&
+                    (work[i][j + 2] == 0 || work[i][j + 2] == 9)))
+                {
+                    rightedge[i] = j;
+                    work[i][j] = 2;
+                    found = 1;
+                    break;
+                }
+            }
+            if(!found)
+            {
+                rightedge[i] = RAW_W - 1;
+                work[i][RAW_W - 1] = 2;
+            }
+        }
+
+        if(leftedge[i] > 0)
+        {
+            for(int dir = 0; dir < 8; ++dir)
+            {
+                const int nx = leftedge[i] + dx[dir];
+                const int ny = i + dy[dir];
+                if(nx >= 0 && nx < RAW_W && ny >= 0 && ny < RAW_H &&
+                   work[ny][nx] == 1 &&
+                   ring_has_background_neighbor(work, ny, nx))
+                {
+                    leftedge[ny] = nx;
+                    work[ny][nx] = 4;
+                    break;
+                }
+            }
+        }
+
+        if(rightedge[i] < RAW_W - 1)
+        {
+            for(int dir = 0; dir < 8; ++dir)
+            {
+                const int nx = rightedge[i] + dx[dir];
+                const int ny = i + dy[dir];
+                if(nx >= 0 && nx < RAW_W && ny >= 0 && ny < RAW_H &&
+                   work[ny][nx] == 1 &&
+                   ring_has_background_neighbor(work, ny, nx))
+                {
+                    rightedge[ny] = nx;
+                    work[ny][nx] = 2;
+                    break;
+                }
+            }
+        }
+    }
+}
+
+void ring_build_reference_frame(const uint8_t gray[RAW_H][RAW_W], ring_reference_frame_t *frame)
+{
+    if(gray == nullptr || frame == nullptr)
+    {
+        return;
+    }
+
+    ring_binarize_like_reference(gray, frame->bw);
+    const ring_scan_t bottom = ring_scan_line_blank(frame->bw, 0, RAW_H - 1, RAW_W - 1, RAW_H - 1);
+    ring_flood_fill_like_reference(frame->bw, bottom);
+    std::memcpy(frame->aib, frame->bw, sizeof(frame->aib));
+    ring_remove_small_black_like_reference(frame->aib);
+    ring_apply_inner_border_like_reference(frame->aib);
+    ring_detect_track_boundaries_like_reference(frame->aib, frame->leftedge, frame->rightedge);
+}
+
 int ring_monitor_y(int second_check)
 {
     if(second_check)
@@ -137,33 +533,11 @@ int ring_monitor_y(int second_check)
            k_ring_first_find_pos_den;
 }
 
-double boundary_line_degree_like_reference(const boundary_t *bd, int left_boundary, int start_y, int end_y)
+double ring_line_degree_like_reference(const int line[RAW_H], int start_y, int end_y)
 {
-    (void)left_boundary;
-    int line[RAW_H];
-    int valid[RAW_H];
-    for(int i = 0; i < RAW_H; ++i)
-    {
-        line[i] = 0;
-        valid[i] = 0;
-    }
-
-    if(bd != nullptr)
-    {
-        for(int i = 0; i < bd->original_step; ++i)
-        {
-            const point_t p = bd->original_pts[i];
-            if(p.y >= 0 && p.y < RAW_H && p.x >= 0 && p.x < RAW_W)
-            {
-                line[p.y] = p.x;
-                valid[p.y] = 1;
-            }
-        }
-    }
-
     start_y = clip_i(start_y, 0, RAW_H - 1);
     end_y = clip_i(end_y, 0, RAW_H - 1);
-    if(start_y <= end_y)
+    if(line == nullptr || start_y <= end_y)
     {
         return 0.0;
     }
@@ -176,10 +550,6 @@ double boundary_line_degree_like_reference(const boundary_t *bd, int left_bounda
     int count = 0;
     for(int y = start_y; y > end_y; --y)
     {
-        if(!valid[y])
-        {
-            continue;
-        }
         const double yy = (double)y;
         const double xx = (double)line[y];
         sum_y += yy;
@@ -190,7 +560,7 @@ double boundary_line_degree_like_reference(const boundary_t *bd, int left_bounda
         count++;
     }
 
-    if(count < k_ring_degree_min_rows)
+    if(count < 2)
     {
         return 0.0;
     }
@@ -207,15 +577,9 @@ double boundary_line_degree_like_reference(const boundary_t *bd, int left_bounda
     return numerator / denom;
 }
 
-int boundary_degree_ok_like_reference(const boundary_t *bd,
-                                      int left_boundary,
-                                      int start_y,
-                                      double threshold)
+int ring_degree_ok_like_reference(const int line[RAW_H], int start_y, double threshold)
 {
-    const double degree = boundary_line_degree_like_reference(bd,
-                                                             left_boundary,
-                                                             start_y,
-                                                             k_ring_degree_end_y);
+    const double degree = ring_line_degree_like_reference(line, start_y, k_ring_degree_end_y);
     return std::fabs(degree) > threshold;
 }
 
@@ -226,22 +590,26 @@ int check_ring_like_reference(const runtime_t *rt, int mode)
         return RING_KIND_NONE;
     }
 
+    static ring_reference_frame_t frame;
+    ring_build_reference_frame(rt->gray, &frame);
+
     const int second_check = (mode == RING_KIND_LEFT || mode == RING_KIND_RIGHT);
     const int monitor_y = ring_monitor_y(second_check);
     const int draw_close = second_check ? 1 : 0;
     const int right_x = RAW_W - 2 - draw_close;
     const int left_x = 1;
-    const ring_scan_t rcr = ring_scan_line_blank(rt->gray,
+    const uint8_t (*side_image)[RAW_W] = second_check ? frame.bw : frame.aib;
+    const ring_scan_t rcr = ring_scan_line_blank(side_image,
                                                  right_x,
                                                  monitor_y - k_ring_find_line_len,
                                                  right_x,
                                                  monitor_y);
-    const ring_scan_t lcr = ring_scan_line_blank(rt->gray,
+    const ring_scan_t lcr = ring_scan_line_blank(side_image,
                                                  left_x,
                                                  monitor_y - k_ring_find_line_len,
                                                  left_x,
                                                  monitor_y);
-    const ring_scan_t middle = ring_scan_line_blank(rt->gray,
+    const ring_scan_t middle = ring_scan_line_blank(frame.aib,
                                                    0,
                                                    k_ring_forward_line,
                                                    RAW_W - 1,
@@ -259,19 +627,17 @@ int check_ring_like_reference(const runtime_t *rt, int mode)
 
         if(rcr.proportion > k_ring_first_side_min &&
            lcr.proportion == 0.0 &&
-           boundary_degree_ok_like_reference(&rt->track.left,
-                                             1,
-                                             k_ring_degree_first_start_y,
-                                             k_ring_first_line_degree))
+           ring_degree_ok_like_reference(frame.leftedge,
+                                         k_ring_degree_first_start_y,
+                                         k_ring_first_line_degree))
         {
             return RING_KIND_RIGHT;
         }
         if(lcr.proportion > k_ring_first_side_min &&
            rcr.proportion == 0.0 &&
-           boundary_degree_ok_like_reference(&rt->track.right,
-                                             0,
-                                             k_ring_degree_first_start_y,
-                                             k_ring_first_line_degree))
+           ring_degree_ok_like_reference(frame.rightedge,
+                                         k_ring_degree_first_start_y,
+                                         k_ring_first_line_degree))
         {
             return RING_KIND_LEFT;
         }
@@ -286,20 +652,18 @@ int check_ring_like_reference(const runtime_t *rt, int mode)
     if(mode == RING_KIND_RIGHT &&
        rcr.proportion > k_ring_second_side_min &&
        lcr.proportion == 0.0 &&
-       boundary_degree_ok_like_reference(&rt->track.left,
-                                         1,
-                                         k_ring_degree_second_start_y,
-                                         k_ring_second_line_degree))
+       ring_degree_ok_like_reference(frame.leftedge,
+                                     k_ring_degree_second_start_y,
+                                     k_ring_second_line_degree))
     {
         return RING_KIND_RIGHT;
     }
     if(mode == RING_KIND_LEFT &&
        lcr.proportion > k_ring_second_side_min &&
        rcr.proportion == 0.0 &&
-       boundary_degree_ok_like_reference(&rt->track.right,
-                                         0,
-                                         k_ring_degree_second_start_y,
-                                         k_ring_second_line_degree))
+       ring_degree_ok_like_reference(frame.rightedge,
+                                     k_ring_degree_second_start_y,
+                                     k_ring_second_line_degree))
     {
         return RING_KIND_LEFT;
     }
@@ -337,17 +701,19 @@ int ring_pending_straight_ok(const runtime_t *rt)
     }
     if(rt->ring.pending_kind == RING_KIND_LEFT)
     {
-        return boundary_degree_ok_like_reference(&rt->track.right,
-                                                 0,
-                                                 k_ring_degree_first_start_y,
-                                                 k_ring_first_line_degree);
+        static ring_reference_frame_t frame;
+        ring_build_reference_frame(rt->gray, &frame);
+        return ring_degree_ok_like_reference(frame.rightedge,
+                                             k_ring_degree_first_start_y,
+                                             k_ring_first_line_degree);
     }
     if(rt->ring.pending_kind == RING_KIND_RIGHT)
     {
-        return boundary_degree_ok_like_reference(&rt->track.left,
-                                                 1,
-                                                 k_ring_degree_first_start_y,
-                                                 k_ring_first_line_degree);
+        static ring_reference_frame_t frame;
+        ring_build_reference_frame(rt->gray, &frame);
+        return ring_degree_ok_like_reference(frame.leftedge,
+                                             k_ring_degree_first_start_y,
+                                             k_ring_first_line_degree);
     }
     return 0;
 }
@@ -628,7 +994,7 @@ void ring_process(runtime_t *rt)
 
         if(rt->ring.pending_stage == k_ring_pending_second)
         {
-            if(rt->encoder_total - rt->ring.pending_encoder0 >= k_ring_second_confirm_encoder)
+            if(rt->encoder_total - rt->ring.pending_encoder0 > k_ring_second_confirm_encoder)
             {
                 clear_ring_pending(rt->ring);
                 return;
