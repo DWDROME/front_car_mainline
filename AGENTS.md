@@ -45,3 +45,7 @@ Managed by Trellis. Edits outside this block are preserved; edits inside may be 
 - Tracking fixes must be evidence-backed: compare the reference version, inspect
   the current code and recent diff, then run targeted validation. Do not reuse
   last-frame midlines or drift thresholds without a documented reason.
+- Every tracking behavior change must include a fixed rationale table in the
+  task research note or final handoff: `参考版怎么样`, `当前代码差异`,
+  `我修改什么`, `原因`, and `不是兜底的证据`. If no direct reference
+  equivalent exists, say that explicitly instead of implying one.

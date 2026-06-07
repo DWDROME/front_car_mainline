@@ -203,7 +203,7 @@ struct track_result_t
     int mode_work_track_type;
     point_t control_ref;
 
-    // trace 左右身份拒绝位：只记录当前帧证据，不复用上一帧中线。
+    // 左右身份拒绝位：只记录当前帧证据，不复用上一帧中线。
     int trace_identity_reject;
 };
 
@@ -241,6 +241,7 @@ enum
     TRACE_IDENTITY_REJECT_LEFT_PASSED_RIGHT_SEED = 1,
     TRACE_IDENTITY_REJECT_RIGHT_PASSED_LEFT_SEED = 2,
     TRACE_IDENTITY_REJECT_ROW_CROSS = 4,
+    TRACE_IDENTITY_REJECT_IPM_SIDE_CROSS = 8,
 };
 
 enum

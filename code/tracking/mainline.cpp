@@ -43,6 +43,8 @@ const int k_track_approx_num = 5;      // 单边外扩时用前后各 5 个点�
 // 元素帧(十字/环岛)允许短中线继续输出；普通帧仍按 k_min_border_step + 前瞻硬停。
 const int k_element_min_mid_step = 3;  // 元素态允许的最短有效中线点数
 const int k_dual_min_step = 12;        // 左右都达到此点数才算"两边都够长"
+const int k_pair_max_y_diff = 8;        // 左右工作点配对时允许的 y 近邻误差
+const int k_pair_min_count = 10;        // 最小可判定配对数；不足则不拒绝
 const double k_lookahead_min = 15.0;   // 预瞄距离下限，单位 累计弧长像素
 const double k_lookahead_max = 80.0;   // 预瞄距离上限，单位 累计弧长像素
 // RT1064 误差计算使用 0.2m 前向偏置。当前 ROAD_HALF_WIDTH 约对应 0.225m，
@@ -81,6 +83,10 @@ void clear_rpts();
 void build_rpts0(const point_t *pts, int num, const double matrix[9], int use_matrix);
 void build_rpts1(const point_t *pts, int num, const double matrix[9], int use_matrix);
 int pick_track_type();
+int work_pair_order_ok(const double left[POINT_MAX][2],
+                       int left_num,
+                       const double right[POINT_MAX][2],
+                       int right_num);
 int solve_cross_mid(runtime_t *rt, point_t ref);
 int build_zebra_scan_midline(runtime_t *rt, point_t ref, midline_t *mid);
 double lookahead_error(midline_t *mid, int look, point_t ref);
@@ -130,6 +136,15 @@ int build_frame_boundaries_and_candidates(runtime_t *rt, int use_matrix)
                 clip_i(rt->track.right.original_step, 0, POINT_MAX),
                 rt->matrix,
                 use_matrix);
+    if(!work_pair_order_ok(rpts0s, rpts0s_num, rpts1s, rpts1s_num))
+    {
+        rt->track.trace_identity_reject |= TRACE_IDENTITY_REJECT_IPM_SIDE_CROSS;
+        rt->track.reject_reason = TRACK_REJECT_TRACE_FILTERED;
+        std::memset(&rt->track.left, 0, sizeof(rt->track.left));
+        std::memset(&rt->track.right, 0, sizeof(rt->track.right));
+        clear_rpts();
+        return TRACK_TYPE_NONE;
+    }
     refresh_boundary_corners(&rt->track.left,
                              &rt->track.right,
                              rpts0s,
@@ -812,6 +827,64 @@ int pick_track_type()
     return TRACK_TYPE_NONE;
 }
 
+// 双侧工作点顺序复核：只在当前帧配对点足够时查左右反序，不查宽度、不补线。
+int work_pair_order_ok(const double left[POINT_MAX][2],
+                       int left_num,
+                       const double right[POINT_MAX][2],
+                       int right_num)
+{
+    if(left == nullptr || right == nullptr)
+    {
+        return 1;
+    }
+    if(left_num < k_dual_min_step || right_num < k_dual_min_step)
+    {
+        return 1;
+    }
+
+    int pair_count = 0;
+    int bad_order = 0;
+    for(int i = 0; i < left_num; ++i)
+    {
+        if(left[i][0] < 0.0 || left[i][1] < 0.0)
+        {
+            continue;
+        }
+
+        int best = -1;
+        double best_dy = k_pair_max_y_diff + 1.0;
+        for(int j = 0; j < right_num; ++j)
+        {
+            if(right[j][0] < 0.0 || right[j][1] < 0.0)
+            {
+                continue;
+            }
+            const double dy = std::fabs(left[i][1] - right[j][1]);
+            if(dy < best_dy)
+            {
+                best_dy = dy;
+                best = j;
+            }
+        }
+        if(best < 0 || best_dy > k_pair_max_y_diff)
+        {
+            continue;
+        }
+
+        if(left[i][0] >= right[best][0])
+        {
+            bad_order = 1;
+        }
+        ++pair_count;
+    }
+
+    if(pair_count < k_pair_min_count)
+    {
+        return 1;
+    }
+    return !bad_order;
+}
+
 // 在控制中线上取最接近 look 的点，按 RT1064 的纯跟踪误差形式输出角度误差，单位 degree。
 double lookahead_error(midline_t *mid, int look, point_t ref)
 {
@@ -978,9 +1051,22 @@ int tracking_process_frame(runtime_t *rt)
             // 搜索中心跟随：只用本帧追线成功后保留下来的 seed 结果更新下一帧起搜中心。
             update_search_center(rt);
             action.ordinary_track_type = build_frame_boundaries_and_candidates(rt, use_matrix);
-            snapshot_ring_frame_start_action(rt, &action);
-            element_process(rt);
-            action.base_candidates_ready = 1;
+            if(rt->track.trace_identity_reject & TRACE_IDENTITY_REJECT_IPM_SIDE_CROSS)
+            {
+                if(rt->cross.state != CROSS_STATE_IN)
+                {
+                    return 0;
+                }
+                // 反序近线已被清掉；CROSS_IN 只允许十字远线流程继续。
+                clear_rpts();
+                cross_process(rt);
+            }
+            else
+            {
+                snapshot_ring_frame_start_action(rt, &action);
+                element_process(rt);
+                action.base_candidates_ready = 1;
+            }
         }
 
     }
