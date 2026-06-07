@@ -19,3 +19,29 @@ If you're using Codex or another agent-capable tool, additional project-scoped h
 Managed by Trellis. Edits outside this block are preserved; edits inside may be overwritten by a future `trellis update`.
 
 <!-- TRELLIS:END -->
+
+## Project Operating Norms
+
+- User-facing replies should be in Simplified Chinese; keep code identifiers,
+  paths, commands, symbols, and logs exact.
+- Use Trellis as the coordinator for non-trivial tracking work. Keep the active
+  task PRD, research notes, specs, and check context aligned; do not rely on
+  chat memory as the source of truth.
+- For local repository discovery, prefer `fast_context_search` when the code
+  location, call chain, or data flow is unclear. The MCP can take about 200s to
+  appear; retry/check availability before declaring it unavailable. If it is
+  still unavailable, record that fact and continue with `rg` plus direct file
+  reads.
+- For external, current, documentation, or URL-backed facts, use
+  `smart-search-cli` and fetch source text before making claim-level
+  conclusions.
+- Critical tracking changes require four fixed read-only audit roles when the
+  runtime allows it: reference contract, current implementation, git regression,
+  and Trellis/spec/check gate. If the agent limit prevents all four, record the
+  limit, cover the missing roles in the main session, and retry when slots free.
+- Highest coding rule: keep C/C++ simple and direct. Make small local edits,
+  avoid broad abstractions, avoid hidden state, and do not add fallback-style
+  behavior to hide missing current-frame geometry.
+- Tracking fixes must be evidence-backed: compare the reference version, inspect
+  the current code and recent diff, then run targeted validation. Do not reuse
+  last-frame midlines or drift thresholds without a documented reason.
