@@ -23,6 +23,333 @@ const int k_end_left_exit_lost_n = 3; // 左环退出丢失次数阈值
 const int k_end_right_exit_lost_n = 2; // 右环退出丢失次数阈值
 const int k_encoder_per_meter = 5800; // 编码器每米步长，单位 步/米
 const int k_in_encoder_step = k_encoder_per_meter * 314 / 200; // 入环走行阈值：约半圈弧长(314/200≈1.57m=π/2)对应的编码器步数
+const int k_ring_find_line_len = 5; // 参考版 find_line_lenth
+const int k_ring_forward_line = 62; // 参考版 ring_forward_line
+const int k_ring_first_find_pos_num = 23; // 参考版 ring_find_pos=0.23
+const int k_ring_first_find_pos_den = 100;
+const int k_ring_second_find_pos_num = 345; // 参考版 ring_find_pos *= 1.5
+const int k_ring_second_find_pos_den = 1000;
+const int k_ring_first_cf_max = 30;
+const int k_ring_second_cf_max = 20;
+const double k_ring_first_mid_min = 0.1;
+const double k_ring_first_side_min = 0.95;
+const double k_ring_second_side_min = 0.3;
+const double k_ring_first_line_degree = 0.995;
+const double k_ring_second_line_degree = 0.999;
+const int k_ring_degree_first_start_y = RAW_H - 10;
+const int k_ring_degree_second_start_y = RAW_H - 20;
+const int k_ring_degree_end_y = 70;
+const int64_t k_ring_first_confirm_encoder = k_encoder_per_meter * 8 / 10; // 参考版 set_ED(0.8f)
+const int64_t k_ring_second_confirm_encoder = k_encoder_per_meter * 15 / 10; // 参考版 set_ED(1.5f)
+const int64_t k_ring_false_exit_encoder = k_encoder_per_meter * 13 / 10; // 参考版非圆环路径 set_ED(1.3f)
+const int k_ring_pending_first = 1;
+const int k_ring_pending_second = 2;
+const int k_ring_pending_false_wait_first = 3;
+const int k_ring_pending_false_wait_exit = 4;
+
+struct ring_scan_t
+{
+    double proportion;
+    int x;
+    int y;
+    int total;
+    int white;
+};
+
+int ring_pixel_is_white(const uint8_t gray[RAW_H][RAW_W], int x, int y)
+{
+    if(gray == nullptr || x < 0 || x >= RAW_W || y < 0 || y >= RAW_H)
+    {
+        return 0;
+    }
+    const int th = calc_th(gray, x, y);
+    return gray[y][x] > th;
+}
+
+ring_scan_t ring_scan_line_blank(const uint8_t gray[RAW_H][RAW_W], int x0, int y0, int x1, int y1)
+{
+    ring_scan_t out = {0.0, -1, -1, 0, 0};
+    if(gray == nullptr)
+    {
+        return out;
+    }
+
+    const int dx = std::abs(x1 - x0);
+    const int dy = std::abs(y1 - y0);
+    const int sx = (x0 < x1) ? 1 : -1;
+    const int sy = (y0 < y1) ? 1 : -1;
+    int err = dx - dy;
+    int sum_x = 0;
+    int sum_y = 0;
+
+    while(1)
+    {
+        if(x0 >= 0 && x0 < RAW_W && y0 >= 0 && y0 < RAW_H)
+        {
+            out.total++;
+            if(ring_pixel_is_white(gray, x0, y0))
+            {
+                out.white++;
+                sum_x += x0;
+                sum_y += y0;
+            }
+        }
+
+        if(x0 == x1 && y0 == y1)
+        {
+            break;
+        }
+
+        const int e2 = 2 * err;
+        if(e2 > -dy)
+        {
+            err -= dy;
+            x0 += sx;
+        }
+        if(e2 < dx)
+        {
+            err += dx;
+            y0 += sy;
+        }
+    }
+
+    if(out.total > 0)
+    {
+        out.proportion = (double)out.white / (double)out.total;
+    }
+    if(out.white > 0)
+    {
+        out.x = sum_x / out.white;
+        out.y = sum_y / out.white;
+    }
+    return out;
+}
+
+int ring_monitor_y(int second_check)
+{
+    if(second_check)
+    {
+        return ((RAW_H - 1) * (k_ring_second_find_pos_den - k_ring_second_find_pos_num)) /
+               k_ring_second_find_pos_den;
+    }
+    return ((RAW_H - 1) * (k_ring_first_find_pos_den - k_ring_first_find_pos_num)) /
+           k_ring_first_find_pos_den;
+}
+
+double boundary_line_degree_like_reference(const boundary_t *bd, int left_boundary, int start_y, int end_y)
+{
+    (void)left_boundary;
+    int line[RAW_H];
+    int valid[RAW_H];
+    for(int i = 0; i < RAW_H; ++i)
+    {
+        line[i] = 0;
+        valid[i] = 0;
+    }
+
+    if(bd != nullptr)
+    {
+        for(int i = 0; i < bd->original_step; ++i)
+        {
+            const point_t p = bd->original_pts[i];
+            if(p.y >= 0 && p.y < RAW_H && p.x >= 0 && p.x < RAW_W)
+            {
+                line[p.y] = p.x;
+                valid[p.y] = 1;
+            }
+        }
+    }
+
+    start_y = clip_i(start_y, 0, RAW_H - 1);
+    end_y = clip_i(end_y, 0, RAW_H - 1);
+    if(start_y <= end_y)
+    {
+        return 0.0;
+    }
+
+    double sum_y = 0.0;
+    double sum_x = 0.0;
+    double sum_y2 = 0.0;
+    double sum_x2 = 0.0;
+    double sum_yx = 0.0;
+    int count = 0;
+    for(int y = start_y; y > end_y; --y)
+    {
+        if(!valid[y])
+        {
+            continue;
+        }
+        const double yy = (double)y;
+        const double xx = (double)line[y];
+        sum_y += yy;
+        sum_x += xx;
+        sum_y2 += yy * yy;
+        sum_x2 += xx * xx;
+        sum_yx += yy * xx;
+        count++;
+    }
+
+    if(count < 2)
+    {
+        return 0.0;
+    }
+
+    const double n = (double)count;
+    const double numerator = n * sum_yx - sum_y * sum_x;
+    const double denom_y = n * sum_y2 - sum_y * sum_y;
+    const double denom_x = n * sum_x2 - sum_x * sum_x;
+    const double denom = std::sqrt(denom_y * denom_x);
+    if(denom <= 1e-9)
+    {
+        return 0.0;
+    }
+    return numerator / denom;
+}
+
+int boundary_degree_ok_like_reference(const boundary_t *bd,
+                                      int left_boundary,
+                                      int start_y,
+                                      double threshold)
+{
+    const double degree = boundary_line_degree_like_reference(bd,
+                                                             left_boundary,
+                                                             start_y,
+                                                             k_ring_degree_end_y);
+    return std::fabs(degree) > threshold;
+}
+
+int check_ring_like_reference(const runtime_t *rt, int mode)
+{
+    if(rt == nullptr)
+    {
+        return RING_KIND_NONE;
+    }
+
+    const int second_check = (mode == RING_KIND_LEFT || mode == RING_KIND_RIGHT);
+    const int monitor_y = ring_monitor_y(second_check);
+    const int draw_close = second_check ? 1 : 0;
+    const int right_x = RAW_W - 2 - draw_close;
+    const int left_x = 1;
+    const ring_scan_t rcr = ring_scan_line_blank(rt->gray,
+                                                 right_x,
+                                                 monitor_y - k_ring_find_line_len,
+                                                 right_x,
+                                                 monitor_y);
+    const ring_scan_t lcr = ring_scan_line_blank(rt->gray,
+                                                 left_x,
+                                                 monitor_y - k_ring_find_line_len,
+                                                 left_x,
+                                                 monitor_y);
+    const ring_scan_t middle = ring_scan_line_blank(rt->gray,
+                                                   0,
+                                                   k_ring_forward_line,
+                                                   RAW_W - 1,
+                                                   k_ring_forward_line);
+    const int cf = MID_X - middle.x;
+
+    if(!second_check)
+    {
+        if(std::abs(cf) >= k_ring_first_cf_max ||
+           middle.x <= 0 ||
+           middle.proportion <= k_ring_first_mid_min)
+        {
+            return RING_KIND_NONE;
+        }
+
+        if(rcr.proportion > k_ring_first_side_min &&
+           lcr.proportion == 0.0 &&
+           boundary_degree_ok_like_reference(&rt->track.left,
+                                             1,
+                                             k_ring_degree_first_start_y,
+                                             k_ring_first_line_degree))
+        {
+            return RING_KIND_RIGHT;
+        }
+        if(lcr.proportion > k_ring_first_side_min &&
+           rcr.proportion == 0.0 &&
+           boundary_degree_ok_like_reference(&rt->track.right,
+                                             0,
+                                             k_ring_degree_first_start_y,
+                                             k_ring_first_line_degree))
+        {
+            return RING_KIND_LEFT;
+        }
+        return RING_KIND_NONE;
+    }
+
+    if(std::abs(cf) >= k_ring_second_cf_max || middle.x == -1)
+    {
+        return RING_KIND_NONE;
+    }
+
+    if(mode == RING_KIND_RIGHT &&
+       rcr.proportion > k_ring_second_side_min &&
+       lcr.proportion == 0.0 &&
+       boundary_degree_ok_like_reference(&rt->track.left,
+                                         1,
+                                         k_ring_degree_second_start_y,
+                                         k_ring_second_line_degree))
+    {
+        return RING_KIND_RIGHT;
+    }
+    if(mode == RING_KIND_LEFT &&
+       lcr.proportion > k_ring_second_side_min &&
+       rcr.proportion == 0.0 &&
+       boundary_degree_ok_like_reference(&rt->track.right,
+                                         0,
+                                         k_ring_degree_second_start_y,
+                                         k_ring_second_line_degree))
+    {
+        return RING_KIND_LEFT;
+    }
+    return RING_KIND_NONE;
+}
+
+void clear_ring_pending(ring_state_t &ring)
+{
+    ring.pending_kind = RING_KIND_NONE;
+    ring.pending_stage = 0;
+    ring.pending_encoder0 = 0;
+}
+
+void enter_confirmed_ring(ring_state_t &ring, int kind)
+{
+    ring.kind = kind;
+    ring.state = RING_STATE_BEGIN;
+    clear_ring_pending(ring);
+    ring.lost_count = 0;
+    ring.have_count = 0;
+    ring.encoder0 = 0;
+}
+
+void enter_false_ring_suppression(ring_state_t &ring)
+{
+    ring.pending_kind = RING_KIND_NONE;
+    ring.pending_stage = k_ring_pending_false_wait_first;
+}
+
+int ring_pending_straight_ok(const runtime_t *rt)
+{
+    if(rt == nullptr)
+    {
+        return 0;
+    }
+    if(rt->ring.pending_kind == RING_KIND_LEFT)
+    {
+        return boundary_degree_ok_like_reference(&rt->track.right,
+                                                 0,
+                                                 k_ring_degree_first_start_y,
+                                                 k_ring_first_line_degree);
+    }
+    if(rt->ring.pending_kind == RING_KIND_RIGHT)
+    {
+        return boundary_degree_ok_like_reference(&rt->track.left,
+                                                 1,
+                                                 k_ring_degree_first_start_y,
+                                                 k_ring_first_line_degree);
+    }
+    return 0;
+}
 
 //-------------------------------------------------------------------------------------------------------------------
 //  @brief      环岛过程中重算左右边界角点：raw 边界 -> IPM/pass-through -> 平滑 -> 重采样 -> 角点刷新
@@ -245,9 +572,9 @@ void ring_reset(ring_state_t &ring)
 }
 
 //-------------------------------------------------------------------------------------------------------------------
-//  @brief      环岛状态机入口：NONE -> BEGIN -> IN -> RUN -> OUT -> END
+//  @brief      环岛状态机入口：NONE(pending 二次确认) -> BEGIN -> IN -> RUN -> OUT -> END
 //  @return     void
-//  @note       NONE 阶段判入口；IN 阶段补对侧边界；RUN/OUT/END 按角点、直线和近线长度退出。
+//  @note       kind 为 NONE 时只做参考版入口确认，不发布环岛动作；IN 阶段补对侧边界；RUN/OUT/END 按角点、直线和近线长度退出。
 //-------------------------------------------------------------------------------------------------------------------
 void ring_process(runtime_t *rt)
 {
@@ -260,47 +587,68 @@ void ring_process(runtime_t *rt)
     {
         if(rt->cross.state != CROSS_STATE_NONE)
         {
+            clear_ring_pending(rt->ring);
             return;
         }
 
-        const int c0 = rt->track.left.l_ok;
-        const int c1 = rt->track.right.l_ok;
-        const int ok0 = boundary_is_straight(&rt->track.right);
-        const int ok1 = boundary_is_straight(&rt->track.left);
-
-        int left_ring = 0;
-        if(c0 && !c1)
+        if(rt->ring.pending_stage == k_ring_pending_false_wait_first)
         {
-            if(ok0)
+            if(rt->encoder_total - rt->ring.pending_encoder0 >= k_ring_first_confirm_encoder)
             {
-                left_ring = 1;
+                rt->ring.pending_stage = k_ring_pending_false_wait_exit;
+                rt->ring.pending_encoder0 = rt->encoder_total;
             }
-        }
-
-        int right_ring = 0;
-        if(!c0 && c1)
-        {
-            if(ok1)
-            {
-                right_ring = 1;
-            }
-        }
-
-        if(left_ring)
-        {
-            rt->ring.kind = RING_KIND_LEFT;
-        }
-        else if(right_ring)
-        {
-            rt->ring.kind = RING_KIND_RIGHT;
-        }
-        else
-        {
             return;
         }
-        rt->ring.state = RING_STATE_BEGIN;
-        rt->ring.lost_count = 0;
-        rt->ring.have_count = 0;
+
+        if(rt->ring.pending_stage == k_ring_pending_false_wait_exit)
+        {
+            if(rt->encoder_total - rt->ring.pending_encoder0 >= k_ring_false_exit_encoder)
+            {
+                clear_ring_pending(rt->ring);
+            }
+            return;
+        }
+
+        if(rt->ring.pending_stage == k_ring_pending_first)
+        {
+            if(!ring_pending_straight_ok(rt))
+            {
+                enter_false_ring_suppression(rt->ring);
+                return;
+            }
+            if(rt->encoder_total - rt->ring.pending_encoder0 < k_ring_first_confirm_encoder)
+            {
+                return;
+            }
+            rt->ring.pending_stage = k_ring_pending_second;
+            rt->ring.pending_encoder0 = rt->encoder_total;
+            return;
+        }
+
+        if(rt->ring.pending_stage == k_ring_pending_second)
+        {
+            if(rt->encoder_total - rt->ring.pending_encoder0 >= k_ring_second_confirm_encoder)
+            {
+                clear_ring_pending(rt->ring);
+                return;
+            }
+
+            const int confirmed = check_ring_like_reference(rt, rt->ring.pending_kind);
+            if(confirmed == rt->ring.pending_kind)
+            {
+                enter_confirmed_ring(rt->ring, confirmed);
+            }
+            return;
+        }
+
+        const int first = check_ring_like_reference(rt, RING_KIND_NONE);
+        if(first == RING_KIND_LEFT || first == RING_KIND_RIGHT)
+        {
+            rt->ring.pending_kind = first;
+            rt->ring.pending_stage = k_ring_pending_first;
+            rt->ring.pending_encoder0 = rt->encoder_total;
+        }
         return;
     }
 

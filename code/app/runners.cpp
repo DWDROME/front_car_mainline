@@ -162,14 +162,15 @@ int process_frame_quiet(runtime_t *rt, const char *image_path)
 }
 
 // 回放模式每帧单行摘要，主要看元素状态、strict double-L、远线、中线和 reject_reason。
-// 字段缩写：far=左/右远线found，far_num=左/右远线点数，far_l=左/右远 L 索引；
+// 字段缩写：rpend=ring pending kind/stage；
+//   far=左/右远线found，far_num=左/右远线点数，far_l=左/右远 L 索引；
 //   pair=左/右 strict double-L 复核结果；ps=左/右 pair_state；pw=双 L 基准/张开宽度；
 //   xst=帧首cross/base/cross_far/cross_near/ring_active/work_track/ref；
 //   xfar=近线步数/lost/recover/exit/far_ok/far_fail/far_trace/ipm/blur/resample；
 //   xmid=远线中线 side/fail/start/tail/cand/out。
 void print_replay_frame(int frame, const runtime_t *rt)
 {
-    std::printf("replay frame=%d line=%d ring=%d/%d cross=%d zebra=%d no_line=%d far=%d/%d "
+    std::printf("replay frame=%d line=%d ring=%d/%d rpend=%d/%d cross=%d zebra=%d no_line=%d far=%d/%d "
                 "far_num=%d/%d far_l=%d/%d "
                 "l=%d/%d@%d/%d/%d@%d pair=%d/%d ps=%d/%d pw=%.1f/%.1f "
                 "xst=%d/%d/%d/%d/%d/%d@%d,%d "
@@ -180,6 +181,8 @@ void print_replay_frame(int frame, const runtime_t *rt)
                 track_line_found(rt),
                 rt->ring.kind,
                 rt->ring.state,
+                rt->ring.pending_kind,
+                rt->ring.pending_stage,
                 rt->cross.state,
                 rt->zebra.detected,
                 rt->cross.not_have_line,
