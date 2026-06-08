@@ -948,9 +948,9 @@ const int k_center_margin = 1;  // mid_position 写回留白，落在 find_seeds
 // 用本帧追线成功后保留下来的 seed 结果更新下一帧起搜中心(mid_position)：
 //  - 全失：直接返回，保持上一帧中心(Front_Car 语义，勿学 TC264 重置回中点)。
 //  - 双边(两侧 bit 都置位)：中心取左右中点，即使宽度超出成对区间(如十字开口处
-//    左右远边相距过宽)也优于单边外推；width_base 仅在常态且合法成对时低通标定。
+//    左右远边相距过宽)也优于单边外推；width_base 只按帧首普通语义和合法成对低通标定。
 //  - 单边：用 width_base 把已知侧外推出虚拟中心，让中心随外圈平移。
-void update_search_center(runtime_t *rt)
+void update_search_center(runtime_t *rt, int allow_width_base)
 {
     if(rt == nullptr)
     {
@@ -960,8 +960,7 @@ void update_search_center(runtime_t *rt)
     if((rt->seed_state & 3) == 3)
     {
         mid = (rt->seeds.left.x + rt->seeds.right.x) / 2;
-        if(rt->ring.kind == RING_KIND_NONE && rt->cross.state == CROSS_STATE_NONE &&
-           seed_pair_accepted(&rt->seeds, rt->seed_state))
+        if(allow_width_base && seed_pair_accepted(&rt->seeds, rt->seed_state))
         {
             const int span = rt->seeds.right.x - rt->seeds.left.x;
             const int wb = clip_i(span, k_width_base_min, k_width_base_max);
@@ -1017,6 +1016,9 @@ int tracking_process_frame(runtime_t *rt)
     frame_action_t action = {};
     action.cross_state0 = rt->cross.state;
     action.ring_kind0 = rt->ring.kind;
+    const int ordinary_frame0 =
+        action.cross_state0 == CROSS_STATE_NONE &&
+        action.ring_kind0 == RING_KIND_NONE;
 
     int seed_ok = find_seeds(rt->gray,
                              START_HIGH,
@@ -1062,8 +1064,11 @@ int tracking_process_frame(runtime_t *rt)
             }
             else
             {
-                // 搜索中心跟随：只用本帧 trace 和身份复核后保留下来的 seed 更新下一帧起搜中心。
-                update_search_center(rt);
+                // 已在元素态的帧保持早期学习；普通帧等 selected midline 几何成立后再学习。
+                if(!ordinary_frame0)
+                {
+                    update_search_center(rt, 0);
+                }
                 snapshot_ring_frame_start_action(rt, &action);
                 element_process(rt);
                 action.base_candidates_ready = 1;
@@ -1097,6 +1102,10 @@ int tracking_process_frame(runtime_t *rt)
     }
 
     const int mid_ok = build_selected_midline(rt, &mode, ref);
+    if(ordinary_frame0 && mid_ok >= k_min_border_step)
+    {
+        update_search_center(rt, 1);
+    }
     if(!publish_track_result(rt, &mode, mid_ok, ref))
     {
         return 0;
