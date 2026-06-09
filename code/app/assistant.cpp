@@ -19,7 +19,9 @@ constexpr const char *k_default_ip = "192.168.0.101"; // 上位机默认 IP
 constexpr int k_default_port = 8086;                  // 上位机默认端口
 constexpr int k_default_div = 20;                     // 发送分频：每 div 帧发一次图传
 constexpr int k_default_reconnect_div = 30;           // 断线后每 reconnect_div 帧重连一次
+constexpr int k_display_point_stride = 2;             // 只影响上位机显示线，控制/识别点列不受影响
 constexpr int k_point_limit = POINT_MAX;
+constexpr int k_display_boundary_limit = 6;           // 左/中/右 + seed 行 + 左/右 seed 方框
 constexpr uint8_t k_left_far_value = 80;              // 左远线在灰度图上叠加的像素亮度
 constexpr uint8_t k_right_far_value = 220;            // 右远线在灰度图上叠加的像素亮度
 
@@ -32,14 +34,28 @@ struct assistant_t_impl
     const char *ip;
     int port;
     zf_driver_tcp_client tcp;
-    // 三条显示线的 raw 坐标缓冲：0=左边线(黄)，1=控制中线反投影(红)，2=右边线(绿)。
+    // 显示边界 raw 坐标缓冲：0=左，1=控制中线，2=右，3=seed 行，4/5=左右 seed 方框。
     uint8_t x0[k_point_limit];
     uint8_t y0[k_point_limit];
     uint8_t x1[k_point_limit];
     uint8_t y1[k_point_limit];
     uint8_t x2[k_point_limit];
     uint8_t y2[k_point_limit];
+    uint8_t x3[k_point_limit];
+    uint8_t y3[k_point_limit];
+    uint8_t x4[k_point_limit];
+    uint8_t y4[k_point_limit];
+    uint8_t x5[k_point_limit];
+    uint8_t y5[k_point_limit];
     uint8_t image[RAW_H][RAW_W]; // 发送给上位机的灰度图（含远线/拐点叠加）
+};
+
+struct display_boundary_t
+{
+    uint8_t *xs;
+    uint8_t *ys;
+    int count;
+    int channel;
 };
 
 assistant_t_impl g_asst = {};
@@ -72,16 +88,12 @@ int connect_once()
         return 0;
     }
     seekfree_assistant_interface_init(tcp_send_wrap, tcp_read_wrap);
-    seekfree_assistant_camera_information_config(SEEKFREE_ASSISTANT_MT9V03X,
-                                                 g_asst.x0,
-                                                 RAW_W,
-                                                 RAW_H);
     g_asst.connected = 1;
     std::printf("front_car_mainline: assistant %s:%d connected\n", g_asst.ip, g_asst.port);
     return 1;
 }
 
-// 把 point_t 数组 clamp 到 [0,RAW-1] 后拷成上位机要的 uint8 x/y，返回有效点数。
+// 把 point_t 数组隔点 clamp 到 [0,RAW-1] 后拷成上位机要的 uint8 x/y，返回有效点数。
 int copy_pts(const point_t *src, int step, uint8_t *xs, uint8_t *ys)
 {
     if(src == nullptr || xs == nullptr || ys == nullptr)
@@ -89,17 +101,19 @@ int copy_pts(const point_t *src, int step, uint8_t *xs, uint8_t *ys)
         return 0;
     }
 
-    const int n = std::min(step, k_point_limit);
-    for(int i = 0; i < n; ++i)
+    const int nsrc = std::min(step, k_point_limit);
+    int n = 0;
+    for(int i = 0; i < nsrc && n < k_point_limit; i += k_display_point_stride)
     {
-        xs[i] = static_cast<uint8_t>(std::clamp(src[i].x, 0, RAW_W - 1));
-        ys[i] = static_cast<uint8_t>(std::clamp(src[i].y, 0, RAW_H - 1));
+        xs[n] = static_cast<uint8_t>(std::clamp(src[i].x, 0, RAW_W - 1));
+        ys[n] = static_cast<uint8_t>(std::clamp(src[i].y, 0, RAW_H - 1));
+        ++n;
     }
     return n;
 }
 
-// assistant 协议三条线共用一个 dot_num。
-// 短线只能补齐到同长度，不能把 dot_num 改成最短线长度，否则会裁短左右边线。
+// assistant 图像边界共用一个 dot_num。
+// 短线只能补齐到同长度，不能把 dot_num 改成最短线长度，否则会裁短边线或 seed 方框。
 void pad_pts(uint8_t *xs, uint8_t *ys, int count, int total)
 {
     if(xs == nullptr || ys == nullptr || count <= 0 || total <= count)
@@ -114,6 +128,146 @@ void pad_pts(uint8_t *xs, uint8_t *ys, int count, int total)
         xs[i] = last_x;
         ys[i] = last_y;
     }
+}
+
+int append_display_pt(uint8_t *xs, uint8_t *ys, int *count, int x, int y)
+{
+    if(xs == nullptr || ys == nullptr || count == nullptr || *count >= k_point_limit)
+    {
+        return 0;
+    }
+    xs[*count] = static_cast<uint8_t>(std::clamp(x, 0, RAW_W - 1));
+    ys[*count] = static_cast<uint8_t>(std::clamp(y, 0, RAW_H - 1));
+    ++(*count);
+    return 1;
+}
+
+int seed_row_pts(uint8_t *xs, uint8_t *ys)
+{
+    if(xs == nullptr || ys == nullptr)
+    {
+        return 0;
+    }
+
+    int n = 0;
+    const int y = std::clamp(static_cast<int>(START_HIGH), 0, RAW_H - 1);
+    for(int x = 0; x < RAW_W && n < k_point_limit; ++x)
+    {
+        append_display_pt(xs, ys, &n, x, y);
+    }
+    return n;
+}
+
+int seed_box_pts(point_t seed, uint8_t *xs, uint8_t *ys)
+{
+    if(xs == nullptr || ys == nullptr ||
+       seed.x < 0 || seed.x >= RAW_W ||
+       seed.y < 0 || seed.y >= RAW_H)
+    {
+        return 0;
+    }
+
+    int n = 0;
+    const int r = 3;
+    const int x0 = std::clamp(seed.x - r, 0, RAW_W - 1);
+    const int x1 = std::clamp(seed.x + r, 0, RAW_W - 1);
+    const int y0 = std::clamp(seed.y - r, 0, RAW_H - 1);
+    const int y1 = std::clamp(seed.y + r, 0, RAW_H - 1);
+
+    for(int x = x0; x <= x1; ++x)
+    {
+        append_display_pt(xs, ys, &n, x, y0);
+    }
+    for(int y = y0 + 1; y <= y1; ++y)
+    {
+        append_display_pt(xs, ys, &n, x1, y);
+    }
+    for(int x = x1 - 1; x >= x0; --x)
+    {
+        append_display_pt(xs, ys, &n, x, y1);
+    }
+    for(int y = y1 - 1; y > y0; --y)
+    {
+        append_display_pt(xs, ys, &n, x0, y);
+    }
+    return n;
+}
+
+void send_camera_packet(uint8 boundary_num)
+{
+    seekfree_assistant_camera_struct packet = {};
+    packet.head = SEEKFREE_ASSISTANT_SEND_HEAD;
+    packet.function = SEEKFREE_ASSISTANT_CAMERA_FUNCTION;
+    packet.camera_type = (SEEKFREE_ASSISTANT_MT9V03X << 5) | boundary_num;
+    packet.length = sizeof(seekfree_assistant_camera_struct);
+    packet.image_width = RAW_W;
+    packet.image_height = RAW_H;
+
+    tcp_send_wrap(reinterpret_cast<const uint8 *>(&packet), sizeof(packet));
+    tcp_send_wrap(reinterpret_cast<const uint8 *>(g_asst.image[0]), RAW_W * RAW_H);
+}
+
+void send_dot_packet(const display_boundary_t *bd, int count, uint16 dot_num)
+{
+    if(bd == nullptr || count <= 0 || dot_num == 0)
+    {
+        return;
+    }
+
+    seekfree_assistant_camera_dot_struct packet = {};
+    packet.head = SEEKFREE_ASSISTANT_SEND_HEAD;
+    packet.function = SEEKFREE_ASSISTANT_CAMERA_DOT_FUNCTION;
+    packet.dot_type = static_cast<uint8>((XY_BOUNDARY << 6) | count);
+    packet.length = sizeof(seekfree_assistant_camera_dot_struct);
+    packet.dot_num = dot_num;
+    for(int i = 0; i < count; ++i)
+    {
+        packet.valid_flag |= static_cast<uint8>(1U << bd[i].channel);
+    }
+
+    tcp_send_wrap(reinterpret_cast<const uint8 *>(&packet), sizeof(packet));
+    for(int i = 0; i < count; ++i)
+    {
+        tcp_send_wrap(reinterpret_cast<const uint8 *>(bd[i].xs), dot_num);
+        tcp_send_wrap(reinterpret_cast<const uint8 *>(bd[i].ys), dot_num);
+    }
+}
+
+void add_boundary(display_boundary_t *bd,
+                  int *count,
+                  int *dot_num,
+                  uint8_t *xs,
+                  uint8_t *ys,
+                  int n,
+                  int channel)
+{
+    if(bd == nullptr || count == nullptr || dot_num == nullptr ||
+       xs == nullptr || ys == nullptr || n <= 0 ||
+       *count >= k_display_boundary_limit)
+    {
+        return;
+    }
+
+    bd[*count] = {xs, ys, n, channel};
+    ++(*count);
+    *dot_num = std::max(*dot_num, n);
+}
+
+void send_display_frame(display_boundary_t *bd, int count, int dot_num)
+{
+    const uint8 boundary_num = static_cast<uint8>(std::clamp(count, 0, k_display_boundary_limit));
+    send_camera_packet(boundary_num);
+    if(boundary_num == 0 || dot_num <= 0)
+    {
+        return;
+    }
+
+    const uint16 dn = static_cast<uint16>(std::clamp(dot_num, 0, k_point_limit));
+    for(int i = 0; i < boundary_num; ++i)
+    {
+        pad_pts(bd[i].xs, bd[i].ys, bd[i].count, dn);
+    }
+    send_dot_packet(bd, boundary_num, dn);
 }
 
 // 在图上 (x,y) 处画一个 7x7 十字标记（标拐点/远 L 点用）。
@@ -224,7 +378,7 @@ int control_mid_pts(const runtime_t *rt, uint8_t *xs, uint8_t *ys)
     }
 
     int n = 0;
-    for(int i = 0; i < step && n < k_point_limit; ++i)
+    for(int i = 0; i < step && n < k_point_limit; i += k_display_point_stride)
     {
         const point_t &mid = rt->track.mid.pts[i];
 
@@ -307,8 +461,8 @@ void draw_farline(uint8_t image[RAW_H][RAW_W], const runtime_t *rt)
     }
 }
 
-// 组装并下发一帧上位机数据：三条线(左/中/右) + 灰度图 + 远线/拐点叠加。
-// 三条线共用一个 dot_num（取三者 max 后 pad 补齐），不能用最短线长度，否则会裁短边线。
+// 组装并下发一帧上位机数据：左/中/右 + seed 行/方框 + 灰度图 + 远线/拐点叠加。
+// 显示边界共用一个 dot_num（取 max 后 pad 补齐），不能用最短线长度，否则会裁短边线。
 void config_points(const runtime_t *rt)
 {
     if(rt == nullptr)
@@ -316,39 +470,38 @@ void config_points(const runtime_t *rt)
         return;
     }
 
-    const int n0 = copy_pts(rt->track.left.original_pts, rt->track.left.original_step, g_asst.x0, g_asst.y0);
+    const int n0 = copy_pts(rt->track.left.original_pts,
+                            rt->track.left.original_step,
+                            g_asst.x0,
+                            g_asst.y0);
     const int n1 = control_mid_pts(rt, g_asst.x1, g_asst.y1);
-    const int n2 = copy_pts(rt->track.right.original_pts, rt->track.right.original_step, g_asst.x2, g_asst.y2);
+    const int n2 = copy_pts(rt->track.right.original_pts,
+                            rt->track.right.original_step,
+                            g_asst.x2,
+                            g_asst.y2);
+    const int n3 = seed_row_pts(g_asst.x3, g_asst.y3);
+    const int n4 = (rt->track.seed_state_find & 1)
+                       ? seed_box_pts(rt->track.seed_left_find, g_asst.x4, g_asst.y4)
+                       : 0;
+    const int n5 = (rt->track.seed_state_find & 2)
+                       ? seed_box_pts(rt->track.seed_right_find, g_asst.x5, g_asst.y5)
+                       : 0;
 
-    // 三条线使用同一个协议长度，必须取 max 后 pad。
-    // n0/n2 是 raw 原图边线；n1 是控制中线反投影到 raw 后的红线。
-    const int dot_num = std::max({n0, n1, n2});
+    display_boundary_t bd[k_display_boundary_limit] = {};
+    int boundary_count = 0;
+    int dot_num = 0;
+    add_boundary(bd, &boundary_count, &dot_num, g_asst.x0, g_asst.y0, n0, 0);
+    add_boundary(bd, &boundary_count, &dot_num, g_asst.x1, g_asst.y1, n1, 1);
+    add_boundary(bd, &boundary_count, &dot_num, g_asst.x2, g_asst.y2, n2, 2);
+    add_boundary(bd, &boundary_count, &dot_num, g_asst.x3, g_asst.y3, n3, 3);
+    add_boundary(bd, &boundary_count, &dot_num, g_asst.x4, g_asst.y4, n4, 4);
+    add_boundary(bd, &boundary_count, &dot_num, g_asst.x5, g_asst.y5, n5, 5);
 
     std::memcpy(g_asst.image, rt->gray, sizeof(g_asst.image));
     draw_farline(g_asst.image, rt);
     draw_l_corner(g_asst.image, &rt->track.left);
     draw_l_corner(g_asst.image, &rt->track.right);
-    seekfree_assistant_camera_information_config(SEEKFREE_ASSISTANT_MT9V03X,
-                                                 g_asst.image[0],
-                                                 RAW_W,
-                                                 RAW_H);
-    if(dot_num <= 0)
-    {
-        seekfree_assistant_camera_boundary_config(NO_BOUNDARY, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
-        return;
-    }
-
-    pad_pts(g_asst.x0, g_asst.y0, n0, dot_num);
-    pad_pts(g_asst.x1, g_asst.y1, n1, dot_num);
-    pad_pts(g_asst.x2, g_asst.y2, n2, dot_num);
-    seekfree_assistant_camera_boundary_config(XY_BOUNDARY,
-                                              static_cast<uint16>(dot_num),
-                                              n0 > 0 ? g_asst.x0 : nullptr,
-                                              n1 > 0 ? g_asst.x1 : nullptr,
-                                              n2 > 0 ? g_asst.x2 : nullptr,
-                                              n0 > 0 ? g_asst.y0 : nullptr,
-                                              n1 > 0 ? g_asst.y1 : nullptr,
-                                              n2 > 0 ? g_asst.y2 : nullptr);
+    send_display_frame(bd, boundary_count, dot_num);
 }
 }
 
@@ -370,6 +523,12 @@ void assistant_init()
     std::memset(g_asst.y1, 0, sizeof(g_asst.y1));
     std::memset(g_asst.x2, 0, sizeof(g_asst.x2));
     std::memset(g_asst.y2, 0, sizeof(g_asst.y2));
+    std::memset(g_asst.x3, 0, sizeof(g_asst.x3));
+    std::memset(g_asst.y3, 0, sizeof(g_asst.y3));
+    std::memset(g_asst.x4, 0, sizeof(g_asst.x4));
+    std::memset(g_asst.y4, 0, sizeof(g_asst.y4));
+    std::memset(g_asst.x5, 0, sizeof(g_asst.x5));
+    std::memset(g_asst.y5, 0, sizeof(g_asst.y5));
     std::memset(g_asst.image, 0, sizeof(g_asst.image));
     g_asst.enabled = assistant_enabled();
     g_asst.div = read_env_int_clamped("SMARTCAR_ASSISTANT_DIV", k_default_div, 1, 10000);
@@ -387,7 +546,7 @@ void assistant_init()
 }
 
 //-------------------------------------------------------------------------------------------------------------------
-//  @brief      每帧上位机入口：按分频重连/发送，组装三条线和图像后下发
+//  @brief      每帧上位机入口：按分频重连/发送，组装显示边界和图像后下发
 //  @param      rt        当前帧运行时状态（只读）
 //  @param      frame_id  帧序号，用于发送分频(div)和断线重连分频(reconnect_div)
 //  @note       未启用或未连接时直接返回；纯显示旁路，不改变 tracking/control 主链。
@@ -417,6 +576,5 @@ void assistant_tick(const runtime_t *rt, unsigned frame_id)
     }
 
     config_points(rt);
-    seekfree_assistant_camera_send();
     seekfree_assistant_data_analysis();
 }
