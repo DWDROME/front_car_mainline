@@ -30,10 +30,10 @@ const int k_corner_open_step = 34;  // 双 L 角张开步长，单位 点
 const double k_corner_pair_width_ref = 45.0; // 双 L 角宽度参考值，单位 pixel
 const double k_corner_pair_tol = 15.0; // 双 L 角宽度误差阈值，单位 pixel
 const double k_corner_pair_open_ref = 70.0; // 双 L 角张开参考值，单位 pixel
-const int k_corner_scan_step = 28; // 角点扫描步长，单位 点
+const int k_corner_scan_step = 34; // L 角扫描步长，单位 点
 
 const int k_straight_scan_step = 34; // 直道扫描步长，单位 点
-const int k_corner_front_step = 28; // 角点前段步长，单位 点
+const int k_corner_front_step = 28; // L 角近处阈值，单位 点
 const int k_straight_min_step = 34; // 直道最小步长，单位 点
 
 const int k_pair_none = 0; // 双 L 角状态：无

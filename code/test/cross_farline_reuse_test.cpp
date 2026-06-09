@@ -111,6 +111,11 @@ int run_reuse_contract()
     expect_eq("reuse count", rt.cross.left_far_l_reuse_count, 1, &failed);
     expect_ge("reuse tail", rt.cross.left_num - rt.cross.left_l, k_cross_min_front_step, &failed);
 
+    expect_eq("reuse expires build ok", build_cross_farline(&rt, 1), 1, &failed);
+    expect_eq("reuse expires l", rt.cross.left_l, -1, &failed);
+    expect_eq("reuse expires source", rt.cross.left_far_l_source, CROSS_FAR_L_NONE, &failed);
+    expect_eq("reuse expires count", rt.cross.left_far_l_reuse_count, 0, &failed);
+
     g_trace_shape = TRACE_SHAPE_FAIL;
     expect_eq("fail build", build_cross_farline(&rt, 1), 0, &failed);
     expect_eq("fail l", rt.cross.left_l, -1, &failed);

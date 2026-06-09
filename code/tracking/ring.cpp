@@ -70,11 +70,8 @@ void refresh_ring_corners(runtime_t *rt, int has_matrix)
                              has_matrix);
 }
 
-//-------------------------------------------------------------------------------------------------------------------
-//  @brief      入环阶段为检测/状态连续补对侧边界：清空 opp，再找种子、跟踪、直线补点、拼接尾段
-//  @return     int          1 成功补出对侧边界 / 0 seed、trace 或点数不足
-//  @note       只供 ring_process() 内部更新 boundary_t 与角点状态；mainline 不用这条补线生成当前帧控制中线。
-//-------------------------------------------------------------------------------------------------------------------
+// ==== 环岛检测补边 ====
+// IN 阶段补对侧 boundary，供 ring_process() 刷角点和连续状态；当前帧控制候选仍由 mainline 帧首点集生成。
 int build_ring_opp_for_detection(runtime_t &rt,
                                  const boundary_t &cur,
                                  boundary_t &opp,
@@ -236,6 +233,25 @@ int build_ring_opp_for_detection(runtime_t &rt,
     return opp.original_step > 0;
 }
 
+// ==== 环岛补边诊断 ====
+void record_ring_opp_diag(runtime_t *rt,
+                          const boundary_t *cur,
+                          const boundary_t *opp,
+                          int left,
+                          int build_result)
+{
+    if(rt == nullptr)
+    {
+        return;
+    }
+    rt->track.ring_opp_left = left ? 1 : 0;
+    rt->track.ring_cur_step = cur != nullptr ? cur->now_step : 0;
+    rt->track.ring_opp_step = opp != nullptr ? opp->now_step : 0;
+    rt->track.ring_opp_l_ok = opp != nullptr ? opp->l_ok : 0;
+    rt->track.ring_opp_l_index = opp != nullptr ? opp->l_now_index : -1;
+    rt->track.ring_opp_build_result = build_result;
+}
+
 // 复位环岛状态机。
 void ring_reset(ring_state_t &ring)
 {
@@ -244,11 +260,8 @@ void ring_reset(ring_state_t &ring)
 
 }
 
-//-------------------------------------------------------------------------------------------------------------------
-//  @brief      环岛状态机入口：NONE -> BEGIN -> IN -> RUN -> OUT -> END
-//  @return     void
-//  @note       NONE 阶段判入口；IN 阶段补对侧边界；RUN/OUT/END 按角点、直线和近线长度退出。
-//-------------------------------------------------------------------------------------------------------------------
+// ==== 环岛状态机 ====
+// NONE -> BEGIN -> IN -> RUN -> OUT -> END；这里维护元素状态和检测边界，不直接发布控制中线。
 void ring_process(runtime_t *rt)
 {
     if(rt == nullptr)
@@ -263,28 +276,13 @@ void ring_process(runtime_t *rt)
             return;
         }
 
-        const int c0 = rt->track.left.l_ok;
-        const int c1 = rt->track.right.l_ok;
-        const int ok0 = boundary_is_straight(&rt->track.right);
-        const int ok1 = boundary_is_straight(&rt->track.left);
+        const int left_l = rt->track.left.l_ok;
+        const int right_l = rt->track.right.l_ok;
+        const int left_straight = boundary_is_straight(&rt->track.left);
+        const int right_straight = boundary_is_straight(&rt->track.right);
 
-        int left_ring = 0;
-        if(c0 && !c1)
-        {
-            if(ok0)
-            {
-                left_ring = 1;
-            }
-        }
-
-        int right_ring = 0;
-        if(!c0 && c1)
-        {
-            if(ok1)
-            {
-                right_ring = 1;
-            }
-        }
+        const int left_ring = left_l && !right_l && right_straight;
+        const int right_ring = !left_l && right_l && left_straight;
 
         if(left_ring)
         {
@@ -304,20 +302,13 @@ void ring_process(runtime_t *rt)
         return;
     }
 
-    int left = 0;
-    if(rt->ring.kind == RING_KIND_LEFT)
-    {
-        left = 1;
-    }
+    const int left = (rt->ring.kind == RING_KIND_LEFT);
 
-    // cur = 当前贴住的边界，opp = 需要补出来的对侧边界：左环贴左补右，右环贴右补左。
-    boundary_t *cur = &rt->track.right;
-    boundary_t *opp = &rt->track.left;
-    if(left)
-    {
-        cur = &rt->track.left;
-        opp = &rt->track.right;
-    }
+    // ==== 环岛当前边与对侧边 ====
+    // 左环用左边界作 cur 并补右边，右环用右边界作 cur 并补左边；补出的 opp 只用于检测/显示诊断。
+    boundary_t *cur = left ? &rt->track.left : &rt->track.right;
+    boundary_t *opp = left ? &rt->track.right : &rt->track.left;
+    record_ring_opp_diag(rt, cur, opp, left, 0);
 
     const int has_matrix = rt->has_matrix;
     const int64_t enc = rt->encoder_total;
@@ -353,18 +344,22 @@ void ring_process(runtime_t *rt)
             rt->ring.have_count = 0;
             return;
         }
-        if(build_ring_opp_for_detection(*rt, *cur, *opp, left, has_matrix))
+        const int built = build_ring_opp_for_detection(*rt, *cur, *opp, left, has_matrix);
+        record_ring_opp_diag(rt, cur, opp, left, built ? 1 : -1);
+        if(built)
         {
             refresh_ring_corners(rt, has_matrix);
+            record_ring_opp_diag(rt, cur, opp, left, 1);
         }
         return;
     }
 
     if(rt->ring.state == RING_STATE_RUN)
     {
-        if(opp->l_ok)
+        const int corner_found = opp->l_found;
+        const int corner_i = opp->l_now_index;
+        if(corner_found)
         {
-            const int i0 = opp->l_now_index;
             const int raw_i = opp->l_original_index;
             opp->original_step = clip_i(raw_i + 1, 1, opp->original_step);
             trace_t opp_tr = {};
@@ -375,12 +370,13 @@ void ring_process(runtime_t *rt)
             }
             build_boundary_from_trace(&opp_tr, rt->matrix, has_matrix, opp);
             refresh_ring_corners(rt, has_matrix);
-            if(i0 >= 0 && i0 < k_run_corner_step)
-            {
-                rt->ring.state = RING_STATE_OUT;
-                rt->ring.lost_count = 0;
-                rt->ring.have_count = 0;
-            }
+            record_ring_opp_diag(rt, cur, opp, left, 0);
+        }
+        if(corner_found && corner_i >= 0 && corner_i < k_run_corner_step)
+        {
+            rt->ring.state = RING_STATE_OUT;
+            rt->ring.lost_count = 0;
+            rt->ring.have_count = 0;
         }
         return;
     }

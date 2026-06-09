@@ -98,7 +98,6 @@ struct frame_action_t
     int ring_kind0 = RING_KIND_NONE;
     int ring_state0 = RING_STATE_BEGIN;
     int ordinary_track_type = TRACK_TYPE_NONE;
-    int ring_track_type = TRACK_TYPE_NONE;
     int ring_frame_start_crop_side = TRACK_TYPE_NONE;
     int ring_frame_start_crop_index = -1;
     int base_candidates_ready = 0;
@@ -113,6 +112,28 @@ struct frame_mode_t
     int work_track_type = TRACK_TYPE_NONE;
 };
 
+int ring_track_type_from_state(int kind, int state)
+{
+    if(kind == RING_KIND_NONE)
+    {
+        return TRACK_TYPE_NONE;
+    }
+
+    const int left_ring = (kind == RING_KIND_LEFT);
+    if(state == RING_STATE_BEGIN ||
+       state == RING_STATE_RUN ||
+       state == RING_STATE_END)
+    {
+        return left_ring ? TRACK_TYPE_RIGHT : TRACK_TYPE_LEFT;
+    }
+    if(state == RING_STATE_IN ||
+       state == RING_STATE_OUT)
+    {
+        return left_ring ? TRACK_TYPE_LEFT : TRACK_TYPE_RIGHT;
+    }
+    return TRACK_TYPE_NONE;
+}
+
 void reset_frame_tracking_state(runtime_t *rt)
 {
     std::memset(&rt->track, 0, sizeof(rt->track));
@@ -124,6 +145,8 @@ void reset_frame_tracking_state(runtime_t *rt)
     rt->track.control_ref = {-1, -1};
     rt->track.candidate_crop_side = TRACK_TYPE_NONE;
     rt->track.candidate_crop_index = -1;
+    rt->track.ring_opp_left = -1;
+    rt->track.ring_opp_l_index = -1;
     rt->track.search_update_kind = TRACK_SEARCH_UPDATE_NONE;
     rt->track.search_mid_before = rt->mid_position;
     rt->track.search_mid_after = -1;
@@ -139,6 +162,8 @@ void reset_frame_tracking_state(runtime_t *rt)
 
 int build_frame_boundaries_and_candidates(runtime_t *rt, int use_matrix)
 {
+    // ==== 基础候选生成 ====
+    // seed/trace 后先生成本帧基础 boundary 和 rptsc 候选；element_process() 之后不会自动重建这组候选。
     build_boundary_from_trace(&rt->left_trace, rt->matrix, use_matrix, &rt->track.left);
     build_boundary_from_trace(&rt->right_trace, rt->matrix, use_matrix, &rt->track.right);
     clear_rpts();
@@ -182,61 +207,23 @@ int build_frame_boundaries_and_candidates(runtime_t *rt, int use_matrix)
     return ordinary_track_type;
 }
 
-void snapshot_ring_frame_start_action(runtime_t *rt, frame_action_t *action)
+void snapshot_ring_frame_start_crop(runtime_t *rt, frame_action_t *action)
 {
-    if(action == nullptr || rt->ring.kind == RING_KIND_NONE)
+    if(action == nullptr || action->ring_kind0 == RING_KIND_NONE)
     {
         return;
     }
 
-    const int left_ring = (rt->ring.kind == RING_KIND_LEFT);
-    if(rt->ring.state == RING_STATE_BEGIN ||
-       rt->ring.state == RING_STATE_RUN ||
-       rt->ring.state == RING_STATE_END)
+    const int left_ring = (action->ring_kind0 == RING_KIND_LEFT);
+    if(action->ring_state0 == RING_STATE_RUN)
     {
-        action->ring_track_type = left_ring ? TRACK_TYPE_RIGHT : TRACK_TYPE_LEFT;
-    }
-    else if(rt->ring.state == RING_STATE_IN ||
-            rt->ring.state == RING_STATE_OUT)
-    {
-        action->ring_track_type = left_ring ? TRACK_TYPE_LEFT : TRACK_TYPE_RIGHT;
-    }
-
-    if(rt->ring.state == RING_STATE_RUN)
-    {
-        if(rt->ring.kind == RING_KIND_LEFT && rt->track.right.l_ok)
+        boundary_t *out = left_ring ? &rt->track.right : &rt->track.left;
+        if(out->l_found)
         {
-            action->ring_frame_start_crop_side = TRACK_TYPE_RIGHT;
-            action->ring_frame_start_crop_index = rt->track.right.l_now_index;
-        }
-        else if(rt->ring.kind == RING_KIND_RIGHT && rt->track.left.l_ok)
-        {
-            action->ring_frame_start_crop_side = TRACK_TYPE_LEFT;
-            action->ring_frame_start_crop_index = rt->track.left.l_now_index;
+            action->ring_frame_start_crop_side = left_ring ? TRACK_TYPE_RIGHT : TRACK_TYPE_LEFT;
+            action->ring_frame_start_crop_index = out->l_now_index;
         }
     }
-}
-
-int ring_track_type_from_current_state(const runtime_t *rt)
-{
-    if(rt == nullptr || rt->ring.kind == RING_KIND_NONE)
-    {
-        return TRACK_TYPE_NONE;
-    }
-
-    const int left_ring = (rt->ring.kind == RING_KIND_LEFT);
-    if(rt->ring.state == RING_STATE_BEGIN ||
-       rt->ring.state == RING_STATE_RUN ||
-       rt->ring.state == RING_STATE_END)
-    {
-        return left_ring ? TRACK_TYPE_RIGHT : TRACK_TYPE_LEFT;
-    }
-    if(rt->ring.state == RING_STATE_IN ||
-       rt->ring.state == RING_STATE_OUT)
-    {
-        return left_ring ? TRACK_TYPE_LEFT : TRACK_TYPE_RIGHT;
-    }
-    return TRACK_TYPE_NONE;
 }
 
 frame_mode_t classify_frame_mode(runtime_t *rt, const frame_action_t *action)
@@ -266,14 +253,7 @@ frame_mode_t classify_frame_mode(runtime_t *rt, const frame_action_t *action)
     }
     else if(mode.ring_active)
     {
-        if(action->ring_track_type != TRACK_TYPE_NONE)
-        {
-            mode.work_track_type = action->ring_track_type;
-        }
-        else
-        {
-            mode.work_track_type = ring_track_type_from_current_state(rt);
-        }
+        mode.work_track_type = ring_track_type_from_state(action->ring_kind0, action->ring_state0);
     }
     else
     {
@@ -286,8 +266,6 @@ frame_mode_t classify_frame_mode(runtime_t *rt, const frame_action_t *action)
 
 void apply_frame_start_element_crop(runtime_t *rt, const frame_mode_t *mode, const frame_action_t *action)
 {
-    rt->track.candidate_crop_side = action->ring_frame_start_crop_side;
-    rt->track.candidate_crop_index = action->ring_frame_start_crop_index;
     rt->track.candidate_left_before_crop = rptsc0_num;
     rt->track.candidate_right_before_crop = rptsc1_num;
 
@@ -301,10 +279,14 @@ void apply_frame_start_element_crop(runtime_t *rt, const frame_mode_t *mode, con
     {
         if(action->ring_frame_start_crop_side == TRACK_TYPE_LEFT)
         {
+            rt->track.candidate_crop_side = action->ring_frame_start_crop_side;
+            rt->track.candidate_crop_index = action->ring_frame_start_crop_index;
             rptsc0_num = clip_i(action->ring_frame_start_crop_index, 0, rptsc0_num);
         }
         else if(action->ring_frame_start_crop_side == TRACK_TYPE_RIGHT)
         {
+            rt->track.candidate_crop_side = action->ring_frame_start_crop_side;
+            rt->track.candidate_crop_index = action->ring_frame_start_crop_index;
             rptsc1_num = clip_i(action->ring_frame_start_crop_index, 0, rptsc1_num);
         }
     }
@@ -315,6 +297,8 @@ void apply_frame_start_element_crop(runtime_t *rt, const frame_mode_t *mode, con
 
 int build_selected_midline(runtime_t *rt, const frame_mode_t *mode, point_t ref)
 {
+    // ==== 控制中线选择 ====
+    // CROSS_IN 有远线重建候选；ring 只按帧首状态选用/裁剪基础 rptsc，不消费 ring_process() 的检测补边。
     if(mode->cross_far)
     {
         return solve_cross_mid(rt, ref);
@@ -1163,7 +1147,7 @@ int tracking_process_frame(runtime_t *rt)
                 {
                     defer_element_search_center_update = 1;
                 }
-                snapshot_ring_frame_start_action(rt, &action);
+                snapshot_ring_frame_start_crop(rt, &action);
                 element_process(rt);
                 action.base_candidates_ready = 1;
             }

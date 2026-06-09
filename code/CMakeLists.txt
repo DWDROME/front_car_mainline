@@ -110,60 +110,74 @@ target_link_libraries(
 )
 
 if(NOT SMARTCAR_CROSS_COMPILE)
-    add_executable(cross_farline_reuse_test
+    function(add_host_tracking_test TARGET_NAME)
+        add_executable(${TARGET_NAME} ${ARGN})
+        target_include_directories(${TARGET_NAME} PRIVATE
+            ${OpenCV_INCLUDE_DIRS}
+            .
+            ..
+            tracking
+        )
+        target_link_libraries(
+            ${TARGET_NAME}
+            ${OpenCV_LIBS}
+            m
+        )
+    endfunction()
+
+    function(add_host_plain_test TARGET_NAME)
+        add_executable(${TARGET_NAME} ${ARGN})
+        target_include_directories(${TARGET_NAME} PRIVATE
+            .
+            ..
+            app
+            core
+        )
+        target_link_libraries(
+            ${TARGET_NAME}
+            m
+        )
+    endfunction()
+
+    add_host_tracking_test(cross_farline_reuse_test
         test/cross_farline_reuse_test.cpp
         tracking/imgproc.cpp
         tracking/perspective.cpp
         tracking/ipm_table_generated.cpp
     )
-    target_include_directories(cross_farline_reuse_test PRIVATE
-        ${OpenCV_INCLUDE_DIRS}
-        .
-        ..
-        tracking
-    )
-    target_link_libraries(
-        cross_farline_reuse_test
-        ${OpenCV_LIBS}
-        m
-    )
 
-    add_executable(midline_lookahead_test
+    add_host_tracking_test(midline_lookahead_test
         test/midline_lookahead_test.cpp
         tracking/perspective.cpp
         tracking/ipm_table_generated.cpp
     )
-    target_include_directories(midline_lookahead_test PRIVATE
-        ${OpenCV_INCLUDE_DIRS}
-        .
-        ..
-        tracking
-    )
-    target_link_libraries(
-        midline_lookahead_test
-        ${OpenCV_LIBS}
-        m
-    )
 
-    add_executable(line_trace_contract_test
+    add_host_tracking_test(line_trace_contract_test
         test/line_trace_contract_test.cpp
         tracking/imgproc.cpp
         tracking/perspective.cpp
         tracking/ipm_table_generated.cpp
     )
-    target_include_directories(line_trace_contract_test PRIVATE
-        ${OpenCV_INCLUDE_DIRS}
-        .
-        ..
-        tracking
-    )
-    target_link_libraries(
-        line_trace_contract_test
-        ${OpenCV_LIBS}
-        m
+
+    add_host_tracking_test(boundary_contract_test
+        test/boundary_contract_test.cpp
+        tracking/imgproc.cpp
+        tracking/perspective.cpp
+        tracking/ipm_table_generated.cpp
+        tracking/boundary.cpp
     )
 
-    add_executable(search_center_learning_test
+    add_host_tracking_test(element_entry_contract_test
+        test/element_entry_contract_test.cpp
+        tracking/imgproc.cpp
+        tracking/perspective.cpp
+        tracking/ipm_table_generated.cpp
+        tracking/boundary.cpp
+        tracking/cross.cpp
+        tracking/ring.cpp
+    )
+
+    add_host_tracking_test(search_center_learning_test
         test/search_center_learning_test.cpp
         tracking/imgproc.cpp
         tracking/perspective.cpp
@@ -174,15 +188,22 @@ if(NOT SMARTCAR_CROSS_COMPILE)
         tracking/element.cpp
         tracking/cross.cpp
     )
-    target_include_directories(search_center_learning_test PRIVATE
-        ${OpenCV_INCLUDE_DIRS}
-        .
-        ..
-        tracking
+
+    add_host_tracking_test(ring_opp_diag_test
+        test/ring_opp_diag_test.cpp
+        tracking/imgproc.cpp
+        tracking/perspective.cpp
+        tracking/ipm_table_generated.cpp
+        tracking/boundary.cpp
     )
-    target_link_libraries(
-        search_center_learning_test
-        ${OpenCV_LIBS}
-        m
+
+    add_host_plain_test(config_parsing_test
+        test/config_parsing_test.cpp
+        core/config.cpp
+    )
+
+    add_host_plain_test(options_parsing_test
+        test/options_parsing_test.cpp
+        app/options.cpp
     )
 endif()

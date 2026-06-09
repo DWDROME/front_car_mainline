@@ -25,7 +25,7 @@ usage() {
   ./test.sh --host
   ./test.sh --reconfigure
   ./test.sh --clean
-  ./test.sh --upload
+  ./test.sh --upload        # 只上传交叉编译产物，不能和 --host 同用
 EOF
 }
 
@@ -64,6 +64,12 @@ else
     CMAKE_OPT="-DSMARTCAR_CROSS_COMPILE=ON"
 fi
 
+# ==== 上传模式边界 ====
+if [[ ${HOST} -eq 1 && ${UPLOAD} -eq 1 ]]; then
+    echo "[ERROR] --upload 只能上传交叉编译产物，不能和 --host 同时使用" >&2
+    exit 1
+fi
+
 mkdir -p "${OUT}"
 cd "${OUT}"
 
@@ -80,8 +86,13 @@ make -j"${MAKE_JOBS}"
 if [[ ${HOST} -eq 1 ]]; then
     "${OUT}/cross_farline_reuse_test"
     "${OUT}/line_trace_contract_test"
+    "${OUT}/boundary_contract_test"
+    "${OUT}/element_entry_contract_test"
     "${OUT}/midline_lookahead_test"
     "${OUT}/search_center_learning_test"
+    "${OUT}/ring_opp_diag_test"
+    "${OUT}/config_parsing_test"
+    "${OUT}/options_parsing_test"
 fi
 
 if [[ ${UPLOAD} -eq 1 ]]; then

@@ -220,6 +220,15 @@ struct track_result_t
     int candidate_right_after_crop;
     int selected_mid_ok;
 
+    // 环岛检测补边诊断：只记录 ring_process() 内部检测补边，不表示当前帧控制中线使用了补线。
+    // ring_opp_left 表示当前是左环：左环补右边，右环补左边。
+    int ring_opp_left;
+    int ring_cur_step;
+    int ring_opp_step;
+    int ring_opp_l_ok;
+    int ring_opp_l_index;
+    int ring_opp_build_result;
+
     // seed 搜索先验学习诊断：kind 记录本帧进入的学习提交路径；before/after 记录实际前后值。
     // mid_position 是下一帧 seed 搜索中心，不是当前帧控制中线。
     int search_update_kind;

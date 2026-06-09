@@ -1,5 +1,6 @@
 #include <cstdio>
 #include <cstring>
+#include <cmath>
 
 #include "types.hpp"
 #include "tracking/imgproc.cpp"
@@ -25,6 +26,15 @@ void expect_ge(const char *name, int actual, int expected, int *failed)
     if(actual < expected)
     {
         std::fprintf(stderr, "FAIL: %s actual=%d expected>=%d\n", name, actual, expected);
+        *failed = 1;
+    }
+}
+
+void expect_near(const char *name, double actual, double expected, double tol, int *failed)
+{
+    if(std::fabs(actual - expected) > tol)
+    {
+        std::fprintf(stderr, "FAIL: %s actual=%.6f expected=%.6f tol=%.6f\n", name, actual, expected, tol);
         *failed = 1;
     }
 }
@@ -116,6 +126,31 @@ int run_build_rptsn_valid_run_contract()
     expect_eq("forced begin keeps strict invalid reject", build_rptsn(rpts, 5, 89, 109, 1, &mid), 0, &failed);
     return failed;
 }
+
+int run_resample_no_repeat_contract()
+{
+    int failed = 0;
+    double in[POINT_MAX][2] = {};
+    double out[POINT_MAX][2] = {};
+    int out_num = 0;
+
+    // ==== 等距采样回归 ====
+    // Calvariaa/RT1064-Code issue #3: (0,0)->(4,3) 长度为 5，按 2 采样时不能回到原点。
+    in[0][0] = 0.0;
+    in[0][1] = 0.0;
+    in[1][0] = 4.0;
+    in[1][1] = 3.0;
+    resample_points(in, 2, out, &out_num, 2);
+
+    expect_eq("resample count", out_num, 3, &failed);
+    expect_near("resample p0 x", out[0][0], 0.0, 1e-6, &failed);
+    expect_near("resample p0 y", out[0][1], 0.0, 1e-6, &failed);
+    expect_near("resample p1 x", out[1][0], 1.6, 1e-6, &failed);
+    expect_near("resample p1 y", out[1][1], 1.2, 1e-6, &failed);
+    expect_near("resample p2 x", out[2][0], 3.2, 1e-6, &failed);
+    expect_near("resample p2 y", out[2][1], 2.4, 1e-6, &failed);
+    return failed;
+}
 }
 
 int main()
@@ -126,6 +161,7 @@ int main()
     failed |= run_short_forward_reject_contract();
     failed |= run_sample_gap_coverage_contract();
     failed |= run_build_rptsn_valid_run_contract();
+    failed |= run_resample_no_repeat_contract();
     if(failed)
     {
         return 1;

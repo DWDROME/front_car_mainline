@@ -27,6 +27,7 @@ const int k_cross_far_nms_window = k_cross_far_l_window * 2 + 1; // 远 L 峰值
 const int k_cross_far_l_angle_min = 70; // 远 L 角置信度下限，小于这个更像普通弯折。
 const int k_cross_far_l_angle_max = 110; // 远 L 角置信度上限，大于这个更像噪声尖峰或异常折角。
 const int k_cross_far_edge_width = 4; // 固定列贴近边缘时，允许把 4 像素边带视作有效起扫边界。
+const int k_cross_far_l_reuse_max = 1; // 远 L 漏检只桥接 1 帧，避免旧 L 索引长期支配十字远线。
 
 // 十字入口只接受参考版 strict double-L。单侧 l_ok 留给 ring/zebra/裁剪使用。
 // 如果后续实车/回放证明需要 weak entry，必须新建独立入口函数，不能把 l_ok 塞回这个 strict gate。
@@ -344,7 +345,9 @@ int build_cross_farline(runtime_t *rt, int left_side)
         *far_l_source = CROSS_FAR_L_NEW;
         *far_l_reuse_count = 0;
     }
-    else if(old_l_source != CROSS_FAR_L_NONE && far_l_index_usable(old_l, *far_num))
+    else if(old_l_source != CROSS_FAR_L_NONE &&
+            old_reuse_count < k_cross_far_l_reuse_max &&
+            far_l_index_usable(old_l, *far_num))
     {
         *far_l = old_l;
         *far_l_source = CROSS_FAR_L_REUSED;
