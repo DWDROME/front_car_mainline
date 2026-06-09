@@ -118,7 +118,7 @@ void profile_report_and_reset(live_profile_t *prof)
 }
 
 // 每帧识别前写入图像有效标记和控制中心。
-// mid_position/width_base 是搜索中心跟随的跨帧状态，这里不再逐帧重置：
+// mid_position/width_base 是 seed 搜索先验的跨帧状态，这里不再逐帧重置：
 // 与 live() 主循环一致(它也不调 init_frame)，让 replay 多帧能复现中心跟随；
 // 单图 analyze/offline 的初值由启动时 tracking_reset 提供，单帧行为不变。
 void init_frame(runtime_t *rt)
@@ -165,22 +165,43 @@ int process_frame_quiet(runtime_t *rt, const char *image_path)
 // 字段缩写：far=左/右远线found，far_num=左/右远线点数，far_l=左/右远 L 索引，far_src=新检出/复用旧索引；
 //   far_reuse=远 L 索引连续复用帧数，只用于诊断。
 //   pair=左/右 strict double-L 复核结果；ps=左/右 pair_state；pw=双 L 基准/张开宽度；
+//   pre=find_seeds后state/seed和trace过滤前步数；tg=trace过滤前纵向爬升量；tp=trace越过对侧seed时的爬升量；
 //   xst=帧首cross/base/cross_far/cross_near/ring_active/work_track/ref；
+//   xcrop=ring裁剪side/index + rptsc0/rptsc1裁剪前/后 + selected mid_ok；
+//   xlearn=seed 搜索先验学习 kind/search_center_before/search_center_after/width_before/width_after；
 //   xfar=近线步数/lost/recover/exit/far_ok/far_fail/far_trace/ipm/blur/resample；
-//   xmid=远线中线 side/fail/start/tail/cand/out。
+//   xmid=远线中线 side/fail/start/tail/cand/out；md=预瞄距离/前方门/最大距离。
 void print_replay_frame(int frame, const runtime_t *rt)
 {
-    std::printf("replay frame=%d line=%d ring=%d/%d cross=%d zebra=%d no_line=%d far=%d/%d "
+    point_t m0 = {-1, -1};
+    point_t ml = {-1, -1};
+    int ml_dist = -1;
+    int max_dist = -1;
+    int ml_forward = 0;
+    mid_points_for_report(rt->track.mid,
+                          rt->track.control_ref.y,
+                          &m0,
+                          &ml,
+                          &ml_dist,
+                          &max_dist,
+                          &ml_forward);
+
+    std::printf("replay frame=%d line=%d ring=%d/%d r0=%d/%d cross=%d zebra=%d no_line=%d far=%d/%d "
                 "far_num=%d/%d far_l=%d/%d far_src=%d/%d far_reuse=%d/%d "
                 "l=%d/%d@%d/%d/%d@%d pair=%d/%d ps=%d/%d pw=%.1f/%.1f "
+                "pre=%d:(%d,%d)-(%d,%d)/%d/%d tg=%d/%d tp=%d/%d "
                 "xst=%d/%d/%d/%d/%d/%d@%d,%d "
+                "xcrop=%d/%d/%d/%d/%d/%d/%d "
+                "xlearn=%d/%d/%d/%d/%d "
                 "xfar=%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d "
                 "xmid=%d/%d/%d/%d/%d/%d "
-                "track=%d mid=%d guide=%.2f reject=%d idrej=%d\n",
+                "track=%d mid=%d md=%d/%d/%d guide=%.2f reject=%d idrej=%d\n",
                 frame,
                 track_line_found(rt),
                 rt->ring.kind,
                 rt->ring.state,
+                rt->track.action_ring_kind0,
+                rt->track.action_ring_state0,
                 rt->cross.state,
                 rt->zebra.detected,
                 rt->cross.not_have_line,
@@ -206,6 +227,17 @@ void print_replay_frame(int frame, const runtime_t *rt)
                 rt->track.right.l_pair_state,
                 rt->track.left.l_pair_width0,
                 rt->track.left.l_pair_width1,
+                rt->track.seed_state_find,
+                rt->track.seed_left_find.x,
+                rt->track.seed_left_find.y,
+                rt->track.seed_right_find.x,
+                rt->track.seed_right_find.y,
+                rt->track.trace_left_raw_step,
+                rt->track.trace_right_raw_step,
+                rt->track.trace_left_raw_gain,
+                rt->track.trace_right_raw_gain,
+                rt->track.trace_left_pass_right_gain,
+                rt->track.trace_right_pass_left_gain,
                 rt->track.action_cross_state0,
                 rt->track.action_base_ready,
                 rt->track.mode_cross_far,
@@ -214,6 +246,18 @@ void print_replay_frame(int frame, const runtime_t *rt)
                 rt->track.mode_work_track_type,
                 rt->track.control_ref.x,
                 rt->track.control_ref.y,
+                rt->track.candidate_crop_side,
+                rt->track.candidate_crop_index,
+                rt->track.candidate_left_before_crop,
+                rt->track.candidate_right_before_crop,
+                rt->track.candidate_left_after_crop,
+                rt->track.candidate_right_after_crop,
+                rt->track.selected_mid_ok,
+                rt->track.search_update_kind,
+                rt->track.search_mid_before,
+                rt->track.search_mid_after,
+                rt->track.width_base_before,
+                rt->track.width_base_after,
                 rt->cross.left_near_step,
                 rt->cross.right_near_step,
                 rt->cross.both_near_lost,
@@ -239,6 +283,9 @@ void print_replay_frame(int frame, const runtime_t *rt)
                 rt->track.cross_mid_out,
                 rt->track.track_type,
                 rt->track.mid.step,
+                ml_dist,
+                ml_forward,
+                max_dist,
                 rt->track.guide_error,
                 rt->track.reject_reason,
                 rt->track.trace_identity_reject);

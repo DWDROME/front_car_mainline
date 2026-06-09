@@ -127,4 +127,62 @@ if(NOT SMARTCAR_CROSS_COMPILE)
         ${OpenCV_LIBS}
         m
     )
+
+    add_executable(midline_lookahead_test
+        test/midline_lookahead_test.cpp
+        tracking/perspective.cpp
+        tracking/ipm_table_generated.cpp
+    )
+    target_include_directories(midline_lookahead_test PRIVATE
+        ${OpenCV_INCLUDE_DIRS}
+        .
+        ..
+        tracking
+    )
+    target_link_libraries(
+        midline_lookahead_test
+        ${OpenCV_LIBS}
+        m
+    )
+
+    add_executable(line_trace_contract_test
+        test/line_trace_contract_test.cpp
+        tracking/imgproc.cpp
+        tracking/perspective.cpp
+        tracking/ipm_table_generated.cpp
+    )
+    target_include_directories(line_trace_contract_test PRIVATE
+        ${OpenCV_INCLUDE_DIRS}
+        .
+        ..
+        tracking
+    )
+    target_link_libraries(
+        line_trace_contract_test
+        ${OpenCV_LIBS}
+        m
+    )
+
+    add_executable(search_center_learning_test
+        test/search_center_learning_test.cpp
+        tracking/imgproc.cpp
+        tracking/perspective.cpp
+        tracking/ipm_table_generated.cpp
+        tracking/boundary.cpp
+        tracking/zebra.cpp
+        tracking/ring.cpp
+        tracking/element.cpp
+        tracking/cross.cpp
+    )
+    target_include_directories(search_center_learning_test PRIVATE
+        ${OpenCV_INCLUDE_DIRS}
+        .
+        ..
+        tracking
+    )
+    target_link_libraries(
+        search_center_learning_test
+        ${OpenCV_LIBS}
+        m
+    )
 endif()

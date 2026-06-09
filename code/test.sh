@@ -79,6 +79,9 @@ make -j"${MAKE_JOBS}"
 
 if [[ ${HOST} -eq 1 ]]; then
     "${OUT}/cross_farline_reuse_test"
+    "${OUT}/line_trace_contract_test"
+    "${OUT}/midline_lookahead_test"
+    "${OUT}/search_center_learning_test"
 fi
 
 if [[ ${UPLOAD} -eq 1 ]]; then

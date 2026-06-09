@@ -202,12 +202,42 @@ struct track_result_t
 
     // 主线帧分类诊断：记录本帧动作来源、mode 和控制参考点。
     int action_cross_state0;
+    int action_ring_kind0;
+    int action_ring_state0;
     int action_base_ready;
     int mode_cross_far;
     int mode_cross_near;
     int mode_ring_active;
     int mode_work_track_type;
     point_t control_ref;
+
+    // 候选中线裁剪诊断：只记录 rptsc0/rptsc1 在元素帧裁剪前后的点数，不改变选边或发布结果。
+    int candidate_crop_side;
+    int candidate_crop_index;
+    int candidate_left_before_crop;
+    int candidate_right_before_crop;
+    int candidate_left_after_crop;
+    int candidate_right_after_crop;
+    int selected_mid_ok;
+
+    // seed 搜索先验学习诊断：kind 记录本帧进入的学习提交路径；before/after 记录实际前后值。
+    // mid_position 是下一帧 seed 搜索中心，不是当前帧控制中线。
+    int search_update_kind;
+    int search_mid_before;
+    int search_mid_after;
+    int width_base_before;
+    int width_base_after;
+
+    // seed/trace 早期诊断：保留身份过滤前的当前帧证据，方便区分真无 seed 和过滤后清空。
+    int seed_state_find;
+    point_t seed_left_find;
+    point_t seed_right_find;
+    int trace_left_raw_step;
+    int trace_right_raw_step;
+    int trace_left_raw_gain;
+    int trace_right_raw_gain;
+    int trace_left_pass_right_gain;
+    int trace_right_pass_left_gain;
 
     // 左右身份拒绝位：只记录当前帧证据，不复用上一帧中线。
     int trace_identity_reject;
@@ -239,6 +269,13 @@ enum
     TRACK_REJECT_NO_SEED = 1,
     TRACK_REJECT_TRACE_FILTERED = 3,
     TRACK_REJECT_NO_MIDLINE = 4,
+};
+
+enum
+{
+    TRACK_SEARCH_UPDATE_NONE = 0,
+    TRACK_SEARCH_UPDATE_ORDINARY = 1,
+    TRACK_SEARCH_UPDATE_ELEMENT = 2,
 };
 
 enum

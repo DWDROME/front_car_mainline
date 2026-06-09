@@ -96,6 +96,7 @@ struct frame_action_t
 {
     int cross_state0 = CROSS_STATE_NONE;
     int ring_kind0 = RING_KIND_NONE;
+    int ring_state0 = RING_STATE_BEGIN;
     int ordinary_track_type = TRACK_TYPE_NONE;
     int ring_track_type = TRACK_TYPE_NONE;
     int ring_frame_start_crop_side = TRACK_TYPE_NONE;
@@ -118,6 +119,19 @@ void reset_frame_tracking_state(runtime_t *rt)
     rt->track.reject_reason = TRACK_REJECT_NONE;
     rt->track.track_type = TRACK_TYPE_NONE;
     rt->track.center_x = -1;
+    rt->track.seed_left_find = {-1, -1};
+    rt->track.seed_right_find = {-1, -1};
+    rt->track.control_ref = {-1, -1};
+    rt->track.candidate_crop_side = TRACK_TYPE_NONE;
+    rt->track.candidate_crop_index = -1;
+    rt->track.search_update_kind = TRACK_SEARCH_UPDATE_NONE;
+    rt->track.search_mid_before = rt->mid_position;
+    rt->track.search_mid_after = -1;
+    rt->track.width_base_before = rt->width_base;
+    rt->track.width_base_after = -1;
+    rt->track.trace_left_pass_right_gain = -1;
+    rt->track.trace_right_pass_left_gain = -1;
+    rt->seed_state = 0;
     std::memset(&rt->seeds, 0, sizeof(rt->seeds));
     std::memset(&rt->left_trace, 0, sizeof(rt->left_trace));
     std::memset(&rt->right_trace, 0, sizeof(rt->right_trace));
@@ -272,6 +286,11 @@ frame_mode_t classify_frame_mode(runtime_t *rt, const frame_action_t *action)
 
 void apply_frame_start_element_crop(runtime_t *rt, const frame_mode_t *mode, const frame_action_t *action)
 {
+    rt->track.candidate_crop_side = action->ring_frame_start_crop_side;
+    rt->track.candidate_crop_index = action->ring_frame_start_crop_index;
+    rt->track.candidate_left_before_crop = rptsc0_num;
+    rt->track.candidate_right_before_crop = rptsc1_num;
+
     if(mode->cross_near)
     {
         rptsc0_num = clip_i(rt->track.left.now_step, 0, rptsc0_num);
@@ -289,6 +308,9 @@ void apply_frame_start_element_crop(runtime_t *rt, const frame_mode_t *mode, con
             rptsc1_num = clip_i(action->ring_frame_start_crop_index, 0, rptsc1_num);
         }
     }
+
+    rt->track.candidate_left_after_crop = rptsc0_num;
+    rt->track.candidate_right_after_crop = rptsc1_num;
 }
 
 int build_selected_midline(runtime_t *rt, const frame_mode_t *mode, point_t ref)
@@ -308,29 +330,7 @@ int build_selected_midline(runtime_t *rt, const frame_mode_t *mode, point_t ref)
     return 0;
 }
 
-void trace_x_range(const trace_t *trace, int *min_x, int *max_x)
-{
-    if(min_x == nullptr || max_x == nullptr)
-    {
-        return;
-    }
-    *min_x = RAW_W;
-    *max_x = -1;
-    if(trace == nullptr)
-    {
-        return;
-    }
-    for(int i = 0; i < trace->step; ++i)
-    {
-        *min_x = std::min(*min_x, trace->pts[i].x);
-        *max_x = std::max(*max_x, trace->pts[i].x);
-    }
-    if(trace->step <= 0)
-    {
-        *min_x = -1;
-        *max_x = -1;
-    }
-}
+int trace_pass_seed_gain(const trace_t *trace, int seed_x, int pass_to_right);
 
 int traces_cross_on_same_row(const trace_t *left, const trace_t *right)
 {
@@ -380,18 +380,20 @@ int trace_identity_reject_bits(const runtime_t *rt, int left_ok, int right_ok)
     }
 
     int reject = TRACE_IDENTITY_REJECT_NONE;
-    int left_min = -1;
-    int left_max = -1;
-    int right_min = -1;
-    int right_max = -1;
-    trace_x_range(&rt->left_trace, &left_min, &left_max);
-    trace_x_range(&rt->right_trace, &right_min, &right_max);
+    const int left_pass_right_gain =
+        trace_pass_seed_gain(&rt->left_trace,
+                             (rt->seed_state & 2) ? rt->seeds.right.x : -1,
+                             1);
+    const int right_pass_left_gain =
+        trace_pass_seed_gain(&rt->right_trace,
+                             (rt->seed_state & 1) ? rt->seeds.left.x : -1,
+                             0);
 
-    if(left_ok && (rt->seed_state & 2) && rt->seeds.right.x >= 0 && left_max >= rt->seeds.right.x)
+    if(left_ok && left_pass_right_gain >= 0)
     {
         reject |= TRACE_IDENTITY_REJECT_LEFT_PASSED_RIGHT_SEED;
     }
-    if(right_ok && (rt->seed_state & 1) && rt->seeds.left.x >= 0 && right_min <= rt->seeds.left.x)
+    if(right_ok && right_pass_left_gain >= 0)
     {
         reject |= TRACE_IDENTITY_REJECT_RIGHT_PASSED_LEFT_SEED;
     }
@@ -400,6 +402,47 @@ int trace_identity_reject_bits(const runtime_t *rt, int left_ok, int right_ok)
         reject |= TRACE_IDENTITY_REJECT_ROW_CROSS;
     }
     return reject;
+}
+
+int trace_raw_vertical_gain(const trace_t *trace)
+{
+    if(trace == nullptr || trace->step <= 0)
+    {
+        return 0;
+    }
+
+    int min_y = trace->seed.y;
+    for(int i = 0; i < trace->step; ++i)
+    {
+        min_y = std::min(min_y, trace->pts[i].y);
+    }
+    return trace->seed.y - min_y;
+}
+
+int trace_pass_seed_gain(const trace_t *trace, int seed_x, int pass_to_right)
+{
+    if(trace == nullptr || trace->step <= 0 || seed_x < 0)
+    {
+        return -1;
+    }
+
+    int min_y = trace->seed.y;
+    for(int i = 0; i < trace->step; ++i)
+    {
+        min_y = std::min(min_y, trace->pts[i].y);
+        if(pass_to_right)
+        {
+            if(trace->pts[i].x >= seed_x)
+            {
+                return trace->seed.y - min_y;
+            }
+        }
+        else if(trace->pts[i].x <= seed_x)
+        {
+            return trace->seed.y - min_y;
+        }
+    }
+    return -1;
 }
 
 int publish_track_result(runtime_t *rt, const frame_mode_t *mode, int mid_ok, point_t ref)
@@ -411,7 +454,8 @@ int publish_track_result(runtime_t *rt, const frame_mode_t *mode, int mid_ok, po
         rt->track.reject_reason = TRACK_REJECT_NO_MIDLINE;
         return 0;
     }
-    if(require_lookahead && !midline_has_lookahead(&rt->track.mid, LOOKAHEAD_DIST))
+    if(require_lookahead &&
+       !midline_has_forward_lookahead(&rt->track.mid, LOOKAHEAD_DIST, ref.y))
     {
         rt->track.reject_reason = TRACK_REJECT_NO_MIDLINE;
         return 0;
@@ -488,6 +532,14 @@ int trace_edges(runtime_t *rt, int *use_matrix)
     {
         right_ok = trace_single(rt->gray, rt->seeds.right, 0, &rt->right_trace);
     }
+    rt->track.trace_left_raw_step = rt->left_trace.step;
+    rt->track.trace_right_raw_step = rt->right_trace.step;
+    rt->track.trace_left_raw_gain = trace_raw_vertical_gain(&rt->left_trace);
+    rt->track.trace_right_raw_gain = trace_raw_vertical_gain(&rt->right_trace);
+    rt->track.trace_left_pass_right_gain =
+        trace_pass_seed_gain(&rt->left_trace, has_right_seed ? rt->seeds.right.x : -1, 1);
+    rt->track.trace_right_pass_left_gain =
+        trace_pass_seed_gain(&rt->right_trace, has_left_seed ? rt->seeds.left.x : -1, 0);
 
     const int identity_reject = trace_identity_reject_bits(rt, left_ok, right_ok);
     rt->track.trace_identity_reject = identity_reject;
@@ -944,22 +996,37 @@ point_t control_ref_point(const runtime_t *rt)
 const int k_width_base_min = 10;
 const int k_width_base_max = RAW_W - ROAD_HALF_WIDTH;
 const int k_center_margin = 1;  // mid_position 写回留白，落在 find_seeds 读取校验 [0,RAW_W) 内
+const int k_ordinary_single_seed_max_center_delta = ROAD_HALF_WIDTH;
 
-// 用本帧追线成功后保留下来的 seed 结果更新下一帧起搜中心(mid_position)：
+int ordinary_single_seed_center_ok(const runtime_t *rt, int next_center)
+{
+    if(rt == nullptr)
+    {
+        return 0;
+    }
+    if(rt->track.center_x < 0)
+    {
+        return 0;
+    }
+    return std::abs(next_center - rt->track.center_x) <= k_ordinary_single_seed_max_center_delta;
+}
+
+// 用本帧发布成功后保留下来的 seed 结果更新下一帧 seed 搜索先验(mid_position/width_base)：
 //  - 全失：直接返回，保持上一帧中心(Front_Car 语义，勿学 TC264 重置回中点)。
 //  - 双边(两侧 bit 都置位)：中心取左右中点，即使宽度超出成对区间(如十字开口处
 //    左右远边相距过宽)也优于单边外推；width_base 只按帧首普通语义和合法成对低通标定。
-//  - 单边：用 width_base 把已知侧外推出虚拟中心，让中心随外圈平移。
+//  - 单边：用 width_base 把已知侧外推出虚拟中心；普通帧若该中心和已发布中线起点相差超过半路宽，
+//    不学习这次单侧外推，避免边缘 seed 把下一帧搜索中心拉到车道外。
 void update_search_center(runtime_t *rt, int allow_width_base)
 {
     if(rt == nullptr)
     {
         return;
     }
-    int mid = rt->mid_position;
+    int next_center = rt->mid_position;
     if((rt->seed_state & 3) == 3)
     {
-        mid = (rt->seeds.left.x + rt->seeds.right.x) / 2;
+        next_center = (rt->seeds.left.x + rt->seeds.right.x) / 2;
         if(allow_width_base && seed_pair_accepted(&rt->seeds, rt->seed_state))
         {
             const int span = rt->seeds.right.x - rt->seeds.left.x;
@@ -969,13 +1036,33 @@ void update_search_center(runtime_t *rt, int allow_width_base)
     }
     else if(rt->seed_state & 1)
     {
-        mid = rt->seeds.left.x + rt->width_base / 2;
+        next_center = rt->seeds.left.x + rt->width_base / 2;
+        if(allow_width_base && !ordinary_single_seed_center_ok(rt, next_center))
+        {
+            return;
+        }
     }
     else if(rt->seed_state & 2)
     {
-        mid = rt->seeds.right.x - rt->width_base / 2;
+        next_center = rt->seeds.right.x - rt->width_base / 2;
+        if(allow_width_base && !ordinary_single_seed_center_ok(rt, next_center))
+        {
+            return;
+        }
     }
-    rt->mid_position = clip_i(mid, k_center_margin, RAW_W - 1 - k_center_margin);
+    rt->mid_position = clip_i(next_center, k_center_margin, RAW_W - 1 - k_center_margin);
+}
+
+void commit_search_center_update(runtime_t *rt, int kind, int allow_width_base)
+{
+    if(rt == nullptr)
+    {
+        return;
+    }
+    update_search_center(rt, allow_width_base);
+    rt->track.search_update_kind = kind;
+    rt->track.search_mid_after = rt->mid_position;
+    rt->track.width_base_after = rt->width_base;
 }
 
 } // namespace
@@ -995,13 +1082,11 @@ void tracking_reset(runtime_t *rt)
     track_type_keep = TRACK_TYPE_RIGHT;
 }
 
-// 当前帧主巡线流程：
-//   seed -> trace -> rpts0s/rpts1s -> rptsc0/rptsc1
-//   -> element_process() 更新元素状态
-//   -> 帧首 action 选择/裁剪候选中线
-//   -> build_rptsn() 归一化为 rt->track.mid
-//   -> guide_error / zebra scan
-// 注意：元素状态机只决定选边、裁剪或 CROSS_IN 远线；最终控制中线只从这里发布。
+// 当前帧主巡线流程按三层读：
+//   1. 识线层：find_seeds() 读取 mid_position 作为 seed 搜索中心，然后 trace 左右边界。
+//   2. 几何层：trace 证据经 boundary / candidate midline / publish gate 生成 rt->track.mid。
+//   3. 元素层：cross/ring/zebra 只消费当前帧几何证据，不能替代 seed/trace 失败。
+// 注意：mid_position/width_base 是下一帧 seed acquisition prior，不是当前控制中线。
 int tracking_process_frame(runtime_t *rt)
 {
     if(rt == nullptr || !rt->gray_valid)
@@ -1016,15 +1101,25 @@ int tracking_process_frame(runtime_t *rt)
     frame_action_t action = {};
     action.cross_state0 = rt->cross.state;
     action.ring_kind0 = rt->ring.kind;
+    action.ring_state0 = rt->ring.state;
+    int defer_element_search_center_update = 0;
     const int ordinary_frame0 =
         action.cross_state0 == CROSS_STATE_NONE &&
         action.ring_kind0 == RING_KIND_NONE;
+    point_t ref = control_ref_point(rt);
+    rt->track.action_cross_state0 = action.cross_state0;
+    rt->track.action_ring_kind0 = action.ring_kind0;
+    rt->track.action_ring_state0 = action.ring_state0;
+    rt->track.control_ref = ref;
 
     int seed_ok = find_seeds(rt->gray,
                              START_HIGH,
                              &rt->mid_position,
                              &rt->seed_state,
                              &rt->seeds);
+    rt->track.seed_state_find = rt->seed_state;
+    rt->track.seed_left_find = rt->seeds.left;
+    rt->track.seed_right_find = rt->seeds.right;
     if(!seed_ok)
     {
         if(rt->cross.state != CROSS_STATE_IN)
@@ -1064,10 +1159,9 @@ int tracking_process_frame(runtime_t *rt)
             }
             else
             {
-                // 已在元素态的帧保持早期学习；普通帧等 selected midline 几何成立后再学习。
                 if(!ordinary_frame0)
                 {
-                    update_search_center(rt, 0);
+                    defer_element_search_center_update = 1;
                 }
                 snapshot_ring_frame_start_action(rt, &action);
                 element_process(rt);
@@ -1077,9 +1171,10 @@ int tracking_process_frame(runtime_t *rt)
 
     }
 
-    point_t ref = control_ref_point(rt);
     const frame_mode_t mode = classify_frame_mode(rt, &action);
     rt->track.action_cross_state0 = action.cross_state0;
+    rt->track.action_ring_kind0 = action.ring_kind0;
+    rt->track.action_ring_state0 = action.ring_state0;
     rt->track.action_base_ready = action.base_candidates_ready;
     rt->track.mode_cross_far = mode.cross_far;
     rt->track.mode_cross_near = mode.cross_near;
@@ -1102,13 +1197,18 @@ int tracking_process_frame(runtime_t *rt)
     }
 
     const int mid_ok = build_selected_midline(rt, &mode, ref);
-    if(ordinary_frame0 && mid_ok >= k_min_border_step)
-    {
-        update_search_center(rt, 1);
-    }
+    rt->track.selected_mid_ok = mid_ok;
     if(!publish_track_result(rt, &mode, mid_ok, ref))
     {
         return 0;
+    }
+    if(ordinary_frame0)
+    {
+        commit_search_center_update(rt, TRACK_SEARCH_UPDATE_ORDINARY, 1);
+    }
+    else if(defer_element_search_center_update)
+    {
+        commit_search_center_update(rt, TRACK_SEARCH_UPDATE_ELEMENT, 0);
     }
 
     run_zebra_scan(rt, ref, mode.cross_far);

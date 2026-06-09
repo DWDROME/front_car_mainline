@@ -21,7 +21,7 @@ int region_otsu(const uint8_t gray[RAW_H][RAW_W], int x_start, int x_end, int y_
 //  @brief      从起线行查找左右 seed
 //  @param      gray       输入 raw 灰度图
 //  @param      start_row  起线行
-//  @param      mid        输入/输出上一帧中心参考列，允许为空
+//  @param      search_center  输入/输出 seed 搜索中心列，允许为空；不是控制中线
 //  @param      state      输出 bit 状态：1 左 seed，2 右 seed，3 双 seed
 //  @param      sd         输出左右 seed 和行号；同排 span 由 seed_pair_accepted() 按需现算
 //  @return     int        1 至少找到一侧 seed / 0 未找到
@@ -29,7 +29,7 @@ int region_otsu(const uint8_t gray[RAW_H][RAW_W], int x_start, int x_end, int y_
 //----------------------------------------------------------------------------------------------------------------------
 int find_seeds(const uint8_t gray[RAW_H][RAW_W],
                int start_row,
-               int *mid,
+               int *search_center,
                int *state,
                seed_pair_t *sd);
 
@@ -192,3 +192,13 @@ int track_dualline(const double pts0[POINT_MAX][2],
 //  @note       这里只检查距离覆盖，不计算 guide_error。
 //----------------------------------------------------------------------------------------------------------------------
 int midline_has_lookahead(const midline_t *midline, int aim_distance);
+
+//----------------------------------------------------------------------------------------------------------------------
+//  @brief      判断控制中线是否覆盖完整预瞄，且预瞄目标位于参考点前方
+//  @param      midline       输入控制中线
+//  @param      aim_distance  预瞄距离，单位为 midline->dist 的累计像素距离
+//  @param      ref_y         控制参考点 y
+//  @return     int           1 完整预瞄点在前方 / 0 无完整预瞄点或预瞄点不在前方
+//  @note       y 向下增大；前方目标必须满足 target.y < ref_y。该检查不复用旧中线。
+//----------------------------------------------------------------------------------------------------------------------
+int midline_has_forward_lookahead(const midline_t *midline, int aim_distance, int ref_y);

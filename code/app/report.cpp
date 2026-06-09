@@ -22,7 +22,7 @@ constexpr int k_live_beep_ms = 35;
 constexpr int k_report_near_lost_step = 5;
 constexpr int k_report_near_recover_step = 20;
 
-using live_state_signature_t = std::array<int, 45>;
+using live_state_signature_t = std::array<int, 67>;
 
 uint64_t report_monotonic_us()
 {
@@ -120,6 +120,15 @@ int positive_bucket(int value)
     return value > 0 ? 1 : 0;
 }
 
+int bucket8(int value)
+{
+    if(value < 0)
+    {
+        return -1;
+    }
+    return value / 8;
+}
+
 live_state_signature_t make_live_state_signature(const runtime_t *rt)
 {
     const auto &tr = rt->track;
@@ -169,7 +178,29 @@ live_state_signature_t make_live_state_signature(const runtime_t *rt)
         tr.right.l_found,
         tr.right.l_ok,
         tr.right.l_pair_ok,
-        tr.right.l_pair_state
+        tr.right.l_pair_state,
+        tr.action_ring_kind0,
+        tr.action_ring_state0,
+        tr.seed_state_find,
+        positive_bucket(tr.trace_left_raw_step),
+        positive_bucket(tr.trace_right_raw_step),
+        positive_bucket(tr.trace_left_raw_gain),
+        positive_bucket(tr.trace_right_raw_gain),
+        positive_bucket(tr.trace_left_pass_right_gain),
+        positive_bucket(tr.trace_right_pass_left_gain),
+        tr.trace_identity_reject,
+        tr.candidate_crop_side,
+        positive_bucket(tr.candidate_crop_index + 1),
+        positive_bucket(tr.candidate_left_before_crop),
+        positive_bucket(tr.candidate_right_before_crop),
+        positive_bucket(tr.candidate_left_after_crop),
+        positive_bucket(tr.candidate_right_after_crop),
+        positive_bucket(tr.selected_mid_ok),
+        tr.search_update_kind,
+        bucket8(tr.search_mid_before),
+        bucket8(tr.search_mid_after),
+        bucket8(tr.width_base_before),
+        bucket8(tr.width_base_after)
     };
 }
 
@@ -251,11 +282,22 @@ int report_seed_ipm_pair_diag(const runtime_t *rt)
     return SEED_IPM_DIAG_OK;
 }
 
+}
+
 // 取中线起点和预瞄附近点，供单行日志和报告输出。
-void mid_points_for_report(const midline_t &mid, point_t *m0, point_t *ml)
+void mid_points_for_report(const midline_t &mid,
+                           int ref_y,
+                           point_t *m0,
+                           point_t *ml,
+                           int *ml_dist,
+                           int *max_dist,
+                           int *forward_ok)
 {
     *m0 = {-1, -1};
     *ml = {-1, -1};
+    *ml_dist = -1;
+    *max_dist = -1;
+    *forward_ok = 0;
     if(mid.step <= 0)
     {
         return;
@@ -270,6 +312,10 @@ void mid_points_for_report(const midline_t &mid, point_t *m0, point_t *ml)
         {
             continue;
         }
+        if(mid.dist[i] > *max_dist)
+        {
+            *max_dist = mid.dist[i];
+        }
         const int err = std::abs(mid.dist[i] - LOOKAHEAD_DIST);
         if(err < best_err)
         {
@@ -278,8 +324,8 @@ void mid_points_for_report(const midline_t &mid, point_t *m0, point_t *ml)
         }
     }
     *ml = mid.pts[best];
-}
-
+    *ml_dist = mid.dist[best];
+    *forward_ok = midline_has_forward_lookahead(&mid, LOOKAHEAD_DIST, ref_y);
 }
 
 //-------------------------------------------------------------------------------------------------------------------
@@ -300,14 +346,20 @@ void print_detail(const runtime_t *rt)
     const int seed_span = report_seed_pair_span(rt);
     const int ipm_reason = report_seed_ipm_pair_diag(rt);
 
-    std::printf("Seed: left=(%d,%d) right=(%d,%d) row=%d pair_span=%d\n",
+    std::printf("Seed: left=(%d,%d) right=(%d,%d) row=%d pair_span=%d "
+                "pre=%d:(%d,%d)-(%d,%d)\n",
                 sd.left.x,
                 sd.left.y,
                 sd.right.x,
                 sd.right.y,
                 sd.row,
-                seed_span);
-    std::printf("SeedSt: state=%d mid=%d track=%d\n",
+                seed_span,
+                tr.seed_state_find,
+                tr.seed_left_find.x,
+                tr.seed_left_find.y,
+                tr.seed_right_find.x,
+                tr.seed_right_find.y);
+    std::printf("SeedState: filtered=%d search_center=%d track=%d\n",
                 rt->seed_state,
                 rt->mid_position,
                 tr.track_type);
@@ -316,9 +368,15 @@ void print_detail(const runtime_t *rt)
                 rt->has_matrix,
                 use_matrix,
                 ipm_reason);
-    std::printf("Trace: left=%d right=%d idrej=%d\n",
+    std::printf("Trace: left=%d right=%d raw=%d/%d gain=%d/%d pass=%d/%d idrej=%d\n",
                 tr0.step,
                 tr1.step,
+                tr.trace_left_raw_step,
+                tr.trace_right_raw_step,
+                tr.trace_left_raw_gain,
+                tr.trace_right_raw_gain,
+                tr.trace_left_pass_right_gain,
+                tr.trace_right_pass_left_gain,
                 tr.trace_identity_reject);
     std::printf("CornerL: left=%d/%d@%d/%.1f pair=%d state=%d w=%.1f/%.1f "
                 "right=%d/%d@%d/%.1f pair=%d state=%d w=%.1f/%.1f\n",
@@ -343,7 +401,21 @@ void print_detail(const runtime_t *rt)
                 tr.center_x,
                 tr.guide_error,
                 tr.reject_reason);
-    std::printf("CrossDbg: mode=%d/%d/%d/%d/%d ref=(%d,%d) "
+    std::printf("Cand: crop=%d/%d before=%d/%d after=%d/%d mid_ok=%d\n",
+                tr.candidate_crop_side,
+                tr.candidate_crop_index,
+                tr.candidate_left_before_crop,
+                tr.candidate_right_before_crop,
+                tr.candidate_left_after_crop,
+                tr.candidate_right_after_crop,
+                tr.selected_mid_ok);
+    std::printf("SearchPrior: kind=%d center=%d/%d width=%d/%d\n",
+                tr.search_update_kind,
+                tr.search_mid_before,
+                tr.search_mid_after,
+                tr.width_base_before,
+                tr.width_base_after);
+    std::printf("CrossDbg: mode=%d/%d/%d/%d/%d ring0=%d/%d ref=(%d,%d) "
                 "near=%d/%d lost=%d rec=%d exit=%d far_ok=%d/%d "
                 "far_fail=%d/%d far_seed=(%d,%d)/(%d,%d) "
                 "far_n=%d/%d/%d/%d @ %d/%d/%d/%d lsrc=%d/%d reuse=%d/%d "
@@ -353,6 +425,8 @@ void print_detail(const runtime_t *rt)
                 tr.mode_cross_far,
                 tr.mode_cross_near,
                 tr.mode_work_track_type,
+                tr.action_ring_kind0,
+                tr.action_ring_state0,
                 tr.control_ref.x,
                 tr.control_ref.y,
                 cz.left_near_step,
@@ -440,27 +514,37 @@ void print_live(uint32_t frame_id, const runtime_t *rt)
     const auto &tr1 = rt->right_trace;
     point_t m0 = {-1, -1};
     point_t ml = {-1, -1};
-    mid_points_for_report(tr.mid, &m0, &ml);
+    int ml_dist = -1;
+    int max_dist = -1;
+    int ml_forward = 0;
+    mid_points_for_report(tr.mid, tr.control_ref.y, &m0, &ml, &ml_dist, &max_dist, &ml_forward);
 
     // 字段缩写：cf=左/右远线found，cn=左/右远线点数，cl=左/右远 L 索引，cs=远 L 来源，cr=连续复用帧数；
     //   l=左 found/ok/now_index @ 右 found/ok/now_index；pair=左/右 strict double-L 复核结果；
     //   ps=左/右 pair_state；pw=双 L 基准/张开宽度；
+    //   pre=find_seeds后state/seed和trace过滤前步数；tg=trace过滤前纵向爬升量；tp=trace越过对侧seed时的爬升量；
     //   xst=帧首cross/base/cross_far/cross_near/ring_active/work_track/ref；
+    //   xcrop=ring裁剪side/index + rptsc0/rptsc1裁剪前/后 + selected mid_ok；
+    //   xlearn=seed 搜索先验学习 kind/search_center_before/search_center_after/width_before/width_after；
     //   xfar=近线步数/lost/recover/exit/far_ok/far_fail/far_trace/ipm/blur/resample；
-    //   xmid=远线中线 side/fail/start/tail/cand/out；m0=中线起点，ml=预瞄点（均控制坐标）；
+    //   xmid=远线中线 side/fail/start/tail/cand/out；m0=中线起点，ml=预瞄点，md=预瞄距离/前方门/最大距离；
     //   yaw=target_yaw(mrad/s)，duty=左/右占空。
-    std::printf("frame=%u ring=%d/%d cross=%d cf=%d/%d cn=%d/%d cl=%d/%d cs=%d/%d cr=%d/%d "
+    std::printf("frame=%u ring=%d/%d r0=%d/%d cross=%d cf=%d/%d cn=%d/%d cl=%d/%d cs=%d/%d cr=%d/%d "
                 "zebra=%d line=%d rej=%d track=%d mid=%d "
-                "seed=(%d,%d)-(%d,%d) trace=%d/%d idrej=%d "
+                "seed=(%d,%d)-(%d,%d) trace=%d/%d pre=%d:(%d,%d)-(%d,%d)/%d/%d tg=%d/%d tp=%d/%d idrej=%d "
                 "l=%d/%d@%d/%d/%d@%d pair=%d/%d ps=%d/%d pw=%.1f/%.1f "
                 "xst=%d/%d/%d/%d/%d/%d@%d,%d "
+                "xcrop=%d/%d/%d/%d/%d/%d/%d "
+                "xlearn=%d/%d/%d/%d/%d "
                 "xfar=%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d "
                 "xmid=%d/%d/%d/%d/%d/%d "
-                "center=%d m0=(%d,%d) ml=(%d,%d) guide=%.2f "
+                "center=%d m0=(%d,%d) ml=(%d,%d) md=%d/%d/%d guide=%.2f "
                 "loop=%d stop=%d yaw=%d duty=%d/%d\n",
                 frame_id,
                 rt->ring.kind,
                 rt->ring.state,
+                tr.action_ring_kind0,
+                tr.action_ring_state0,
                 rt->cross.state,
                 rt->cross.left_far_found,
                 rt->cross.right_far_found,
@@ -483,6 +567,17 @@ void print_live(uint32_t frame_id, const runtime_t *rt)
                 sd.right.y,
                 tr0.step,
                 tr1.step,
+                tr.seed_state_find,
+                tr.seed_left_find.x,
+                tr.seed_left_find.y,
+                tr.seed_right_find.x,
+                tr.seed_right_find.y,
+                tr.trace_left_raw_step,
+                tr.trace_right_raw_step,
+                tr.trace_left_raw_gain,
+                tr.trace_right_raw_gain,
+                tr.trace_left_pass_right_gain,
+                tr.trace_right_pass_left_gain,
                 tr.trace_identity_reject,
                 tr.left.l_found,
                 tr.left.l_ok,
@@ -504,6 +599,18 @@ void print_live(uint32_t frame_id, const runtime_t *rt)
                 tr.mode_work_track_type,
                 tr.control_ref.x,
                 tr.control_ref.y,
+                tr.candidate_crop_side,
+                tr.candidate_crop_index,
+                tr.candidate_left_before_crop,
+                tr.candidate_right_before_crop,
+                tr.candidate_left_after_crop,
+                tr.candidate_right_after_crop,
+                tr.selected_mid_ok,
+                tr.search_update_kind,
+                tr.search_mid_before,
+                tr.search_mid_after,
+                tr.width_base_before,
+                tr.width_base_after,
                 rt->cross.left_near_step,
                 rt->cross.right_near_step,
                 rt->cross.both_near_lost,
@@ -532,6 +639,9 @@ void print_live(uint32_t frame_id, const runtime_t *rt)
                 m0.y,
                 ml.x,
                 ml.y,
+                ml_dist,
+                ml_forward,
+                max_dist,
                 tr.guide_error,
                 rt->control.input_valid,
                 rt->control.stop_request,
@@ -562,6 +672,24 @@ int write_report(const runtime_t *rt, const char *report_path)
     out << "line_found=" << track_line_found(rt) << "\n";
     out << "track_reject_reason=" << rt->track.reject_reason << "\n";
     out << "track_type=" << rt->track.track_type << "\n";
+    out << "action_ring_kind0=" << rt->track.action_ring_kind0 << "\n";
+    out << "action_ring_state0=" << rt->track.action_ring_state0 << "\n";
+    out << "candidate_crop_side=" << rt->track.candidate_crop_side << "\n";
+    out << "candidate_crop_index=" << rt->track.candidate_crop_index << "\n";
+    out << "candidate_left_before_crop=" << rt->track.candidate_left_before_crop << "\n";
+    out << "candidate_right_before_crop=" << rt->track.candidate_right_before_crop << "\n";
+    out << "candidate_left_after_crop=" << rt->track.candidate_left_after_crop << "\n";
+    out << "candidate_right_after_crop=" << rt->track.candidate_right_after_crop << "\n";
+    out << "selected_mid_ok=" << rt->track.selected_mid_ok << "\n";
+    out << "search_update_kind=" << rt->track.search_update_kind << "\n";
+    out << "search_mid_before=" << rt->track.search_mid_before << "\n";
+    out << "search_mid_after=" << rt->track.search_mid_after << "\n";
+    out << "width_base_before=" << rt->track.width_base_before << "\n";
+    out << "width_base_after=" << rt->track.width_base_after << "\n";
+    out << "seed_search_center_before=" << rt->track.search_mid_before << "\n";
+    out << "seed_search_center_after=" << rt->track.search_mid_after << "\n";
+    out << "seed_width_prior_before=" << rt->track.width_base_before << "\n";
+    out << "seed_width_prior_after=" << rt->track.width_base_after << "\n";
 
     const int ipm_reason = report_seed_ipm_pair_diag(rt);
     out << "matrix_loaded=" << rt->has_matrix << "\n";
@@ -585,14 +713,25 @@ int write_report(const runtime_t *rt, const char *report_path)
     out << "zebra_stop_line=" << rt->zebra.stop_line << "\n";
 
     out << "mid_position=" << rt->mid_position << "\n";
+    out << "seed_search_center=" << rt->mid_position << "\n";
+    out << "seed_width_prior=" << rt->width_base << "\n";
     out << "control_center_x=" << rt->control_center_x << "\n";
     out << "left_seed=" << rt->seeds.left.x << "," << rt->seeds.left.y << "\n";
     out << "right_seed=" << rt->seeds.right.x << "," << rt->seeds.right.y << "\n";
     out << "seed_row=" << rt->seeds.row << "\n";
     out << "seed_pair_span=" << report_seed_pair_span(rt) << "\n";
+    out << "seed_state_find=" << rt->track.seed_state_find << "\n";
+    out << "left_seed_find=" << rt->track.seed_left_find.x << "," << rt->track.seed_left_find.y << "\n";
+    out << "right_seed_find=" << rt->track.seed_right_find.x << "," << rt->track.seed_right_find.y << "\n";
 
     out << "left_trace_step=" << rt->left_trace.step << "\n";
     out << "right_trace_step=" << rt->right_trace.step << "\n";
+    out << "left_trace_raw_step=" << rt->track.trace_left_raw_step << "\n";
+    out << "right_trace_raw_step=" << rt->track.trace_right_raw_step << "\n";
+    out << "left_trace_raw_gain=" << rt->track.trace_left_raw_gain << "\n";
+    out << "right_trace_raw_gain=" << rt->track.trace_right_raw_gain << "\n";
+    out << "left_trace_pass_right_gain=" << rt->track.trace_left_pass_right_gain << "\n";
+    out << "right_trace_pass_left_gain=" << rt->track.trace_right_pass_left_gain << "\n";
     out << "trace_identity_reject=" << rt->track.trace_identity_reject << "\n";
     out << "left_l_found=" << rt->track.left.l_found << "\n";
     out << "left_l_ok=" << rt->track.left.l_ok << "\n";
@@ -615,9 +754,21 @@ int write_report(const runtime_t *rt, const char *report_path)
     out << "mid_step=" << rt->track.mid.step << "\n";
     point_t m0 = {-1, -1};
     point_t ml = {-1, -1};
-    mid_points_for_report(rt->track.mid, &m0, &ml);
+    int ml_dist = -1;
+    int max_dist = -1;
+    int ml_forward = 0;
+    mid_points_for_report(rt->track.mid,
+                          rt->track.control_ref.y,
+                          &m0,
+                          &ml,
+                          &ml_dist,
+                          &max_dist,
+                          &ml_forward);
     out << "mid0=" << m0.x << "," << m0.y << "\n";
     out << "mid_look=" << ml.x << "," << ml.y << "\n";
+    out << "mid_look_dist=" << ml_dist << "\n";
+    out << "mid_max_dist=" << max_dist << "\n";
+    out << "mid_forward_lookahead=" << ml_forward << "\n";
     out << "center_x=" << rt->track.center_x << "\n";
     out << "guide_error=" << rt->track.guide_error << "\n";
     return 1;

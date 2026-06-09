@@ -26,7 +26,9 @@ constexpr int kSeedStartOffset = ROAD_HALF_WIDTH;       // 从中心列向左右
 constexpr int kTraceMinVerticalGain = 8;  // 追线纵向至少要爬升的行数，达不到判无效线
 constexpr int kTraceBorderMargin = 2;     // 追线时距图像边的停止留白
 
-// 迷宫法追线的方向增量表。dir 取 0/1/2/3；因 y 向下，DY[0]=-1 表示朝图像上方（赛道更远处）。
+// RT1064 迷宫法方向表合同：dir 顺序固定为 上、右、下、左。
+// 因 y 向下，DY[0]=-1 表示朝图像上方（赛道更远处）。左右转公式依赖这个顺序：
+// (dir + 1) % 4 是右转，(dir + 3) % 4 是左转，不能只改方向表不改转向公式。
 // DX/DY=正前方一步；LDX/LDY=左手斜前方一步；RDX/RDY=右手斜前方一步。
 constexpr int DX[4] = {0, 1, 0, -1};   // 正前 x 增量：dir=0 上, 1 右, 2 下, 3 左
 constexpr int DY[4] = {-1, 0, 1, 0};   // 正前 y 增量（y 向下，-1 即向上/向远）
@@ -80,6 +82,8 @@ int calc_th_core(const uint8_t gray[RAW_H][RAW_W], int x, int y)
 }
 
 // 在指定行从 x0 向左扫最近的白->黑邻接边沿，未命中返回 -1。
+// 对应视频迁移版 find_leftbase()：二值图里找 ptr[x]==255 && ptr[x-1]==0；
+// 当前项目保留同一边界语义，但用局部阈值替代固定 255/0。
 int find_left_edge(const uint8_t gray[RAW_H][RAW_W], int row, int x0)
 {
     if(gray == nullptr || row < 0 || row >= RAW_H)
@@ -101,6 +105,7 @@ int find_left_edge(const uint8_t gray[RAW_H][RAW_W], int row, int x0)
 }
 
 // 在指定行从 x0 向右扫最近的白->黑邻接边沿，未命中返回 -1。
+// 这是 find_leftbase() 的右侧对称版：当前像素仍在白区，右邻进入黑区。
 int find_right_edge(const uint8_t gray[RAW_H][RAW_W], int row, int x0)
 {
     if(gray == nullptr || row < 0 || row >= RAW_H)
@@ -214,7 +219,7 @@ int region_otsu(const uint8_t gray[RAW_H][RAW_W], int x_start, int x_end, int y_
 // 查找左右起线点：按固定起线行和中心两侧固定偏移直接起搜。
 int find_seeds(const uint8_t gray[RAW_H][RAW_W],
                int start_row,
-               int *mid_position,
+               int *search_center,
                int *seed_state,
                seed_pair_t *seeds)
 {
@@ -231,9 +236,9 @@ int find_seeds(const uint8_t gray[RAW_H][RAW_W],
     }
 
     int center = MID_X;
-    if(mid_position != nullptr && *mid_position >= 0 && *mid_position < RAW_W)
+    if(search_center != nullptr && *search_center >= 0 && *search_center < RAW_W)
     {
-        center = *mid_position;
+        center = *search_center;
     }
     const int left_x0 = clamp_i(center - kSeedStartOffset, 1, RAW_W - 2);
     const int right_x0 = clamp_i(center + kSeedStartOffset, 1, RAW_W - 2);
@@ -905,16 +910,18 @@ int build_rptsn(const double rpts[POINT_MAX][2],
     cy = clamp_i(cy, 0, IPM_H - 1);
 
     int begin = 0;
+    int run_begin = 0;
+    int run_end = rpts_num;
     if(!force_begin_id0)
     {
+        if(!first_valid_run(rpts, rpts_num, &run_begin, &run_end))
+        {
+            return 0;
+        }
         begin = -1;
         double best_d = 1e30;
-        for(int i = 0; i < rpts_num; ++i)
+        for(int i = run_begin; i < run_end; ++i)
         {
-            if(!ipm_pt_valid(rpts[i][0], rpts[i][1]))
-            {
-                return 0;
-            }
             const double dx = rpts[i][0] - cx;
             const double dy = rpts[i][1] - cy;
             const double d = dx * dx + dy * dy;
@@ -941,7 +948,7 @@ int build_rptsn(const double rpts[POINT_MAX][2],
     }
 
     double work[POINT_MAX][2] = {};
-    const int work_num = clamp_i(rpts_num - begin, 0, POINT_MAX);
+    const int work_num = clamp_i(run_end - begin, 0, POINT_MAX);
     if(work_num < 2)
     {
         return 0;
@@ -1143,4 +1150,30 @@ int midline_has_lookahead(const midline_t *midline, int aim_distance)
         }
     }
     return midline->dist[best] >= aim_distance * 2 / 3;
+}
+
+int midline_has_forward_lookahead(const midline_t *midline, int aim_distance, int ref_y)
+{
+    if(midline == nullptr || midline->step <= 0)
+    {
+        return 0;
+    }
+
+    int best = -1;
+    for(int i = 0; i < midline->step; ++i)
+    {
+        if(midline->dist[i] < aim_distance)
+        {
+            continue;
+        }
+        if(best < 0 || midline->dist[i] < midline->dist[best])
+        {
+            best = i;
+        }
+    }
+    if(best < 0)
+    {
+        return 0;
+    }
+    return midline->pts[best].y < ref_y;
 }
