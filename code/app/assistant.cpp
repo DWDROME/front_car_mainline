@@ -21,9 +21,34 @@ constexpr int k_default_div = 20;                     // 发送分频：每 div 
 constexpr int k_default_reconnect_div = 30;           // 断线后每 reconnect_div 帧重连一次
 constexpr int k_display_point_stride = 2;             // 只影响上位机显示线，控制/识别点列不受影响
 constexpr int k_point_limit = POINT_MAX;
-constexpr int k_display_boundary_limit = 6;           // 左/中/右 + seed 行 + 左/右 seed 方框
+constexpr int k_assistant_boundary_capacity = SEEKFREE_ASSISTANT_CAMERA_MAX_BOUNDARY;
+constexpr int k_assistant_boundary_count_field_limit = 0x0F; // camera_type/dot_type 低四位保存边界数量
+constexpr int k_assistant_coord8_limit = 256;         // dot_type 未置 16-bit 坐标位，坐标必须落在 0..255
+constexpr int k_assistant_dot_count_limit = UINT16_MAX;
 constexpr uint8_t k_left_far_value = 80;              // 左远线在灰度图上叠加的像素亮度
 constexpr uint8_t k_right_far_value = 220;            // 右远线在灰度图上叠加的像素亮度
+
+enum display_channel_t
+{
+    DISPLAY_CHANNEL_LEFT = 0,
+    DISPLAY_CHANNEL_MID = 1,
+    DISPLAY_CHANNEL_RIGHT = 2,
+    DISPLAY_CHANNEL_SEED_ROW = 3,
+    DISPLAY_CHANNEL_LEFT_SEED = 4,
+    DISPLAY_CHANNEL_RIGHT_SEED = 5,
+    DISPLAY_CHANNEL_COUNT = 6,
+};
+
+constexpr int k_display_boundary_limit = DISPLAY_CHANNEL_COUNT; // 左/中/右 + seed 行 + 左/右 seed 方框
+
+static_assert(k_display_boundary_limit <= k_assistant_boundary_capacity,
+              "display boundary count exceeds SeekFree assistant protocol capacity");
+static_assert(k_display_boundary_limit <= k_assistant_boundary_count_field_limit,
+              "display boundary count exceeds assistant packet low-nibble capacity");
+static_assert(k_point_limit <= k_assistant_dot_count_limit,
+              "assistant dot_num field is uint16");
+static_assert(RAW_W <= k_assistant_coord8_limit && RAW_H <= k_assistant_coord8_limit,
+              "assistant XY boundary uses 8-bit coordinates");
 
 struct assistant_t_impl
 {
@@ -34,19 +59,9 @@ struct assistant_t_impl
     const char *ip;
     int port;
     zf_driver_tcp_client tcp;
-    // 显示边界 raw 坐标缓冲：0=左，1=控制中线，2=右，3=seed 行，4/5=左右 seed 方框。
-    uint8_t x0[k_point_limit];
-    uint8_t y0[k_point_limit];
-    uint8_t x1[k_point_limit];
-    uint8_t y1[k_point_limit];
-    uint8_t x2[k_point_limit];
-    uint8_t y2[k_point_limit];
-    uint8_t x3[k_point_limit];
-    uint8_t y3[k_point_limit];
-    uint8_t x4[k_point_limit];
-    uint8_t y4[k_point_limit];
-    uint8_t x5[k_point_limit];
-    uint8_t y5[k_point_limit];
+    // 显示边界 raw 坐标缓冲：通道语义见 display_channel_t。
+    uint8_t display_x[k_display_boundary_limit][k_point_limit];
+    uint8_t display_y[k_display_boundary_limit][k_point_limit];
     uint8_t image[RAW_H][RAW_W]; // 发送给上位机的灰度图（含远线/拐点叠加）
 };
 
@@ -54,8 +69,8 @@ struct display_boundary_t
 {
     uint8_t *xs;
     uint8_t *ys;
-    int count;
-    int channel;
+    int point_count;
+    int valid_channel;
 };
 
 assistant_t_impl g_asst = {};
@@ -207,9 +222,9 @@ void send_camera_packet(uint8 boundary_num)
     tcp_send_wrap(reinterpret_cast<const uint8 *>(g_asst.image[0]), RAW_W * RAW_H);
 }
 
-void send_dot_packet(const display_boundary_t *bd, int count, uint16 dot_num)
+void send_dot_packet(const display_boundary_t *bd, int boundary_count, uint16 dot_num)
 {
-    if(bd == nullptr || count <= 0 || dot_num == 0)
+    if(bd == nullptr || boundary_count <= 0 || dot_num == 0)
     {
         return;
     }
@@ -217,55 +232,66 @@ void send_dot_packet(const display_boundary_t *bd, int count, uint16 dot_num)
     seekfree_assistant_camera_dot_struct packet = {};
     packet.head = SEEKFREE_ASSISTANT_SEND_HEAD;
     packet.function = SEEKFREE_ASSISTANT_CAMERA_DOT_FUNCTION;
-    packet.dot_type = static_cast<uint8>((XY_BOUNDARY << 6) | count);
+    packet.dot_type = static_cast<uint8>((XY_BOUNDARY << 6) | boundary_count);
     packet.length = sizeof(seekfree_assistant_camera_dot_struct);
     packet.dot_num = dot_num;
-    for(int i = 0; i < count; ++i)
+    for(int i = 0; i < boundary_count; ++i)
     {
-        packet.valid_flag |= static_cast<uint8>(1U << bd[i].channel);
+        packet.valid_flag |= static_cast<uint8>(1U << bd[i].valid_channel);
     }
 
     tcp_send_wrap(reinterpret_cast<const uint8 *>(&packet), sizeof(packet));
-    for(int i = 0; i < count; ++i)
+    // 坐标数组按非空边界紧凑发送；valid_flag 只告诉上位机这些数组对应哪个显示通道。
+    for(int i = 0; i < boundary_count; ++i)
     {
         tcp_send_wrap(reinterpret_cast<const uint8 *>(bd[i].xs), dot_num);
         tcp_send_wrap(reinterpret_cast<const uint8 *>(bd[i].ys), dot_num);
     }
 }
 
-void add_boundary(display_boundary_t *bd,
-                  int *count,
-                  int *dot_num,
-                  uint8_t *xs,
-                  uint8_t *ys,
-                  int n,
-                  int channel)
+void add_display_boundary(display_boundary_t *bd,
+                          int *boundary_count,
+                          int *dot_num,
+                          int valid_channel,
+                          int point_count)
 {
-    if(bd == nullptr || count == nullptr || dot_num == nullptr ||
-       xs == nullptr || ys == nullptr || n <= 0 ||
-       *count >= k_display_boundary_limit)
+    if(bd == nullptr || boundary_count == nullptr || dot_num == nullptr ||
+       point_count <= 0 ||
+       valid_channel < 0 || valid_channel >= k_display_boundary_limit ||
+       *boundary_count >= k_display_boundary_limit)
     {
         return;
     }
 
-    bd[*count] = {xs, ys, n, channel};
-    ++(*count);
-    *dot_num = std::max(*dot_num, n);
+    bd[*boundary_count] = {
+        g_asst.display_x[valid_channel],
+        g_asst.display_y[valid_channel],
+        point_count,
+        valid_channel,
+    };
+    ++(*boundary_count);
+    *dot_num = std::max(*dot_num, point_count);
 }
 
-void send_display_frame(display_boundary_t *bd, int count, int dot_num)
+void send_display_frame(display_boundary_t *bd, int boundary_count, int dot_num)
 {
-    const uint8 boundary_num = static_cast<uint8>(std::clamp(count, 0, k_display_boundary_limit));
-    send_camera_packet(boundary_num);
-    if(boundary_num == 0 || dot_num <= 0)
+    if(bd == nullptr || boundary_count <= 0 || dot_num <= 0)
+    {
+        send_camera_packet(0);
+        return;
+    }
+    if(boundary_count > k_display_boundary_limit || dot_num > k_point_limit)
     {
         return;
     }
 
-    const uint16 dn = static_cast<uint16>(std::clamp(dot_num, 0, k_point_limit));
+    const uint8 boundary_num = static_cast<uint8>(boundary_count);
+    send_camera_packet(boundary_num);
+
+    const uint16 dn = static_cast<uint16>(dot_num);
     for(int i = 0; i < boundary_num; ++i)
     {
-        pad_pts(bd[i].xs, bd[i].ys, bd[i].count, dn);
+        pad_pts(bd[i].xs, bd[i].ys, bd[i].point_count, dn);
     }
     send_dot_packet(bd, boundary_num, dn);
 }
@@ -470,32 +496,46 @@ void config_points(const runtime_t *rt)
         return;
     }
 
-    const int n0 = copy_pts(rt->track.left.original_pts,
-                            rt->track.left.original_step,
-                            g_asst.x0,
-                            g_asst.y0);
-    const int n1 = control_mid_pts(rt, g_asst.x1, g_asst.y1);
-    const int n2 = copy_pts(rt->track.right.original_pts,
-                            rt->track.right.original_step,
-                            g_asst.x2,
-                            g_asst.y2);
-    const int n3 = seed_row_pts(g_asst.x3, g_asst.y3);
-    const int n4 = (rt->track.seed_state_find & 1)
-                       ? seed_box_pts(rt->track.seed_left_find, g_asst.x4, g_asst.y4)
-                       : 0;
-    const int n5 = (rt->track.seed_state_find & 2)
-                       ? seed_box_pts(rt->track.seed_right_find, g_asst.x5, g_asst.y5)
-                       : 0;
+    int point_count[k_display_boundary_limit] = {};
+    point_count[DISPLAY_CHANNEL_LEFT] =
+        copy_pts(rt->track.left.original_pts,
+                 rt->track.left.original_step,
+                 g_asst.display_x[DISPLAY_CHANNEL_LEFT],
+                 g_asst.display_y[DISPLAY_CHANNEL_LEFT]);
+    point_count[DISPLAY_CHANNEL_MID] =
+        control_mid_pts(rt,
+                        g_asst.display_x[DISPLAY_CHANNEL_MID],
+                        g_asst.display_y[DISPLAY_CHANNEL_MID]);
+    point_count[DISPLAY_CHANNEL_RIGHT] =
+        copy_pts(rt->track.right.original_pts,
+                 rt->track.right.original_step,
+                 g_asst.display_x[DISPLAY_CHANNEL_RIGHT],
+                 g_asst.display_y[DISPLAY_CHANNEL_RIGHT]);
+    point_count[DISPLAY_CHANNEL_SEED_ROW] =
+        seed_row_pts(g_asst.display_x[DISPLAY_CHANNEL_SEED_ROW],
+                     g_asst.display_y[DISPLAY_CHANNEL_SEED_ROW]);
+    if(rt->track.seed_state_find & 1)
+    {
+        point_count[DISPLAY_CHANNEL_LEFT_SEED] =
+            seed_box_pts(rt->track.seed_left_find,
+                         g_asst.display_x[DISPLAY_CHANNEL_LEFT_SEED],
+                         g_asst.display_y[DISPLAY_CHANNEL_LEFT_SEED]);
+    }
+    if(rt->track.seed_state_find & 2)
+    {
+        point_count[DISPLAY_CHANNEL_RIGHT_SEED] =
+            seed_box_pts(rt->track.seed_right_find,
+                         g_asst.display_x[DISPLAY_CHANNEL_RIGHT_SEED],
+                         g_asst.display_y[DISPLAY_CHANNEL_RIGHT_SEED]);
+    }
 
     display_boundary_t bd[k_display_boundary_limit] = {};
     int boundary_count = 0;
     int dot_num = 0;
-    add_boundary(bd, &boundary_count, &dot_num, g_asst.x0, g_asst.y0, n0, 0);
-    add_boundary(bd, &boundary_count, &dot_num, g_asst.x1, g_asst.y1, n1, 1);
-    add_boundary(bd, &boundary_count, &dot_num, g_asst.x2, g_asst.y2, n2, 2);
-    add_boundary(bd, &boundary_count, &dot_num, g_asst.x3, g_asst.y3, n3, 3);
-    add_boundary(bd, &boundary_count, &dot_num, g_asst.x4, g_asst.y4, n4, 4);
-    add_boundary(bd, &boundary_count, &dot_num, g_asst.x5, g_asst.y5, n5, 5);
+    for(int channel = 0; channel < k_display_boundary_limit; ++channel)
+    {
+        add_display_boundary(bd, &boundary_count, &dot_num, channel, point_count[channel]);
+    }
 
     std::memcpy(g_asst.image, rt->gray, sizeof(g_asst.image));
     draw_farline(g_asst.image, rt);
@@ -517,18 +557,8 @@ void assistant_init()
     g_asst.connected = 0;
     g_asst.ip = nullptr;
     g_asst.port = 0;
-    std::memset(g_asst.x0, 0, sizeof(g_asst.x0));
-    std::memset(g_asst.y0, 0, sizeof(g_asst.y0));
-    std::memset(g_asst.x1, 0, sizeof(g_asst.x1));
-    std::memset(g_asst.y1, 0, sizeof(g_asst.y1));
-    std::memset(g_asst.x2, 0, sizeof(g_asst.x2));
-    std::memset(g_asst.y2, 0, sizeof(g_asst.y2));
-    std::memset(g_asst.x3, 0, sizeof(g_asst.x3));
-    std::memset(g_asst.y3, 0, sizeof(g_asst.y3));
-    std::memset(g_asst.x4, 0, sizeof(g_asst.x4));
-    std::memset(g_asst.y4, 0, sizeof(g_asst.y4));
-    std::memset(g_asst.x5, 0, sizeof(g_asst.x5));
-    std::memset(g_asst.y5, 0, sizeof(g_asst.y5));
+    std::memset(g_asst.display_x, 0, sizeof(g_asst.display_x));
+    std::memset(g_asst.display_y, 0, sizeof(g_asst.display_y));
     std::memset(g_asst.image, 0, sizeof(g_asst.image));
     g_asst.enabled = assistant_enabled();
     g_asst.div = read_env_int_clamped("SMARTCAR_ASSISTANT_DIV", k_default_div, 1, 10000);
