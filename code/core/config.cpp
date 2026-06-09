@@ -1,5 +1,8 @@
 #include "config.hpp"
 
+#include <cerrno>
+#include <climits>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -22,13 +25,79 @@ std::string trim(const std::string &s)
     return s.substr(b, e - b + 1);
 }
 
-// 按 key 把字符串值写入对应配置字段：I() 走 atoi 当整型，F() 走 strtof 当浮点。
+// ==== 控制 YAML 数值解析 ====
+bool parse_int_value(const std::string &v, int *out)
+{
+    if(out == nullptr || v.empty())
+    {
+        return false;
+    }
+
+    errno = 0;
+    char *end = nullptr;
+    const long parsed = std::strtol(v.c_str(), &end, 10);
+    if(end == v.c_str() || *end != '\0' || errno != 0 || parsed < INT_MIN || parsed > INT_MAX)
+    {
+        return false;
+    }
+
+    *out = static_cast<int>(parsed);
+    return true;
+}
+
+bool parse_float_value(const std::string &v, float *out)
+{
+    if(out == nullptr || v.empty())
+    {
+        return false;
+    }
+
+    errno = 0;
+    char *end = nullptr;
+    const float parsed = std::strtof(v.c_str(), &end);
+    if(end == v.c_str() || *end != '\0' || errno != 0 || !std::isfinite(parsed))
+    {
+        return false;
+    }
+
+    *out = parsed;
+    return true;
+}
+
+void warn_bad_value(const char *key, const std::string &v)
+{
+    std::printf("ConfigWarn: invalid value for '%s': '%s'\n", key, v.c_str());
+}
+
+void set_int_field(const char *key, const std::string &v, int *field)
+{
+    int parsed = 0;
+    if(!parse_int_value(v, &parsed))
+    {
+        warn_bad_value(key, v);
+        return;
+    }
+    *field = parsed;
+}
+
+void set_float_field(const char *key, const std::string &v, float *field)
+{
+    float parsed = 0.0F;
+    if(!parse_float_value(v, &parsed))
+    {
+        warn_bad_value(key, v);
+        return;
+    }
+    *field = parsed;
+}
+
+// 按 key 把字符串值写入对应配置字段：I() 走严格 int 解析，F() 走严格 float 解析。
 // 宏里的字段名必须和 control_config_t 成员逐字一致；改了结构体成员名要同步这里。
-// 未知 key 只打印 ConfigWarn、不中断：拼错 key 会静默沿用默认值，是调参时的常见陷阱。
+// 未知 key 或非法值只打印 ConfigWarn、不中断：对应字段保留原值。
 void set_field(const std::string &k, const std::string &v)
 {
-#define I(name) if(k == #name) { g_cfg.name = std::atoi(v.c_str()); return; }
-#define F(name) if(k == #name) { g_cfg.name = std::strtof(v.c_str(), nullptr); return; }
+#define I(name) if(k == #name) { set_int_field(#name, v, &g_cfg.name); return; }
+#define F(name) if(k == #name) { set_float_field(#name, v, &g_cfg.name); return; }
     I(control_period_ms)
     F(target_rps)
     F(element_target_rps)

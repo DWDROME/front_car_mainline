@@ -12,6 +12,48 @@ namespace
 {
 zf_device_uvc g_uvc;
 int g_opened = 0;
+
+// ==== 摄像头帧转灰度 ====
+int frame_to_gray_mat(const cv::Mat &src, cv::Mat *dst)
+{
+    if(dst == nullptr || src.empty() || src.depth() != CV_8U)
+    {
+        return 0;
+    }
+
+    if(src.channels() == 1)
+    {
+        *dst = src;
+        return 1;
+    }
+    if(src.channels() == 3)
+    {
+        cv::cvtColor(src, *dst, cv::COLOR_BGR2GRAY);
+        return 1;
+    }
+    if(src.channels() == 4)
+    {
+        cv::cvtColor(src, *dst, cv::COLOR_BGRA2GRAY);
+        return 1;
+    }
+
+    return 0;
+}
+
+// ==== 灰度图拷贝 ====
+void copy_gray_mat(const cv::Mat &src, uint8_t gray[RAW_H][RAW_W])
+{
+    if(src.isContinuous())
+    {
+        std::memcpy(gray[0], src.data, RAW_W * RAW_H);
+        return;
+    }
+
+    for(int y = 0; y < RAW_H; ++y)
+    {
+        std::memcpy(gray[y], src.ptr<uint8_t>(y), RAW_W);
+    }
+}
 }
 
 //-------------------------------------------------------------------------------------------------------------------
@@ -24,6 +66,10 @@ int device_open_camera(const char *path, int width, int height, int fps)
     if(g_opened)
     {
         return 1;
+    }
+    if(path == nullptr || path[0] == '\0')
+    {
+        return 0;
     }
 
     (void)width;
@@ -45,6 +91,10 @@ int device_open_camera(const char *path, int width, int height, int fps)
 //-------------------------------------------------------------------------------------------------------------------
 int device_capture_gray(uint8_t gray[RAW_H][RAW_W])
 {
+    if(gray == nullptr)
+    {
+        return 0;
+    }
     if(!g_opened)
     {
         return 0;
@@ -61,13 +111,13 @@ int device_capture_gray(uint8_t gray[RAW_H][RAW_W])
     }
 
     cv::Mat g;
-    if(img.channels() == 3)
+    if(!frame_to_gray_mat(img, &g))
     {
-        cv::cvtColor(img, g, cv::COLOR_BGR2GRAY);
-    }
-    else
-    {
-        g = img;
+        std::fprintf(stderr,
+                     "ERROR: camera frame type depth=%d channels=%d unsupported\n",
+                     img.depth(),
+                     img.channels());
+        return 0;
     }
 
     if(g.cols != RAW_W || g.rows != RAW_H)
@@ -81,7 +131,7 @@ int device_capture_gray(uint8_t gray[RAW_H][RAW_W])
         return 0;
     }
 
-    std::memcpy(gray[0], g.data, RAW_W * RAW_H);
+    copy_gray_mat(g, gray);
     return 1;
 }
 
@@ -92,6 +142,11 @@ int device_capture_gray(uint8_t gray[RAW_H][RAW_W])
 //-------------------------------------------------------------------------------------------------------------------
 int device_load_gray(const char *path, uint8_t gray[RAW_H][RAW_W])
 {
+    if(path == nullptr || path[0] == '\0' || gray == nullptr)
+    {
+        return 0;
+    }
+
     cv::Mat img = cv::imread(path, cv::IMREAD_GRAYSCALE);
     if(img.empty())
     {
@@ -110,6 +165,6 @@ int device_load_gray(const char *path, uint8_t gray[RAW_H][RAW_W])
         return 0;
     }
 
-    std::memcpy(gray[0], img.data, RAW_W * RAW_H);
+    copy_gray_mat(img, gray);
     return 1;
 }

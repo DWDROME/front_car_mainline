@@ -3,11 +3,11 @@
 #include "core/control.hpp"
 #include "clip.hpp"
 
+#include <cerrno>
+#include <climits>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-
-#include <algorithm>
 
 namespace
 {
@@ -19,6 +19,47 @@ constexpr const char *k_default_ipm_path = "/tmp/front_car_ipm.png";
 constexpr const char *k_default_report_path = "/tmp/front_car_report.txt";
 constexpr int k_default_live_print_divider = 8;
 constexpr int k_default_control_center_x = CONTROL_CENTER_X;
+
+// ==== 运行参数数值解析 ====
+int parse_int_text(const char *value, int *out)
+{
+    if(value == nullptr || value[0] == '\0' || out == nullptr)
+    {
+        return 0;
+    }
+
+    errno = 0;
+    char *end = nullptr;
+    const long parsed = std::strtol(value, &end, 10);
+    if(end == value || *end != '\0' || errno != 0 || parsed < INT_MIN || parsed > INT_MAX)
+    {
+        return 0;
+    }
+
+    *out = static_cast<int>(parsed);
+    return 1;
+}
+
+int read_positive_arg(const char *value, int fallback)
+{
+    int parsed = 0;
+    if(!parse_int_text(value, &parsed) || parsed <= 0)
+    {
+        return fallback;
+    }
+    return parsed;
+}
+
+int option_value_present(int argc, char **argv, int index)
+{
+    return argv != nullptr && index < argc && argv[index] != nullptr && argv[index][0] != '\0';
+}
+
+int option_value_token(int argc, char **argv, int index)
+{
+    return option_value_present(argc, argv, index) &&
+           !(argv[index][0] == '-' && argv[index][1] == '-');
+}
 }
 
 // 默认 UVC 摄像头设备路径。
@@ -76,6 +117,11 @@ int default_control_center_x()
 //-------------------------------------------------------------------------------------------------------------------
 const char *read_env_text(const char *name, const char *fallback)
 {
+    if(name == nullptr || name[0] == '\0')
+    {
+        return fallback;
+    }
+
     const char *val = std::getenv(name);
     return val == nullptr || val[0] == '\0' ? fallback : val;
 }
@@ -83,12 +129,28 @@ const char *read_env_text(const char *name, const char *fallback)
 //-------------------------------------------------------------------------------------------------------------------
 //  @brief      从环境变量读取整数，未设置或为空时返回 fallback
 //  @return     int          解析后的整数
-//  @note       使用 atoi()，非法字符串会按 0 处理；调用方需要自己决定是否再限幅。
+//  @note       非法字符串会打印 EnvWarn 并回退到 fallback；调用方需要自己决定是否再限幅。
 //-------------------------------------------------------------------------------------------------------------------
 int read_env_int(const char *name, int fallback)
 {
+    if(name == nullptr || name[0] == '\0')
+    {
+        return fallback;
+    }
+
     const char *val = std::getenv(name);
-    return val == nullptr || val[0] == '\0' ? fallback : std::atoi(val);
+    if(val == nullptr || val[0] == '\0')
+    {
+        return fallback;
+    }
+
+    int parsed = 0;
+    if(!parse_int_text(val, &parsed))
+    {
+        std::printf("EnvWarn: invalid integer for %s='%s'\n", name, val);
+        return fallback;
+    }
+    return parsed;
 }
 
 //-------------------------------------------------------------------------------------------------------------------
@@ -102,14 +164,32 @@ int read_env_int_clamped(const char *name, int fallback, int min_value, int max_
 }
 
 //-------------------------------------------------------------------------------------------------------------------
-//  @brief      读取环境变量布尔位（'0' 视为 0，其余非空字符视为 1）
+//  @brief      读取环境变量布尔位，只接受明确的 0/1/false/true
 //  @return     int          1 启用 / 0 关闭
-//  @note       只判断首字符，适合 FRONT_CAR_DISPLAY、SMARTCAR_ASSISTANT 这类开关。
+//  @note       非法非空字符串会打印 EnvWarn 并回退到 fallback，避免误启用电机或上位机。
 //-------------------------------------------------------------------------------------------------------------------
 int read_env_flag(const char *name, int fallback)
 {
+    if(name == nullptr || name[0] == '\0')
+    {
+        return fallback;
+    }
+
     const char *val = std::getenv(name);
-    return val == nullptr || val[0] == '\0' ? fallback : (val[0] != '0' ? 1 : 0);
+    if(val == nullptr || val[0] == '\0')
+    {
+        return fallback;
+    }
+    if(std::strcmp(val, "0") == 0 || std::strcmp(val, "false") == 0)
+    {
+        return 0;
+    }
+    if(std::strcmp(val, "1") == 0 || std::strcmp(val, "true") == 0)
+    {
+        return 1;
+    }
+    std::printf("EnvWarn: invalid flag for %s='%s'\n", name, val);
+    return fallback;
 }
 
 //-------------------------------------------------------------------------------------------------------------------
@@ -125,6 +205,7 @@ void init_options(options_t *opt)
     }
 
     opt->capture_path = nullptr;
+    opt->input_path = nullptr;
     opt->analyze_path = nullptr;
     opt->replay_path = nullptr;
     opt->ipm_path = k_default_ipm_path;
@@ -133,13 +214,13 @@ void init_options(options_t *opt)
 }
 
 //-------------------------------------------------------------------------------------------------------------------
-//  @brief      解析命令行参数（--analyze / --replay / --capture-frame / --ipm / --report）并写入 opt
+//  @brief      解析命令行参数（--input / --analyze / --replay / --capture-frame / --ipm / --report）并写入 opt
 //  @return     void
 //  @note       未识别参数保持忽略，真正模式分发在 main.cpp。
 //-------------------------------------------------------------------------------------------------------------------
 void parse_options(int argc, char **argv, options_t *opt)
 {
-    if(opt == nullptr)
+    if(opt == nullptr || argv == nullptr)
     {
         return;
     }
@@ -147,24 +228,34 @@ void parse_options(int argc, char **argv, options_t *opt)
     for(int i = 1; i < argc; ++i)
     {
         const char *a = argv[i];
-        if(std::strcmp(a, "--analyze") == 0 && i + 1 < argc)
+        if(a == nullptr)
+        {
+            continue;
+        }
+        if(std::strcmp(a, "--input") == 0 && option_value_token(argc, argv, i + 1))
+        {
+            opt->input_path = argv[++i];
+        }
+        else if(std::strcmp(a, "--analyze") == 0 && option_value_token(argc, argv, i + 1))
         {
             opt->analyze_path = argv[++i];
         }
-        else if(std::strcmp(a, "--replay") == 0 && i + 2 < argc)
+        else if(std::strcmp(a, "--replay") == 0 &&
+                option_value_token(argc, argv, i + 1) &&
+                option_value_token(argc, argv, i + 2))
         {
             opt->replay_path = argv[++i];
-            opt->replay_count = std::max(1, std::atoi(argv[++i]));
+            opt->replay_count = read_positive_arg(argv[++i], 1);
         }
-        else if(std::strcmp(a, "--capture-frame") == 0 && i + 1 < argc)
+        else if(std::strcmp(a, "--capture-frame") == 0 && option_value_token(argc, argv, i + 1))
         {
             opt->capture_path = argv[++i];
         }
-        else if(std::strcmp(a, "--ipm") == 0 && i + 1 < argc)
+        else if(std::strcmp(a, "--ipm") == 0 && option_value_token(argc, argv, i + 1))
         {
             opt->ipm_path = argv[++i];
         }
-        else if(std::strcmp(a, "--report") == 0 && i + 1 < argc)
+        else if(std::strcmp(a, "--report") == 0 && option_value_token(argc, argv, i + 1))
         {
             opt->report_path = argv[++i];
         }
@@ -174,24 +265,36 @@ void parse_options(int argc, char **argv, options_t *opt)
 //-------------------------------------------------------------------------------------------------------------------
 //  @brief      打印命令行用法与可用环境变量说明
 //  @return     void
-//  @note       这里只列运行模式和显示/上位机相关环境变量，不列控制 yaml 参数。
+//  @note       这里只列运行模式和上位机相关环境变量，不列控制 yaml 参数。
 //-------------------------------------------------------------------------------------------------------------------
 void print_usage(const char *name)
 {
+    const char *program = name != nullptr && name[0] != '\0' ? name : "front_car_mainline";
+
     std::printf("Usage:\n");
-    std::printf("  %s\n", name);
-    std::printf("  %s --input image.png\n", name);
-    std::printf("  %s --capture-frame frame.png\n", name);
-    std::printf("  %s --analyze image.png\n", name);
-    std::printf("  %s --replay image.png count\n", name);
+    std::printf("  %s\n", program);
+    std::printf("  %s --input image.png\n", program);
+    std::printf("  %s --capture-frame frame.png\n", program);
+    std::printf("  %s --analyze image.png\n", program);
+    std::printf("  %s --replay image.png count\n", program);
     std::printf("Env:\n");
-    std::printf("  FRONT_CAR_DISPLAY=1       # IPS200 debug display, set 0 to disable\n");
-    std::printf("  FRONT_CAR_DISPLAY_DIV=8   # update display every N frames\n");
-    std::printf("  FRONT_CAR_DISPLAY_RELOAD=1 # reload IPS200 framebuffer driver\n");
-    std::printf("  FRONT_CAR_PROCESS_FPS=120 # cap live vision processing rate\n");
-    std::printf("  SMARTCAR_ASSISTANT=1      # seekfree assistant stream, set 0 to disable\n");
-    std::printf("  SMARTCAR_VIEWER=0         # legacy alias for disabling assistant stream\n");
-    std::printf("  SMARTCAR_ASSISTANT_DIV=20 # upper-monitor send divider\n");
-    std::printf("  SMARTCAR_ASSISTANT_CONNECT_MS=30 # bounded connect probe before live loop\n");
+    std::printf("  FRONT_CAR_CONFIG=/root/front_car_mainline.yaml # control yaml path\n");
+    std::printf("  SMARTCAR_UVC_PATH=/dev/video0  # camera device path\n");
+    std::printf("  SMARTCAR_UVC_WIDTH=160         # expected camera width\n");
+    std::printf("  SMARTCAR_UVC_HEIGHT=120        # expected camera height\n");
+    std::printf("  SMARTCAR_UVC_FPS=30            # camera fps hint\n");
+    std::printf("  FRONT_CAR_PROCESS_FPS=120      # cap live vision processing rate\n");
+    std::printf("  FRONT_CAR_PRINT_DIV=8          # live log divider\n");
+    std::printf("  FRONT_CAR_ENABLE_DRIVE=1       # enable motor output, default off\n");
+    std::printf("  FRONT_CAR_PROFILE=1            # enable profile output\n");
+    std::printf("  FRONT_CAR_PROFILE_DIV=30       # profile report divider\n");
+    std::printf("  FRONT_CAR_STATE_BEEP=0         # disable state-change beep\n");
+    std::printf("  FRONT_CAR_BEEP_PATH=/dev/zf_gpio_beep # beep device path\n");
+    std::printf("  SMARTCAR_CONTROL_CENTER_X=80   # tracking control center override\n");
+    std::printf("  SMARTCAR_ASSISTANT=1           # seekfree assistant stream\n");
+    std::printf("  SMARTCAR_VIEWER=0              # legacy alias for disabling assistant stream\n");
+    std::printf("  SMARTCAR_ASSISTANT_IP=192.168.0.101 # upper-monitor ip\n");
+    std::printf("  SMARTCAR_ASSISTANT_PORT=8086   # upper-monitor port\n");
+    std::printf("  SMARTCAR_ASSISTANT_DIV=20      # upper-monitor send divider\n");
     std::printf("  SMARTCAR_ASSISTANT_RECONNECT_DIV=30 # reconnect every N frames if disconnected\n");
 }

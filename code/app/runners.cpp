@@ -33,6 +33,32 @@ struct live_profile_t
     uint64_t print_us;
 };
 
+struct camera_options_t
+{
+    const char *path;
+    int width;
+    int height;
+    int fps;
+};
+
+// ==== 摄像头运行参数 ====
+camera_options_t read_camera_options()
+{
+    camera_options_t opt = {
+        read_env_text("SMARTCAR_UVC_PATH", default_uvc_path()),
+        read_env_int_clamped("SMARTCAR_UVC_WIDTH", default_uvc_width(), 1, 4096),
+        read_env_int_clamped("SMARTCAR_UVC_HEIGHT", default_uvc_height(), 1, 4096),
+        read_env_int_clamped("SMARTCAR_UVC_FPS", default_uvc_fps(), 1, 240)
+    };
+    return opt;
+}
+
+// ==== 路径参数检查 ====
+int path_present(const char *path)
+{
+    return path != nullptr && path[0] != '\0';
+}
+
 // 实时性能分桶用的单调时钟，单位 us。
 uint64_t monotonic_us()
 {
@@ -86,6 +112,23 @@ void sleep_remaining_frame_time(uint64_t t0, int period_us)
     }
 }
 
+// ==== 控制周期边界 ====
+int live_control_period_ms()
+{
+    const int ms = control_config().control_period_ms;
+    if(ms < 1)
+    {
+        std::printf("ConfigWarn: control_period_ms=%d below live range, using 1\n", ms);
+        return 1;
+    }
+    if(ms > 100)
+    {
+        std::printf("ConfigWarn: control_period_ms=%d above live range, using 100\n", ms);
+        return 100;
+    }
+    return ms;
+}
+
 // profile 达到分频后打印各阶段平均耗时并清零。
 void profile_report_and_reset(live_profile_t *prof)
 {
@@ -130,9 +173,15 @@ void init_frame(runtime_t *rt)
                                                 RAW_W - 1);
 }
 
-// 单帧离线处理：读图 -> tracking -> 无反馈控制 -> 详细打印。
-int process_frame(runtime_t *rt, const char *image_path)
+// 单帧离线公共流程：读图 -> tracking -> 无反馈控制，按需打印详细信息。
+int process_loaded_frame(runtime_t *rt, const char *image_path, int print_detail_enabled)
 {
+    if(rt == nullptr || !path_present(image_path))
+    {
+        std::fprintf(stderr, "ERROR: image arguments invalid\n");
+        return 0;
+    }
+
     if(!device_load_gray(image_path, rt->gray))
     {
         std::fprintf(stderr, "ERROR: load image failed: %s\n", image_path);
@@ -142,23 +191,23 @@ int process_frame(runtime_t *rt, const char *image_path)
     init_frame(rt);
     tracking_process_frame(rt);
     solve_runtime(rt, &rt->control);
-    print_detail(rt);
+    if(print_detail_enabled)
+    {
+        print_detail(rt);
+    }
     return 1;
+}
+
+// 单帧离线处理：读图 -> tracking -> 无反馈控制 -> 详细打印。
+int process_frame(runtime_t *rt, const char *image_path)
+{
+    return process_loaded_frame(rt, image_path, 1);
 }
 
 // 回放用单帧处理：和 process_frame 相同，但不打印详细信息。
 int process_frame_quiet(runtime_t *rt, const char *image_path)
 {
-    if(!device_load_gray(image_path, rt->gray))
-    {
-        std::fprintf(stderr, "ERROR: load image failed: %s\n", image_path);
-        return 0;
-    }
-
-    init_frame(rt);
-    tracking_process_frame(rt);
-    solve_runtime(rt, &rt->control);
-    return 1;
+    return process_loaded_frame(rt, image_path, 0);
 }
 
 // 回放模式每帧单行摘要，主要看元素状态、strict double-L、远线、中线和 reject_reason。
@@ -168,6 +217,7 @@ int process_frame_quiet(runtime_t *rt, const char *image_path)
 //   pre=find_seeds后state/seed和trace过滤前步数；tg=trace过滤前纵向爬升量；tp=trace越过对侧seed时的爬升量；
 //   xst=帧首cross/base/cross_far/cross_near/ring_active/work_track/ref；
 //   xcrop=ring裁剪side/index + rptsc0/rptsc1裁剪前/后 + selected mid_ok；
+//   xrng=左环标志/当前贴边now点数/补边now点数/补边L/补边L索引/IN阶段补边结果；
 //   xlearn=seed 搜索先验学习 kind/search_center_before/search_center_after/width_before/width_after；
 //   xfar=近线步数/lost/recover/exit/far_ok/far_fail/far_trace/ipm/blur/resample；
 //   xmid=远线中线 side/fail/start/tail/cand/out；md=预瞄距离/前方门/最大距离。
@@ -192,6 +242,7 @@ void print_replay_frame(int frame, const runtime_t *rt)
                 "pre=%d:(%d,%d)-(%d,%d)/%d/%d tg=%d/%d tp=%d/%d "
                 "xst=%d/%d/%d/%d/%d/%d@%d,%d "
                 "xcrop=%d/%d/%d/%d/%d/%d/%d "
+                "xrng=%d/%d/%d/%d/%d/%d "
                 "xlearn=%d/%d/%d/%d/%d "
                 "xfar=%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d "
                 "xmid=%d/%d/%d/%d/%d/%d "
@@ -253,6 +304,12 @@ void print_replay_frame(int frame, const runtime_t *rt)
                 rt->track.candidate_left_after_crop,
                 rt->track.candidate_right_after_crop,
                 rt->track.selected_mid_ok,
+                rt->track.ring_opp_left,
+                rt->track.ring_cur_step,
+                rt->track.ring_opp_step,
+                rt->track.ring_opp_l_ok,
+                rt->track.ring_opp_l_index,
+                rt->track.ring_opp_build_result,
                 rt->track.search_update_kind,
                 rt->track.search_mid_before,
                 rt->track.search_mid_after,
@@ -300,8 +357,7 @@ void publish_completed_live_frame(uint32_t frame_id, const runtime_t *rt, int di
 {
     // 同步点：识别、反馈读取、控制求解和电机下发都完成后，调试输出只消费这一份 runtime 快照。
     const uint64_t t0 = (prof != nullptr && prof->enabled) ? monotonic_us() : 0;
-    (void)div;
-    print_live(frame_id, rt);
+    print_live(frame_id, rt, div);
     if(prof != nullptr && prof->enabled)
     {
         const uint64_t t1 = monotonic_us();
@@ -317,7 +373,7 @@ void publish_completed_live_frame(uint32_t frame_id, const runtime_t *rt, int di
 //-------------------------------------------------------------------------------------------------------------------
 int analyze(runtime_t *rt, const analyze_paths_t *paths)
 {
-    if(paths == nullptr || paths->image_path == nullptr)
+    if(paths == nullptr || !path_present(paths->image_path))
     {
         std::fprintf(stderr, "ERROR: analyze image path missing\n");
         return 1;
@@ -330,12 +386,12 @@ int analyze(runtime_t *rt, const analyze_paths_t *paths)
 
     cv::Mat ipm;
     perspective_preview(rt->gray, rt->matrix, &ipm);
-    if(!ipm.empty() && paths->ipm_path != nullptr && !cv::imwrite(paths->ipm_path, ipm))
+    if(!ipm.empty() && path_present(paths->ipm_path) && !cv::imwrite(paths->ipm_path, ipm))
     {
         std::fprintf(stderr, "WARN: write ipm failed: %s\n", paths->ipm_path);
     }
 
-    if(paths->report_path != nullptr && !write_report(rt, paths->report_path))
+    if(path_present(paths->report_path) && !write_report(rt, paths->report_path))
     {
         std::fprintf(stderr, "WARN: write report failed: %s\n", paths->report_path);
     }
@@ -349,7 +405,7 @@ int analyze(runtime_t *rt, const analyze_paths_t *paths)
 //-------------------------------------------------------------------------------------------------------------------
 int replay(runtime_t *rt, const char *image_path, int count, const char *report_path)
 {
-    if(rt == nullptr || image_path == nullptr || count <= 0)
+    if(rt == nullptr || !path_present(image_path) || count <= 0)
     {
         std::fprintf(stderr, "ERROR: replay arguments invalid\n");
         return 1;
@@ -364,7 +420,7 @@ int replay(runtime_t *rt, const char *image_path, int count, const char *report_
         print_replay_frame(frame, rt);
     }
 
-    if(report_path != nullptr && !write_report(rt, report_path))
+    if(path_present(report_path) && !write_report(rt, report_path))
     {
         std::fprintf(stderr, "WARN: write report failed: %s\n", report_path);
     }
@@ -392,18 +448,18 @@ int offline(runtime_t *rt, const char *image_path)
 //-------------------------------------------------------------------------------------------------------------------
 int live(runtime_t *rt)
 {
-    const char *uvc = read_env_text("SMARTCAR_UVC_PATH", default_uvc_path());
-    int w = read_env_int("SMARTCAR_UVC_WIDTH", default_uvc_width());
-    int h = read_env_int("SMARTCAR_UVC_HEIGHT", default_uvc_height());
-    int fps = read_env_int("SMARTCAR_UVC_FPS", default_uvc_fps());
-    int div = read_env_int("FRONT_CAR_PRINT_DIV", default_live_print_divider());
+    if(rt == nullptr)
+    {
+        std::fprintf(stderr, "ERROR: live runtime missing\n");
+        return 1;
+    }
+
+    const camera_options_t camera = read_camera_options();
+    int div = read_env_int_clamped("FRONT_CAR_PRINT_DIV", default_live_print_divider(), 1, 10000);
     int drive_enabled = read_env_flag("FRONT_CAR_ENABLE_DRIVE", 0);
-    int process_fps = read_env_int_clamped("FRONT_CAR_PROCESS_FPS", fps, 1, 120);
+    int process_fps = read_env_int_clamped("FRONT_CAR_PROCESS_FPS", camera.fps, 1, 120);
     const int period_us = frame_period_us_from_fps(process_fps);
-    int control_period_ms = read_env_int_clamped("control_period_ms",
-                                                 control_config().control_period_ms,
-                                                 1,
-                                                 100);
+    int control_period_ms = live_control_period_ms();
     rt->control_center_x = read_env_int_clamped("SMARTCAR_CONTROL_CENTER_X",
                                                 default_control_center_x(),
                                                 0,
@@ -417,7 +473,7 @@ int live(runtime_t *rt)
     live_profile_t prof = {};
     prof.enabled = read_env_flag("FRONT_CAR_PROFILE", 0);
     prof.divider = read_env_int_clamped("FRONT_CAR_PROFILE_DIV", 30, 1, 10000);
-    if(!device_open_camera(uvc, w, h, fps))
+    if(!device_open_camera(camera.path, camera.width, camera.height, camera.fps))
     {
         std::fprintf(stderr, "ERROR: camera init failed\n");
         return 1;
@@ -426,10 +482,10 @@ int live(runtime_t *rt)
     drive_output_init(drive_enabled);
     assistant_init();
     std::printf("front_car_mainline: live %s %dx%d@%d process_fps=%d drive=%s\n",
-                uvc,
-                w,
-                h,
-                fps,
+                camera.path,
+                camera.width,
+                camera.height,
+                camera.fps,
                 process_fps,
                 drive_enabled ? "on" : "off");
     uint32_t frame_id = 0;
@@ -489,11 +545,14 @@ int live(runtime_t *rt)
 //-------------------------------------------------------------------------------------------------------------------
 int capture_frame(runtime_t *rt, const char *capture_path)
 {
-    const char *uvc = read_env_text("SMARTCAR_UVC_PATH", default_uvc_path());
-    int w = read_env_int("SMARTCAR_UVC_WIDTH", default_uvc_width());
-    int h = read_env_int("SMARTCAR_UVC_HEIGHT", default_uvc_height());
-    int fps = read_env_int("SMARTCAR_UVC_FPS", default_uvc_fps());
-    if(!device_open_camera(uvc, w, h, fps))
+    if(rt == nullptr || !path_present(capture_path))
+    {
+        std::fprintf(stderr, "ERROR: capture arguments invalid\n");
+        return 1;
+    }
+
+    const camera_options_t camera = read_camera_options();
+    if(!device_open_camera(camera.path, camera.width, camera.height, camera.fps))
     {
         std::fprintf(stderr, "ERROR: camera init failed\n");
         return 1;

@@ -5,21 +5,29 @@
 #include "tracking/mainline.hpp"
 
 #include <cstdio>
-#include <cstdlib>
 #include <cstring>
 
 namespace
 {
+constexpr const char *k_default_config_path = "/root/front_car_mainline.yaml";
 runtime_t g_rt;
 
-const char *resolve_config_path()
+const char *program_name(int argc, char **argv)
 {
-    const char *env = std::getenv("FRONT_CAR_CONFIG");
-    if(env != nullptr && env[0] != '\0')
+    if(argc <= 0 || argv == nullptr || argv[0] == nullptr || argv[0][0] == '\0')
     {
-        return env;
+        return "front_car_mainline";
     }
-    return "/root/front_car_mainline.yaml";
+    return argv[0];
+}
+
+int help_requested(int argc, char **argv)
+{
+    if(argc != 2 || argv == nullptr || argv[1] == nullptr)
+    {
+        return 0;
+    }
+    return std::strcmp(argv[1], "-h") == 0 || std::strcmp(argv[1], "--help") == 0;
 }
 }
 
@@ -30,13 +38,14 @@ const char *resolve_config_path()
 //-------------------------------------------------------------------------------------------------------------------
 int run_mainline(int argc, char **argv)
 {
-    if(argc == 2 && (std::strcmp(argv[1], "-h") == 0 || std::strcmp(argv[1], "--help") == 0))
+    const char *prog = program_name(argc, argv);
+    if(help_requested(argc, argv))
     {
-        print_usage(argv[0]);
+        print_usage(prog);
         return 0;
     }
 
-    load_control_config(resolve_config_path());
+    load_control_config(read_env_text("FRONT_CAR_CONFIG", k_default_config_path));
 
     options_t opt = {};
     init_options(&opt);
@@ -71,12 +80,12 @@ int run_mainline(int argc, char **argv)
         return replay(&g_rt, opt.replay_path, opt.replay_count, opt.report_path);
     }
 
-    if(argc == 3 && std::strcmp(argv[1], "--input") == 0)
+    if(opt.input_path != nullptr)
     {
-        return offline(&g_rt, argv[2]);
+        return offline(&g_rt, opt.input_path);
     }
 
-    print_usage(argv[0]);
+    print_usage(prog);
     return 1;
 }
 

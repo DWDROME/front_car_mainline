@@ -27,6 +27,10 @@ constexpr int k_assistant_coord8_limit = 256;         // dot_type 未置 16-bit 
 constexpr int k_assistant_dot_count_limit = UINT16_MAX;
 constexpr uint8_t k_left_far_value = 80;              // 左远线在灰度图上叠加的像素亮度
 constexpr uint8_t k_right_far_value = 220;            // 右远线在灰度图上叠加的像素亮度
+constexpr uint8_t k_ring_opp_value = 170;             // 环岛检测补边在灰度图上叠加的像素亮度
+constexpr int k_seed_box_radius = 3;                  // seed 点显示方框半径
+constexpr int k_marker_radius = 3;                    // L 角/远线十字标记半径
+constexpr uint8_t k_marker_value = 255;               // L 角/远线十字标记亮度
 
 enum display_channel_t
 {
@@ -75,15 +79,50 @@ struct display_boundary_t
 
 assistant_t_impl g_asst = {};
 
+int raw_point_valid(int x, int y)
+{
+    return x >= 0 && x < RAW_W && y >= 0 && y < RAW_H;
+}
+
+// ==== TCP 回调边界 ====
 // 把成员 tcp 对象包成逐飞 assistant 库要求的 C 风格收发回调。
 uint32 tcp_send_wrap(const uint8 *buf, uint32 len)
 {
-    return g_asst.tcp.send_data(buf, len);
+    const uint32 sent = g_asst.tcp.send_data(buf, len);
+    if(sent != len)
+    {
+        g_asst.connected = 0;
+    }
+    return sent;
 }
 
 uint32 tcp_read_wrap(uint8 *buf, uint32 len)
 {
-    return g_asst.tcp.read_data(buf, len);
+    const uint32 got = g_asst.tcp.read_data(buf, len);
+    if(got == static_cast<uint32>(-1))
+    {
+        g_asst.connected = 0;
+        return 0;
+    }
+    return got;
+}
+
+// ==== assistant 数据发送 ====
+int assistant_send_all(const uint8 *buf, uint32 len)
+{
+    if(!g_asst.connected)
+    {
+        return 0;
+    }
+    if(len == 0)
+    {
+        return 1;
+    }
+    if(buf == nullptr)
+    {
+        return 0;
+    }
+    return tcp_send_wrap(buf, len) == len ? 1 : 0;
 }
 
 // 只有 SMARTCAR_ASSISTANT 和 SMARTCAR_VIEWER 两个开关同时为真才启用上位机（VIEWER 是 legacy 别名）。
@@ -108,10 +147,26 @@ int connect_once()
     return 1;
 }
 
+int append_display_pt(uint8_t *xs, uint8_t *ys, int *count, int x, int y)
+{
+    if(xs == nullptr || ys == nullptr || count == nullptr || *count >= k_point_limit)
+    {
+        return 0;
+    }
+    xs[*count] = static_cast<uint8_t>(std::clamp(x, 0, RAW_W - 1));
+    ys[*count] = static_cast<uint8_t>(std::clamp(y, 0, RAW_H - 1));
+    ++(*count);
+    return 1;
+}
+
 // 把 point_t 数组隔点 clamp 到 [0,RAW-1] 后拷成上位机要的 uint8 x/y，返回有效点数。
 int copy_pts(const point_t *src, int step, uint8_t *xs, uint8_t *ys)
 {
     if(src == nullptr || xs == nullptr || ys == nullptr)
+    {
+        return 0;
+    }
+    if(step <= 0)
     {
         return 0;
     }
@@ -120,9 +175,7 @@ int copy_pts(const point_t *src, int step, uint8_t *xs, uint8_t *ys)
     int n = 0;
     for(int i = 0; i < nsrc && n < k_point_limit; i += k_display_point_stride)
     {
-        xs[n] = static_cast<uint8_t>(std::clamp(src[i].x, 0, RAW_W - 1));
-        ys[n] = static_cast<uint8_t>(std::clamp(src[i].y, 0, RAW_H - 1));
-        ++n;
+        append_display_pt(xs, ys, &n, src[i].x, src[i].y);
     }
     return n;
 }
@@ -145,18 +198,6 @@ void pad_pts(uint8_t *xs, uint8_t *ys, int count, int total)
     }
 }
 
-int append_display_pt(uint8_t *xs, uint8_t *ys, int *count, int x, int y)
-{
-    if(xs == nullptr || ys == nullptr || count == nullptr || *count >= k_point_limit)
-    {
-        return 0;
-    }
-    xs[*count] = static_cast<uint8_t>(std::clamp(x, 0, RAW_W - 1));
-    ys[*count] = static_cast<uint8_t>(std::clamp(y, 0, RAW_H - 1));
-    ++(*count);
-    return 1;
-}
-
 int seed_row_pts(uint8_t *xs, uint8_t *ys)
 {
     if(xs == nullptr || ys == nullptr)
@@ -176,14 +217,13 @@ int seed_row_pts(uint8_t *xs, uint8_t *ys)
 int seed_box_pts(point_t seed, uint8_t *xs, uint8_t *ys)
 {
     if(xs == nullptr || ys == nullptr ||
-       seed.x < 0 || seed.x >= RAW_W ||
-       seed.y < 0 || seed.y >= RAW_H)
+       !raw_point_valid(seed.x, seed.y))
     {
         return 0;
     }
 
     int n = 0;
-    const int r = 3;
+    const int r = k_seed_box_radius;
     const int x0 = std::clamp(seed.x - r, 0, RAW_W - 1);
     const int x1 = std::clamp(seed.x + r, 0, RAW_W - 1);
     const int y0 = std::clamp(seed.y - r, 0, RAW_H - 1);
@@ -208,7 +248,7 @@ int seed_box_pts(point_t seed, uint8_t *xs, uint8_t *ys)
     return n;
 }
 
-void send_camera_packet(uint8 boundary_num)
+int send_camera_packet(uint8 boundary_num)
 {
     seekfree_assistant_camera_struct packet = {};
     packet.head = SEEKFREE_ASSISTANT_SEND_HEAD;
@@ -218,15 +258,19 @@ void send_camera_packet(uint8 boundary_num)
     packet.image_width = RAW_W;
     packet.image_height = RAW_H;
 
-    tcp_send_wrap(reinterpret_cast<const uint8 *>(&packet), sizeof(packet));
-    tcp_send_wrap(reinterpret_cast<const uint8 *>(g_asst.image[0]), RAW_W * RAW_H);
+    if(!assistant_send_all(reinterpret_cast<const uint8 *>(&packet), sizeof(packet)))
+    {
+        return 0;
+    }
+    return assistant_send_all(reinterpret_cast<const uint8 *>(g_asst.image[0]), RAW_W * RAW_H);
 }
 
-void send_dot_packet(const display_boundary_t *bd, int boundary_count, uint16 dot_num)
+int send_dot_packet(const display_boundary_t *bd, int boundary_count, uint16 dot_num)
 {
-    if(bd == nullptr || boundary_count <= 0 || dot_num == 0)
+    if(bd == nullptr || boundary_count <= 0 ||
+       boundary_count > k_display_boundary_limit || dot_num == 0)
     {
-        return;
+        return 0;
     }
 
     seekfree_assistant_camera_dot_struct packet = {};
@@ -237,16 +281,28 @@ void send_dot_packet(const display_boundary_t *bd, int boundary_count, uint16 do
     packet.dot_num = dot_num;
     for(int i = 0; i < boundary_count; ++i)
     {
+        if(bd[i].xs == nullptr || bd[i].ys == nullptr ||
+           bd[i].valid_channel < 0 || bd[i].valid_channel >= k_display_boundary_limit)
+        {
+            return 0;
+        }
         packet.valid_flag |= static_cast<uint8>(1U << bd[i].valid_channel);
     }
 
-    tcp_send_wrap(reinterpret_cast<const uint8 *>(&packet), sizeof(packet));
+    if(!assistant_send_all(reinterpret_cast<const uint8 *>(&packet), sizeof(packet)))
+    {
+        return 0;
+    }
     // 坐标数组按非空边界紧凑发送；valid_flag 只告诉上位机这些数组对应哪个显示通道。
     for(int i = 0; i < boundary_count; ++i)
     {
-        tcp_send_wrap(reinterpret_cast<const uint8 *>(bd[i].xs), dot_num);
-        tcp_send_wrap(reinterpret_cast<const uint8 *>(bd[i].ys), dot_num);
+        if(!assistant_send_all(reinterpret_cast<const uint8 *>(bd[i].xs), dot_num) ||
+           !assistant_send_all(reinterpret_cast<const uint8 *>(bd[i].ys), dot_num))
+        {
+            return 0;
+        }
     }
+    return 1;
 }
 
 void add_display_boundary(display_boundary_t *bd,
@@ -256,7 +312,7 @@ void add_display_boundary(display_boundary_t *bd,
                           int point_count)
 {
     if(bd == nullptr || boundary_count == nullptr || dot_num == nullptr ||
-       point_count <= 0 ||
+       point_count <= 0 || point_count > k_point_limit ||
        valid_channel < 0 || valid_channel >= k_display_boundary_limit ||
        *boundary_count >= k_display_boundary_limit)
     {
@@ -273,30 +329,36 @@ void add_display_boundary(display_boundary_t *bd,
     *dot_num = std::max(*dot_num, point_count);
 }
 
-void send_display_frame(display_boundary_t *bd, int boundary_count, int dot_num)
+int send_display_frame(display_boundary_t *bd, int boundary_count, int dot_num)
 {
-    if(bd == nullptr || boundary_count <= 0 || dot_num <= 0)
+    if(boundary_count <= 0 || dot_num <= 0)
     {
-        send_camera_packet(0);
-        return;
+        return send_camera_packet(0);
     }
-    if(boundary_count > k_display_boundary_limit || dot_num > k_point_limit)
+    if(bd == nullptr || boundary_count > k_display_boundary_limit || dot_num > k_point_limit)
     {
-        return;
+        return 0;
     }
 
     const uint8 boundary_num = static_cast<uint8>(boundary_count);
-    send_camera_packet(boundary_num);
+    if(!send_camera_packet(boundary_num))
+    {
+        return 0;
+    }
 
     const uint16 dn = static_cast<uint16>(dot_num);
     for(int i = 0; i < boundary_num; ++i)
     {
+        if(bd[i].point_count <= 0 || bd[i].point_count > dn)
+        {
+            return 0;
+        }
         pad_pts(bd[i].xs, bd[i].ys, bd[i].point_count, dn);
     }
-    send_dot_packet(bd, boundary_num, dn);
+    return send_dot_packet(bd, boundary_num, dn);
 }
 
-// 在图上 (x,y) 处画一个 7x7 十字标记（标拐点/远 L 点用）。
+// 在图上 (x,y) 处画一个十字标记（标拐点/远 L 点用）。
 void mark_cross(uint8_t image[RAW_H][RAW_W], int x, int y, uint8_t value)
 {
     if(image == nullptr)
@@ -304,18 +366,18 @@ void mark_cross(uint8_t image[RAW_H][RAW_W], int x, int y, uint8_t value)
         return;
     }
 
-    for(int dy = -3; dy <= 3; ++dy)
+    for(int dy = -k_marker_radius; dy <= k_marker_radius; ++dy)
     {
         const int yy = y + dy;
-        if(yy >= 0 && yy < RAW_H && x >= 0 && x < RAW_W)
+        if(raw_point_valid(x, yy))
         {
             image[yy][x] = value;
         }
     }
-    for(int dx = -3; dx <= 3; ++dx)
+    for(int dx = -k_marker_radius; dx <= k_marker_radius; ++dx)
     {
         const int xx = x + dx;
-        if(y >= 0 && y < RAW_H && xx >= 0 && xx < RAW_W)
+        if(raw_point_valid(xx, y))
         {
             image[y][xx] = value;
         }
@@ -347,11 +409,11 @@ point_t corner_pt(const boundary_t *bd)
 void draw_l_corner(uint8_t image[RAW_H][RAW_W], const boundary_t *bd)
 {
     point_t pt = corner_pt(bd);
-    if(pt.x < 0 || pt.x >= RAW_W || pt.y < 0 || pt.y >= RAW_H)
+    if(!raw_point_valid(pt.x, pt.y))
     {
         return;
     }
-    mark_cross(image, pt.x, pt.y, 255);
+    mark_cross(image, pt.x, pt.y, k_marker_value);
 }
 
 // 把 IPM/控制坐标点经反查表换算回 raw 像素点；无矩阵时直接取整，越界返回 0。
@@ -366,13 +428,13 @@ int ipm_to_raw_point(const runtime_t *rt, double ix, double iy, point_t *pt)
     int ry = round_i(iy);
     if(rt->has_matrix)
     {
-        if(!perspective_lookup_ipm_to_raw(round_i(ix), round_i(iy), &rx, &ry))
+        if(!perspective_lookup_ipm_to_raw(rx, ry, &rx, &ry))
         {
             return 0;
         }
     }
 
-    if(rx < 0 || rx >= RAW_W || ry < 0 || ry >= RAW_H)
+    if(!raw_point_valid(rx, ry))
     {
         return 0;
     }
@@ -414,9 +476,7 @@ int control_mid_pts(const runtime_t *rt, uint8_t *xs, uint8_t *ys)
             continue;
         }
 
-        xs[n] = static_cast<uint8_t>(raw.x);
-        ys[n] = static_cast<uint8_t>(raw.y);
-        ++n;
+        append_display_pt(xs, ys, &n, raw.x, raw.y);
     }
 
     if(n < 2)
@@ -454,7 +514,7 @@ void draw_far_points(uint8_t image[RAW_H][RAW_W],
         point_t p = {-1, -1};
         if(ipm_to_raw_point(rt, pts[l_index][0], pts[l_index][1], &p))
         {
-            mark_cross(image, p.x, p.y, 255);
+            mark_cross(image, p.x, p.y, k_marker_value);
         }
     }
 }
@@ -487,13 +547,38 @@ void draw_farline(uint8_t image[RAW_H][RAW_W], const runtime_t *rt)
     }
 }
 
+// ==== 环岛补边叠加显示 ====
+void draw_ring_opp(uint8_t image[RAW_H][RAW_W], const runtime_t *rt)
+{
+    if(rt == nullptr || rt->track.ring_opp_build_result <= 0)
+    {
+        return;
+    }
+
+    const boundary_t *opp = &rt->track.left;
+    if(rt->track.ring_opp_left)
+    {
+        opp = &rt->track.right;
+    }
+
+    const int step = std::min(opp->original_step, k_point_limit);
+    for(int i = 0; i < step; i += k_display_point_stride)
+    {
+        const point_t p = opp->original_pts[i];
+        if(raw_point_valid(p.x, p.y))
+        {
+            image[p.y][p.x] = k_ring_opp_value;
+        }
+    }
+}
+
 // 组装并下发一帧上位机数据：左/中/右 + seed 行/方框 + 灰度图 + 远线/拐点叠加。
 // 显示边界共用一个 dot_num（取 max 后 pad 补齐），不能用最短线长度，否则会裁短边线。
-void config_points(const runtime_t *rt)
+int config_points(const runtime_t *rt)
 {
     if(rt == nullptr)
     {
-        return;
+        return 0;
     }
 
     int point_count[k_display_boundary_limit] = {};
@@ -539,9 +624,10 @@ void config_points(const runtime_t *rt)
 
     std::memcpy(g_asst.image, rt->gray, sizeof(g_asst.image));
     draw_farline(g_asst.image, rt);
+    draw_ring_opp(g_asst.image, rt);
     draw_l_corner(g_asst.image, &rt->track.left);
     draw_l_corner(g_asst.image, &rt->track.right);
-    send_display_frame(bd, boundary_count, dot_num);
+    return send_display_frame(bd, boundary_count, dot_num);
 }
 }
 
@@ -605,6 +691,9 @@ void assistant_tick(const runtime_t *rt, unsigned frame_id)
         return;
     }
 
-    config_points(rt);
+    if(!config_points(rt) || !g_asst.connected)
+    {
+        return;
+    }
     seekfree_assistant_data_analysis();
 }

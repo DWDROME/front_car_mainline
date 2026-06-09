@@ -5,6 +5,7 @@ struct options_t
 {
     // 抓帧、分析、回放和输出路径。
     const char *capture_path;
+    const char *input_path;
     const char *analyze_path;
     const char *replay_path;
     const char *ipm_path;

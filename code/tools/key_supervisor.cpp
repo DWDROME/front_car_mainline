@@ -72,6 +72,13 @@ bool is_pressed(zf_driver_gpio &key)
 // 执行板端 shell 命令；失败时同时写 stdout 和 supervisor 日志。
 int run_shell(const char *cmd)
 {
+    // ==== shell 命令执行 ====
+    if(cmd == nullptr || cmd[0] == '\0')
+    {
+        append_log("command skipped: empty command");
+        return -1;
+    }
+
     const int ok = std::system(cmd);
     if(ok != 0)
     {
@@ -114,22 +121,26 @@ void start_mainline()
     kill_mainline();
     stop_motor_now();
 
+    // ==== mainline 启动命令 ====
     char cmd[1400] = {};
-    std::snprintf(cmd,
-                  sizeof(cmd),
-                  "SMARTCAR_ASSISTANT=1 "
-                  "SMARTCAR_ASSISTANT_IP=192.168.0.101 "
-                  "SMARTCAR_ASSISTANT_PORT=8086 "
-                  "SMARTCAR_ASSISTANT_CONNECT_MS=30 "
-                  "SMARTCAR_ASSISTANT_RECONNECT_DIV=30 "
-                  "SMARTCAR_ASSISTANT_DIV=12 "
-                  "FRONT_CAR_DISPLAY=0 "
-                  "FRONT_CAR_PROCESS_FPS=120 "
-                  "FRONT_CAR_PRINT_DIV=30 "
-                  "FRONT_CAR_ENABLE_DRIVE=1 "
-                  "nohup %s >%s 2>&1 &",
-                  k_mainline_bin,
-                  k_mainline_log);
+    const int n = std::snprintf(cmd,
+                                sizeof(cmd),
+                                "SMARTCAR_ASSISTANT=1 "
+                                "SMARTCAR_ASSISTANT_IP=192.168.0.101 "
+                                "SMARTCAR_ASSISTANT_PORT=8086 "
+                                "SMARTCAR_ASSISTANT_RECONNECT_DIV=30 "
+                                "SMARTCAR_ASSISTANT_DIV=12 "
+                                "FRONT_CAR_PROCESS_FPS=120 "
+                                "FRONT_CAR_PRINT_DIV=30 "
+                                "FRONT_CAR_ENABLE_DRIVE=1 "
+                                "nohup %s >%s 2>&1 &",
+                                k_mainline_bin,
+                                k_mainline_log);
+    if(n < 0 || n >= static_cast<int>(sizeof(cmd)))
+    {
+        append_log("start failed: command truncated");
+        return;
+    }
     run_shell(cmd);
 }
 
@@ -142,7 +153,11 @@ bool capture_photo_once()
 {
     kill_mainline();
     stop_motor_now();
-    run_shell("mkdir -p /root/1_photo");
+    if(run_shell("mkdir -p /root/1_photo") != 0)
+    {
+        append_log("capture failed: mkdir %s", k_photo_dir);
+        return false;
+    }
 
     cv::VideoCapture cap(k_photo_device);
     if(!cap.isOpened())
@@ -173,17 +188,23 @@ bool capture_photo_once()
     std::time_t now = std::time(nullptr);
     std::tm tm_now = {};
     localtime_r(&now, &tm_now);
+    // ==== 高清抓拍路径 ====
     char path[256] = {};
-    std::snprintf(path,
-                  sizeof(path),
-                  "%s/front_car_hd_%04d%02d%02d_%02d%02d%02d.png",
-                  k_photo_dir,
-                  tm_now.tm_year + 1900,
-                  tm_now.tm_mon + 1,
-                  tm_now.tm_mday,
-                  tm_now.tm_hour,
-                  tm_now.tm_min,
-                  tm_now.tm_sec);
+    const int n = std::snprintf(path,
+                                sizeof(path),
+                                "%s/front_car_hd_%04d%02d%02d_%02d%02d%02d.png",
+                                k_photo_dir,
+                                tm_now.tm_year + 1900,
+                                tm_now.tm_mon + 1,
+                                tm_now.tm_mday,
+                                tm_now.tm_hour,
+                                tm_now.tm_min,
+                                tm_now.tm_sec);
+    if(n < 0 || n >= static_cast<int>(sizeof(path)))
+    {
+        append_log("capture failed: path truncated");
+        return false;
+    }
 
     if(!cv::imwrite(path, frame))
     {

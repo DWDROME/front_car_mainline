@@ -10,7 +10,7 @@
 //  @param      width   兼容参数；当前逐飞 UVC 库只使用 path 初始化
 //  @param      height  兼容参数；实际帧尺寸在 device_capture_gray() 校验
 //  @param      fps     兼容参数；当前逐飞 UVC 库只使用 path 初始化
-//  @return     int     1 成功 / 0 初始化失败
+//  @return     int     1 成功 / 0 参数无效或初始化失败
 //  @note       当前库接口是 init(path) 一参数，不能在这里假装 width/height/fps 已下发给设备。
 //----------------------------------------------------------------------------------------------------------------------
 int device_open_camera(const char *path, int width, int height, int fps);
@@ -18,7 +18,7 @@ int device_open_camera(const char *path, int width, int height, int fps);
 //----------------------------------------------------------------------------------------------------------------------
 //  @brief      采集一帧 RAW_W x RAW_H 灰度图
 //  @param      gray  输出灰度图
-//  @return     int   1 成功 / 0 未打开、刷新失败、空帧或尺寸不匹配
+//  @return     int   1 成功 / 0 参数无效、未打开、刷新失败、空帧或尺寸不匹配
 //  @note       不做隐式 resize；摄像头输出尺寸必须已经是 tracking 使用的 160x120。
 //----------------------------------------------------------------------------------------------------------------------
 int device_capture_gray(uint8_t gray[RAW_H][RAW_W]);
@@ -27,7 +27,7 @@ int device_capture_gray(uint8_t gray[RAW_H][RAW_W]);
 //  @brief      从文件读取一帧 RAW_W x RAW_H 灰度图
 //  @param      path  图片路径
 //  @param      gray  输出灰度图
-//  @return     int   1 成功 / 0 读取失败或尺寸不匹配
+//  @return     int   1 成功 / 0 参数无效、读取失败或尺寸不匹配
 //  @note       用于离线图片调试，尺寸规则和摄像头采集保持一致。
 //----------------------------------------------------------------------------------------------------------------------
 int device_load_gray(const char *path, uint8_t gray[RAW_H][RAW_W]);

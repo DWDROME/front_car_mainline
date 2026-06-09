@@ -5,6 +5,8 @@
 #include "zf_driver_delay.hpp"
 
 #include <cerrno>
+#include <cctype>
+#include <climits>
 #include <cstdio>
 #include <cstdlib>
 #include <fcntl.h>
@@ -32,6 +34,7 @@ int g_gyro_z_bias = 0;
 double g_raw_to_rad_s = 0.001064;
 bool g_imu_ready = false;
 
+// ==== sysfs 数值读取 ====
 // 从已打开的 sysfs 文件描述符读取一路 int32；每次先 seek 到 0 再读。
 bool read_int32_fd(int fd, int *out)
 {
@@ -41,14 +44,33 @@ bool read_int32_fd(int fd, int *out)
     }
 
     char buf[32] = {0};
-    lseek(fd, 0, SEEK_SET);
+    if(lseek(fd, 0, SEEK_SET) < 0)
+    {
+        return false;
+    }
     const ssize_t num = read(fd, buf, sizeof(buf) - 1);
     if(num <= 0)
     {
         return false;
     }
 
-    *out = static_cast<int>(std::strtol(buf, nullptr, 10));
+    errno = 0;
+    char *end = nullptr;
+    const long parsed = std::strtol(buf, &end, 10);
+    if(end == buf || errno != 0 || parsed < INT_MIN || parsed > INT_MAX)
+    {
+        return false;
+    }
+    while(*end != '\0')
+    {
+        if(!std::isspace(static_cast<unsigned char>(*end)))
+        {
+            return false;
+        }
+        ++end;
+    }
+
+    *out = static_cast<int>(parsed);
     return true;
 }
 
@@ -64,15 +86,42 @@ const char *imu_type_name(imu_device_type_enum type)
     }
 }
 
+void close_fd(int *fd)
+{
+    if(fd == nullptr)
+    {
+        return;
+    }
+    if(*fd >= 0)
+    {
+        close(*fd);
+    }
+    *fd = -1;
+}
+
+// ==== sysfs 文件打开 ====
+bool open_gyro_file(const char *name, const char *path, int *fd)
+{
+    if(fd == nullptr)
+    {
+        return false;
+    }
+
+    *fd = open(path, O_RDONLY);
+    if(*fd < 0)
+    {
+        std::printf("ImuError: open %s failed path=%s errno=%d\n", name, path, errno);
+        return false;
+    }
+    return true;
+}
+
 // 关闭三轴陀螺仪 sysfs 文件描述符，并把 fd 重置为 -1。
 void close_gyro_files()
 {
-    if(g_gyro_x_fd >= 0) { close(g_gyro_x_fd); }
-    if(g_gyro_y_fd >= 0) { close(g_gyro_y_fd); }
-    if(g_gyro_z_fd >= 0) { close(g_gyro_z_fd); }
-    g_gyro_x_fd = -1;
-    g_gyro_y_fd = -1;
-    g_gyro_z_fd = -1;
+    close_fd(&g_gyro_x_fd);
+    close_fd(&g_gyro_y_fd);
+    close_fd(&g_gyro_z_fd);
 }
 
 // 静置采样一路陀螺仪零漂：先丢前若干采样，再求均值和极值。
@@ -144,12 +193,10 @@ bool imu_feedback_init(double gyro_raw_to_rad_s)
         return false;
     }
 
-    g_gyro_z_fd = open(kGyroZPath, O_RDONLY);
-    g_gyro_x_fd = open(kGyroXPath, O_RDONLY);
-    g_gyro_y_fd = open(kGyroYPath, O_RDONLY);
-    if(g_gyro_x_fd < 0 || g_gyro_y_fd < 0 || g_gyro_z_fd < 0)
+    if(!open_gyro_file("gyro_x", kGyroXPath, &g_gyro_x_fd) ||
+       !open_gyro_file("gyro_y", kGyroYPath, &g_gyro_y_fd) ||
+       !open_gyro_file("gyro_z", kGyroZPath, &g_gyro_z_fd))
     {
-        std::printf("ImuError: open gyro raw files failed errno=%d\n", errno);
         close_gyro_files();
         return false;
     }

@@ -1,5 +1,6 @@
 #include "app/report.hpp"
 
+#include "app/options.hpp"
 #include "tracking/boundary.hpp"
 #include "tracking/imgproc.hpp"
 #include "tracking/mainline.hpp"
@@ -10,8 +11,8 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
-#include <cstdlib>
 #include <fstream>
+#include <tuple>
 #include <fcntl.h>
 #include <unistd.h>
 
@@ -22,7 +23,17 @@ constexpr int k_live_beep_ms = 35;
 constexpr int k_report_near_lost_step = 5;
 constexpr int k_report_near_recover_step = 20;
 
-using live_state_signature_t = std::array<int, 67>;
+using live_state_signature_t = std::array<int, 73>;
+
+// ==== 实时状态签名合同 ====
+// std::array 聚合初始化字段少了会补 0；这里强制字段数量和签名长度一致。
+template <typename... Values>
+live_state_signature_t live_state_signature(Values... values)
+{
+    static_assert(sizeof...(values) == std::tuple_size<live_state_signature_t>::value,
+                  "live_state_signature_t size must match the live-state field list");
+    return {{static_cast<int>(values)...}};
+}
 
 uint64_t report_monotonic_us()
 {
@@ -39,18 +50,13 @@ int live_beep_fd()
         return fd;
     }
 
-    const char *enabled = std::getenv("FRONT_CAR_STATE_BEEP");
-    if(enabled != nullptr && enabled[0] == '0')
+    if(!read_env_flag("FRONT_CAR_STATE_BEEP", 1))
     {
         fd = -1;
         return fd;
     }
 
-    const char *path = std::getenv("FRONT_CAR_BEEP_PATH");
-    if(path == nullptr || path[0] == '\0')
-    {
-        path = k_live_beep_path;
-    }
+    const char *path = read_env_text("FRONT_CAR_BEEP_PATH", k_live_beep_path);
     fd = open(path, O_WRONLY | O_CLOEXEC);
     return fd;
 }
@@ -61,18 +67,22 @@ uint64_t &live_beep_off_at_us()
     return value;
 }
 
-void write_live_beep_level(int level)
+// ==== 实时状态蜂鸣写入 ====
+int write_live_beep_level(int level)
 {
     const int fd = live_beep_fd();
     if(fd < 0)
     {
-        return;
+        return 0;
     }
 
     char c = level ? '1' : '0';
-    lseek(fd, 0, SEEK_SET);
+    if(lseek(fd, 0, SEEK_SET) < 0)
+    {
+        return 0;
+    }
     const ssize_t written = write(fd, &c, 1);
-    (void)written;
+    return written == 1 ? 1 : 0;
 }
 
 void live_beep_tick()
@@ -97,7 +107,10 @@ void live_beep_once()
         return;
     }
 
-    write_live_beep_level(1);
+    if(!write_live_beep_level(1))
+    {
+        return;
+    }
     uint64_t &off_at_us = live_beep_off_at_us();
     off_at_us = report_monotonic_us() + static_cast<uint64_t>(k_live_beep_ms) * 1000U;
 }
@@ -133,7 +146,7 @@ live_state_signature_t make_live_state_signature(const runtime_t *rt)
 {
     const auto &tr = rt->track;
     const auto &cz = rt->cross;
-    return {
+    return live_state_signature(
         track_line_found(rt),
         rt->ring.kind,
         rt->ring.state,
@@ -181,6 +194,12 @@ live_state_signature_t make_live_state_signature(const runtime_t *rt)
         tr.right.l_pair_state,
         tr.action_ring_kind0,
         tr.action_ring_state0,
+        tr.ring_opp_left,
+        near_step_bucket(tr.ring_cur_step),
+        near_step_bucket(tr.ring_opp_step),
+        tr.ring_opp_l_ok,
+        positive_bucket(tr.ring_opp_l_index + 1),
+        tr.ring_opp_build_result,
         tr.seed_state_find,
         positive_bucket(tr.trace_left_raw_step),
         positive_bucket(tr.trace_right_raw_step),
@@ -201,7 +220,7 @@ live_state_signature_t make_live_state_signature(const runtime_t *rt)
         bucket8(tr.search_mid_after),
         bucket8(tr.width_base_before),
         bucket8(tr.width_base_after)
-    };
+    );
 }
 
 int live_state_changed(const live_state_signature_t &sig)
@@ -293,6 +312,12 @@ void mid_points_for_report(const midline_t &mid,
                            int *max_dist,
                            int *forward_ok)
 {
+    if(m0 == nullptr || ml == nullptr || ml_dist == nullptr ||
+       max_dist == nullptr || forward_ok == nullptr)
+    {
+        return;
+    }
+
     *m0 = {-1, -1};
     *ml = {-1, -1};
     *ml_dist = -1;
@@ -335,6 +360,11 @@ void mid_points_for_report(const midline_t &mid,
 //-------------------------------------------------------------------------------------------------------------------
 void print_detail(const runtime_t *rt)
 {
+    if(rt == nullptr)
+    {
+        return;
+    }
+
     const auto &sd = rt->seeds;
     const auto &tr = rt->track;
     const auto &tr0 = rt->left_trace;
@@ -409,6 +439,13 @@ void print_detail(const runtime_t *rt)
                 tr.candidate_left_after_crop,
                 tr.candidate_right_after_crop,
                 tr.selected_mid_ok);
+    std::printf("RingDbg: left=%d cur=%d opp=%d l=%d@%d build=%d\n",
+                tr.ring_opp_left,
+                tr.ring_cur_step,
+                tr.ring_opp_step,
+                tr.ring_opp_l_ok,
+                tr.ring_opp_l_index,
+                tr.ring_opp_build_result);
     std::printf("SearchPrior: kind=%d center=%d/%d width=%d/%d\n",
                 tr.search_update_kind,
                 tr.search_mid_before,
@@ -485,14 +522,18 @@ void print_detail(const runtime_t *rt)
 }
 
 //-------------------------------------------------------------------------------------------------------------------
-//  @brief      打印实时模式下的单行帧摘要（按分频在 publish 同步点调用）
+//  @brief      打印实时模式下的单行帧摘要（按 div 分频）
 //  @return     void
 //  @note       line 字段使用 track_line_found()；mid 点是控制中线坐标，不是 assistant 原图红线。
 //-------------------------------------------------------------------------------------------------------------------
-void print_live(uint32_t frame_id, const runtime_t *rt)
+void print_live(uint32_t frame_id, const runtime_t *rt, int div)
 {
     live_beep_tick();
     if(rt == nullptr)
+    {
+        return;
+    }
+    if(div > 1 && frame_id % static_cast<uint32_t>(div) != 0U)
     {
         return;
     }
@@ -525,6 +566,7 @@ void print_live(uint32_t frame_id, const runtime_t *rt)
     //   pre=find_seeds后state/seed和trace过滤前步数；tg=trace过滤前纵向爬升量；tp=trace越过对侧seed时的爬升量；
     //   xst=帧首cross/base/cross_far/cross_near/ring_active/work_track/ref；
     //   xcrop=ring裁剪side/index + rptsc0/rptsc1裁剪前/后 + selected mid_ok；
+    //   xrng=左环标志/当前贴边now点数/补边now点数/补边L/补边L索引/IN阶段补边结果；
     //   xlearn=seed 搜索先验学习 kind/search_center_before/search_center_after/width_before/width_after；
     //   xfar=近线步数/lost/recover/exit/far_ok/far_fail/far_trace/ipm/blur/resample；
     //   xmid=远线中线 side/fail/start/tail/cand/out；m0=中线起点，ml=预瞄点，md=预瞄距离/前方门/最大距离；
@@ -535,6 +577,7 @@ void print_live(uint32_t frame_id, const runtime_t *rt)
                 "l=%d/%d@%d/%d/%d@%d pair=%d/%d ps=%d/%d pw=%.1f/%.1f "
                 "xst=%d/%d/%d/%d/%d/%d@%d,%d "
                 "xcrop=%d/%d/%d/%d/%d/%d/%d "
+                "xrng=%d/%d/%d/%d/%d/%d "
                 "xlearn=%d/%d/%d/%d/%d "
                 "xfar=%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d "
                 "xmid=%d/%d/%d/%d/%d/%d "
@@ -606,6 +649,12 @@ void print_live(uint32_t frame_id, const runtime_t *rt)
                 tr.candidate_left_after_crop,
                 tr.candidate_right_after_crop,
                 tr.selected_mid_ok,
+                tr.ring_opp_left,
+                tr.ring_cur_step,
+                tr.ring_opp_step,
+                tr.ring_opp_l_ok,
+                tr.ring_opp_l_index,
+                tr.ring_opp_build_result,
                 tr.search_update_kind,
                 tr.search_mid_before,
                 tr.search_mid_after,
@@ -658,7 +707,7 @@ void print_live(uint32_t frame_id, const runtime_t *rt)
 //-------------------------------------------------------------------------------------------------------------------
 int write_report(const runtime_t *rt, const char *report_path)
 {
-    if(rt == nullptr || report_path == nullptr)
+    if(rt == nullptr || report_path == nullptr || report_path[0] == '\0')
     {
         return 0;
     }
@@ -697,6 +746,12 @@ int write_report(const runtime_t *rt, const char *report_path)
 
     out << "ring_kind=" << rt->ring.kind << "\n";
     out << "ring_state=" << rt->ring.state << "\n";
+    out << "ring_opp_left=" << rt->track.ring_opp_left << "\n";
+    out << "ring_cur_step=" << rt->track.ring_cur_step << "\n";
+    out << "ring_opp_step=" << rt->track.ring_opp_step << "\n";
+    out << "ring_opp_l_ok=" << rt->track.ring_opp_l_ok << "\n";
+    out << "ring_opp_l_index=" << rt->track.ring_opp_l_index << "\n";
+    out << "ring_opp_build_result=" << rt->track.ring_opp_build_result << "\n";
     out << "cross_state=" << rt->cross.state << "\n";
     out << "cross_not_have_line=" << rt->cross.not_have_line << "\n";
     out << "cross_left_far_found=" << rt->cross.left_far_found << "\n";
