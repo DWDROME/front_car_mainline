@@ -22,3 +22,4 @@ build-host/
 *.elf
 front_car_mainline
 key_supervisor
+.spec-workflow/
