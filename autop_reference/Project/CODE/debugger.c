@@ -27,11 +27,11 @@ static void debugger_send_image(debugger_image_t *image){
                     "\"name\":\"%s\"}}\n",
                     image->name);
     usb_cdc_send_buff((uint8_t*)json_buffer, len);
-    
+
 }
 
 static void debugger_send_chart(debugger_chart_t* chart){
-    
+
 }
 
 static void debugger_send_param(debugger_param_t* param){
@@ -72,7 +72,7 @@ void usb_cdc_recv_callback(uint8_t* buffer, uint32 length){
     memcpy(name, buffer, len);
     buffer += len+1;
     length -= len+1;
-    
+
     if(strcmp(type, "image")==0){
         debugger_image_t *ptr;
         for(ptr=p_image; ptr!=NULL && strcmp(name, ptr->name)!=0; ptr=ptr->next);

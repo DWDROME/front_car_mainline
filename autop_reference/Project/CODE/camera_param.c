@@ -2,7 +2,7 @@
 #include "common.h"
 
 // 逆变换(俯视->原图)
-bool map_inv(float pt0[2], int pt1[2]){    
+bool map_inv(float pt0[2], int pt1[2]){
     int rx = 0.5+(H[0][0]*pt0[0]+H[0][1]*pt0[1]+H[0][2])/(H[2][0]*pt0[0]+H[2][1]*pt0[1]+H[2][2]);
     int ry = 0.5+(H[1][0]*pt0[0]+H[1][1]*pt0[1]+H[1][2])/(H[2][0]*pt0[0]+H[2][1]*pt0[1]+H[2][2]);
     if(rx<0 || rx>=376 || ry<0 || ry>=240) return false;

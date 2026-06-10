@@ -9,7 +9,7 @@ typedef struct debugger_image {
     const int width;
     const int height;
     const uint8_t* buffer;
-    
+
     struct debugger_image* next;
 } debugger_image_t;
 
@@ -18,7 +18,7 @@ typedef struct debugger_image {
 typedef struct debugger_chart {
     const char* const name;
     const double* value;
-    
+
     struct debugger_chart* next;
 } debugger_chart_t;
 
@@ -30,7 +30,7 @@ typedef struct debugger_param {
     const float max_value;
     const float step_value;
     float* current_value;
-    
+
     struct debugger_param* next;
 } debugger_param_t;
 
@@ -39,7 +39,7 @@ typedef struct debugger_param {
 typedef struct debugger_option {
     const char* const name;
     bool* current_option;
-    
+
     struct debugger_option* next;
 } debugger_option_t;
 
@@ -48,7 +48,7 @@ typedef struct debugger_option {
 typedef struct debugger_button {
     const char* const name;
     void (*func)(const char*);
-    
+
     struct debugger_button* next;
 } debugger_button_t;
 

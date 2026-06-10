@@ -461,7 +461,7 @@ int main(void) {
             // 原图绘制中线
 //            for(int i=0; i<rptsn_num; i++){
 //                int pt[2];
-//                if(map_inv(rptsn[i], pt)){ 
+//                if(map_inv(rptsn[i], pt)){
 //                    AT_IMAGE(&img_raw, clip(pt[0], 0, img_raw.width-1), clip(pt[1], 0, img_raw.height-1)) = 0;
 //                }
 //            }
@@ -485,7 +485,7 @@ int main(void) {
             draw_circle();
             draw_cross();
 
-            // 绘制道路线            
+            // 绘制道路线
             for (int i = 0; i < rpts0s_num; i++) {
                 AT_IMAGE(&img_line, clip(rpts0s[i][0], 0, img_line.width - 1),
                          clip(rpts0s[i][1], 0, img_line.height - 1)) = 255;

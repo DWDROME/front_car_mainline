@@ -149,7 +149,7 @@ AT_ITCM_SECTION_INIT(void sobel3(image_t *img0, image_t *img1)) {
     assert(img0 != img1 && img0->data != img1->data);
 
     int gx, gy;
-    // 先遍历y后遍历x比较cache-friendly    
+    // 先遍历y后遍历x比较cache-friendly
     for (int y = 1; y < img0->height - 1; y++) {
         for (int x = 1; x < img0->width - 1; x++) {
             gx = (-1 * AT(img0, x - 1, y - 1) + 1 * AT(img0, x + 1, y - 1) +
@@ -170,7 +170,7 @@ AT_ITCM_SECTION_INIT(void erode3(image_t *img0, image_t *img1)) {
     assert(img0 != img1 && img0->data != img1->data);
 
     int min_value;
-    // 先遍历y后遍历x比较cache-friendly    
+    // 先遍历y后遍历x比较cache-friendly
     for (int y = 1; y < img0->height - 1; y++) {
         for (int x = 1; x < img0->width - 1; x++) {
             min_value = 255;
@@ -192,7 +192,7 @@ AT_ITCM_SECTION_INIT(void dilate3(image_t *img0, image_t *img1)) {
     assert(img0 != img1 && img0->data != img1->data);
 
     int max_value;
-    // 先遍历y后遍历x比较cache-friendly    
+    // 先遍历y后遍历x比较cache-friendly
     for (int y = 1; y < img0->height - 1; y++) {
         for (int x = 1; x < img0->width - 1; x++) {
             max_value = 0;
@@ -217,7 +217,7 @@ AT_ITCM_SECTION_INIT(void remap(image_t *img0, image_t *img1, fimage_t *mapx, fi
     assert(mapx->width == mapy->width && mapx->height == mapy->height);
     assert(img0->width == mapx->width && img0->height == mapx->height);
 
-    // 先遍历y后遍历x比较cache-friendly    
+    // 先遍历y后遍历x比较cache-friendly
     for (int y = 1; y < img0->height - 1; y++) {
         for (int x = 1; x < img0->width - 1; x++) {
                     AT(img1, x, y) = AT(img0, (int) (AT(mapx, x, y) + 0.5), (int) (AT(mapy, x, y) + 0.5));
@@ -519,7 +519,7 @@ AT_ITCM_SECTION_INIT(void resample_points(float pts_in[][2], int num1, float pts
             pts_out[len][0] = x0;
             y0 += dy * remain;
             pts_out[len][1] = y0;
-            
+
             len++;
             dn -= remain;
             remain = dist;

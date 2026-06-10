@@ -10,7 +10,7 @@ enum apriltag_type_e {
     APRILTAG_MAYBE,     // 识别到远距离黑斑，减速
     APRILTAG_FOUND,     // 识别到近距离黑斑，停车
     APRILTAG_LEAVE,     // 驶离apriltag中，编码器判断，防止其他标志的判断受到apriltag的影响
-    APRILTAG_NUM,       // 
+    APRILTAG_NUM,       //
 };
 
 extern enum apriltag_type_e apriltag_type;

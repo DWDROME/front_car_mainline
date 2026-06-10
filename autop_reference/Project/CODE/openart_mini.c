@@ -50,8 +50,8 @@ void openart_uart1_callback(LPUART_Type *base, lpuart_handle_t *handle, status_t
             openart.receiver_time = rt_tick_get_millisecond();
 
             // 蜂鸣器发声
-//            if(openart.openart_result==0) rt_mb_send(buzzer_mailbox, 2);  
-//            else  rt_mb_send(buzzer_mailbox, 1); 
+//            if(openart.openart_result==0) rt_mb_send(buzzer_mailbox, 2);
+//            else  rt_mb_send(buzzer_mailbox, 1);
 
             if (openart.rx_array[1] == NUM_MODE) {
                 laser_angle = SMOTOR2_CENTER;

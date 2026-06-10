@@ -50,7 +50,7 @@ float NORMAL_SPEED = 17.;  //16.4
 // 当前目标速度
 float target_speed;
 
-//三叉识别速度    
+//三叉识别速度
 float YROAD_FOUND_SPEED = 3, YROAD_NEAR_SPEED = 3;
 //圆环速度 + NORMAL_SPEED
 float CIRCLE_MAX_SPEED = 0, CIRCLE_MIN_SPEED = -6;

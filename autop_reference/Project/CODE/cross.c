@@ -136,12 +136,12 @@ void cross_farline() {
     far_ipts0_num = sizeof(far_ipts0) / sizeof(far_ipts0[0]);
 
     //在begin_y向两边找黑线
-//    for(;x1>cross_width*2; x1--) 
+//    for(;x1>cross_width*2; x1--)
 //    {
 //      if(AT_IMAGE(&img_raw, x1-1, y1) < low_thres) {
 //        far_x1 = x1 - cross_width;
 //        break;
-//      }   
+//      }
 //    }
     //全白  far_x1 = 0,从边界找
     for (; y1 > 0; y1--) {
@@ -163,12 +163,12 @@ void cross_farline() {
     far_ipts1_num = sizeof(far_ipts1) / sizeof(far_ipts1[0]);
 
     //在begin_y向两边找黑线
-//    for(;x2<img_raw.width-cross_width*2; x2++) 
+//    for(;x2<img_raw.width-cross_width*2; x2++)
 //    {
 //      if(AT_IMAGE(&img_raw, x2+1, y2) < low_thres) {
 //        far_x2 = x2 + cross_width;
 //        break;
-//      }   
+//      }
 //    }
     //全白  far_x2 = 0,从边界找
     for (; y2 > 0; y2--) {

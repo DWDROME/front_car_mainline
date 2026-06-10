@@ -14,7 +14,7 @@ gyro_param_t GyroOffset;
 
 bool GyroOffset_init = 0;
 
-float param_Kp = 0.17;   // 加速度计的收敛速率比例增益 
+float param_Kp = 0.17;   // 加速度计的收敛速率比例增益
 float param_Ki = 0.004;   //陀螺仪收敛速率的积分增益 0.004
 
 
@@ -128,7 +128,7 @@ void ICM_AHRSupdate(float gx, float gy, float gz, float ax, float ay, float az) 
     q3 = q3 + (q0 * gz + q1 * gy - q2 * gx) * halfT;
     //    delta_2=(2*halfT*gx)*(2*halfT*gx)+(2*halfT*gy)*(2*halfT*gy)+(2*halfT*gz)*(2*halfT*gz);
     // 整合四元数率    四元数微分方程  四元数更新算法，二阶毕卡法
-    //    q0 = (1-delta_2/8)*q0 + (-q1*gx - q2*gy - q3*gz)*halfT;			
+    //    q0 = (1-delta_2/8)*q0 + (-q1*gx - q2*gy - q3*gz)*halfT;
     //    q1 = (1-delta_2/8)*q1 + (q0*gx + q2*gz - q3*gy)*halfT;
     //    q2 = (1-delta_2/8)*q2 + (q0*gy - q1*gz + q3*gx)*halfT;
     //    q3 = (1-delta_2/8)*q3 + (q0*gz + q1*gy - q2*gx)*halfT
