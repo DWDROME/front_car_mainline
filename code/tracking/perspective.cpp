@@ -1,11 +1,13 @@
 #include "perspective.hpp"
 
+extern "C" {
+#include "camera_param.h"
+}
 #include "clip.hpp"
-#include "ipm_table_generated.hpp"
 
 // 静态查表对齐参考版 mapx/mapy 用法：raw 点先查表，再进入点列平滑/重采样。
 
-// raw -> IPM：查 float 表 g_raw_to_ipm_x/y；表值 <0 表示该 raw 像素落在 IPM 视野外，返回 0。
+// raw -> IPM：查参考版 camera_param.c 的 mapx/mapy；表值 <0 表示该 raw 像素落在 IPM 视野外，返回 0。
 int perspective_lookup_raw_to_ipm(int x, int y, double *ix, double *iy)
 {
     if(ix == nullptr || iy == nullptr)
@@ -17,8 +19,8 @@ int perspective_lookup_raw_to_ipm(int x, int y, double *ix, double *iy)
         return 0;
     }
 
-    const float x0 = g_raw_to_ipm_x[y][x];
-    const float y0 = g_raw_to_ipm_y[y][x];
+    const float x0 = mapx[y][x];
+    const float y0 = mapy[y][x];
     if(x0 < 0.0F || y0 < 0.0F)
     {
         return 0;
@@ -29,7 +31,7 @@ int perspective_lookup_raw_to_ipm(int x, int y, double *ix, double *iy)
     return 1;
 }
 
-// IPM -> raw 反查：查 int16 表 g_ipm_to_raw_x/y；表值 <0 表示该 IPM 像素无原图对应，返回 0。
+// IPM -> raw 反查：走参考版 camera_param.c 的 map_inv()，由 H + invx/invy 给出原图点。
 int perspective_lookup_ipm_to_raw(int ix, int iy, int *x, int *y)
 {
     if(x == nullptr || y == nullptr)
@@ -41,15 +43,15 @@ int perspective_lookup_ipm_to_raw(int ix, int iy, int *x, int *y)
         return 0;
     }
 
-    const int x0 = g_ipm_to_raw_x[iy][ix];
-    const int y0 = g_ipm_to_raw_y[iy][ix];
-    if(x0 < 0 || y0 < 0)
+    float pt0[2] = {static_cast<float>(ix), static_cast<float>(iy)};
+    int pt1[2] = {-1, -1};
+    if(!map_inv(pt0, pt1))
     {
         return 0;
     }
 
-    *x = x0;
-    *y = y0;
+    *x = pt1[0];
+    *y = pt1[1];
     return 1;
 }
 

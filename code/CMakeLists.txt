@@ -39,11 +39,10 @@ set(DIR_SRCS
     drivers/drive_output.cpp
     drivers/imu_feedback.cpp
     tracking/perspective.cpp
-    tracking/ipm_table_generated.cpp
-    tracking/autop_reference_ipm_bridge.cpp
     tracking/autop_reference_mainline.cpp
     ../autop_reference/port/reference_globals.c
     ../autop_reference/port/reference_step.c
+    ../autop_reference/Project/CODE/camera_param.c
     ../autop_reference/Project/CODE/imgproc.c
     ../autop_reference/Project/CODE/utils.c
     ../autop_reference/Project/CODE/cross.c

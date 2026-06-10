@@ -1,8 +1,6 @@
 #include "autop_reference_step.h"
 
 #include <math.h>
-#include <string.h>
-
 #include "camera_param.h"
 #include "circle.h"
 #include "common.h"
@@ -16,21 +14,8 @@ extern int64_t g_autop_reference_encoder_total;
 extern int far_x1;
 extern int far_x2;
 
-static int g_ipm_ready = 0;
 static int g_control_fallback_x = 86;
 static int g_control_fallback_y = 116;
-
-static void fill_reference_ipm_tables(void)
-{
-    if(g_ipm_ready)
-    {
-        return;
-    }
-    autop_reference_fill_ipm_tables(mapx, mapy);
-    memset(invx, -1, sizeof(invx));
-    memset(invy, -1, sizeof(invy));
-    g_ipm_ready = 1;
-}
 
 static void reset_frame_outputs(void)
 {
@@ -319,7 +304,6 @@ int autop_reference_process_frame(uint8_t gray[120][160], int64_t encoder_total)
         return 0;
     }
 
-    fill_reference_ipm_tables();
     configure_reference_params();
     g_autop_reference_encoder_total = encoder_total;
     img_raw.data = (uint8_t *)gray;

@@ -125,31 +125,11 @@ const char *apriltag_type_name[APRILTAG_NUM] = {
 openart_param_t openart = {0};
 int enable_adc = 0;
 
-float K[3][3] = {{0}};
-float D[4] = {0};
-float H[3][3] = {{0}};
-float H_inv[3][3] = {{0}};
-float mapx[MT9V03X_CSI_H][MT9V03X_CSI_W] = {{0}};
-float mapy[MT9V03X_CSI_H][MT9V03X_CSI_W] = {{0}};
-int invx[MT9V03X_CSI_H][MT9V03X_CSI_W] = {{0}};
-int invy[MT9V03X_CSI_H][MT9V03X_CSI_W] = {{0}};
-
 int64_t g_autop_reference_encoder_total = 0;
 
 int64_t get_total_encoder(void)
 {
     return g_autop_reference_encoder_total;
-}
-
-bool map_inv(float pt0[2], int pt1[2])
-{
-    (void)pt0;
-    if(pt1 != NULL)
-    {
-        pt1[0] = -1;
-        pt1[1] = -1;
-    }
-    return false;
 }
 
 void check_garage(void)

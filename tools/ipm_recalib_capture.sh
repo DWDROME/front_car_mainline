@@ -2,10 +2,9 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-REPO_ROOT="$(cd "${ROOT}/.." && pwd)"
-AUTOCAL_DIR="${REPO_ROOT}/ipm_autocal"
-OUT_DIR="${AUTOCAL_DIR}/.agentdocs/runtime/ipm_capture_only"
-OUT_FILE="${OUT_DIR}/ipm_raw.png"
+OUT_DIR="${ROOT}/.diag/ipm_recalib"
+OUT_RAW="${OUT_DIR}/ipm_raw_160x120.png"
+OUT_INPUT="${OUT_DIR}/ipm_raw_640x360.png"
 
 REMOTE_IP="${REMOTE_IP:-192.168.0.102}"
 REMOTE_USER="${REMOTE_USER:-root}"
@@ -25,9 +24,14 @@ ssh "${SSH_OPTS[@]}" "${REMOTE_USER}@${REMOTE_IP}" \
    /root/front_car_mainline --capture-frame '${REMOTE_RAW}' >'${REMOTE_CAPTURE_LOG}' 2>&1; \
    ls -l '${REMOTE_RAW}'"
 
-scp "${SSH_OPTS[@]}" "${REMOTE_USER}@${REMOTE_IP}:${REMOTE_RAW}" "${OUT_FILE}"
+scp "${SSH_OPTS[@]}" "${REMOTE_USER}@${REMOTE_IP}:${REMOTE_RAW}" "${OUT_RAW}"
+ffmpeg -hide_banner -loglevel error -y \
+  -i "${OUT_RAW}" \
+  -vf "scale=640:360:flags=neighbor,format=gray" \
+  "${OUT_INPUT}"
 
 ssh "${SSH_OPTS[@]}" "${REMOTE_USER}@${REMOTE_IP}" \
   "env SMARTCAR_ASSISTANT=1 SMARTCAR_ASSISTANT_IP=192.168.0.101 SMARTCAR_ASSISTANT_PORT=8086 SMARTCAR_ASSISTANT_CONNECT_MS=30 SMARTCAR_ASSISTANT_RECONNECT_DIV=30 SMARTCAR_ASSISTANT_DIV=12 FRONT_CAR_DISPLAY=0 FRONT_CAR_PROCESS_FPS=120 FRONT_CAR_PRINT_DIV=30 FRONT_CAR_ENABLE_DRIVE=0 /root/front_car_mainline >/tmp/front_car_mainline.log 2>&1 &"
 
-echo "Captured raw image -> ${OUT_FILE}"
+echo "Captured raw image -> ${OUT_RAW}"
+echo "Calibration input -> ${OUT_INPUT}"

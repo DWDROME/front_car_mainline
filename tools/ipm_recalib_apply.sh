@@ -2,25 +2,30 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-REPO_ROOT="$(cd "${ROOT}/.." && pwd)"
-AUTOCAL_DIR="${REPO_ROOT}/ipm_autocal"
+CAMERA_PARAM_DST="${ROOT}/autop_reference/Project/CODE/camera_param.c"
 
-MATRIX_FILE="${1:-${AUTOCAL_DIR}/.agentdocs/runtime/ipm_manual_pick/ipm_matrix.txt}"
-REMOTE_IP="${REMOTE_IP:-192.168.0.102}"
-REMOTE_USER="${REMOTE_USER:-root}"
-REMOTE_MATRIX="${REMOTE_MATRIX:-/root/ipm_matrix.txt}"
+CAMERA_PARAM_SRC="${1:-${ROOT}/.diag/ipm_recalib/camera_param.c}"
 
-SSH_OPTS=(
-  -o StrictHostKeyChecking=no
-)
-
-if [[ ! -f "${MATRIX_FILE}" ]]; then
-  echo "ERROR: matrix file not found: ${MATRIX_FILE}" >&2
+if [[ ! -f "${CAMERA_PARAM_SRC}" ]]; then
+  echo "ERROR: camera_param.c not found: ${CAMERA_PARAM_SRC}" >&2
   exit 1
 fi
 
-scp "${SSH_OPTS[@]}" "${MATRIX_FILE}" "${REMOTE_USER}@${REMOTE_IP}:${REMOTE_MATRIX}.new"
-ssh "${SSH_OPTS[@]}" "${REMOTE_USER}@${REMOTE_IP}" \
-  "install -m 644 '${REMOTE_MATRIX}.new' '${REMOTE_MATRIX}' && rm -f '${REMOTE_MATRIX}.new' && cat '${REMOTE_MATRIX}'"
+for symbol in \
+  "float K\\[3\\]\\[3\\]" \
+  "float D\\[4\\]" \
+  "float H\\[3\\]\\[3\\]" \
+  "float H_inv\\[3\\]\\[3\\]" \
+  "float mapx\\[MT9V03X_CSI_H\\]\\[MT9V03X_CSI_W\\]" \
+  "float mapy\\[MT9V03X_CSI_H\\]\\[MT9V03X_CSI_W\\]" \
+  "int invx\\[MT9V03X_CSI_H\\]\\[MT9V03X_CSI_W\\]" \
+  "int invy\\[MT9V03X_CSI_H\\]\\[MT9V03X_CSI_W\\]" \
+  "bool map_inv"; do
+  if ! grep -q "${symbol}" "${CAMERA_PARAM_SRC}"; then
+    echo "ERROR: generated camera_param.c missing symbol pattern: ${symbol}" >&2
+    exit 1
+  fi
+done
 
-echo "Applied matrix -> ${REMOTE_USER}@${REMOTE_IP}:${REMOTE_MATRIX}"
+install -m 644 "${CAMERA_PARAM_SRC}" "${CAMERA_PARAM_DST}"
+echo "Applied camera_param.c -> ${CAMERA_PARAM_DST}"

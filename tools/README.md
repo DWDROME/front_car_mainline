@@ -16,8 +16,8 @@ bash "scripts/ipm_geometry_audit.sh"
 scripts/test.sh                 编译 host/target
 scripts/straight_baseline_audit.sh  直道 baseline 审计
 scripts/ipm_geometry_audit.sh       IPM 几何只读审计
-scripts/ipm_recalib_capture.sh      从当前板子抓一张 IPM 重标定 raw 图
-scripts/ipm_recalib_apply.sh        把手动点选后的 ipm_matrix.txt 上传到板子
+scripts/ipm_recalib_capture.sh      从当前板子抓一张 IPM 重标定灰度图
+scripts/ipm_recalib_apply.sh        把生成的 camera_param.c 放进参考版相机参数路径
 ```
 
 `tools/straight_baseline_audit.sh` 和 `tools/ipm_geometry_audit.sh` 是实际执行体；用户侧优先走 `scripts/` 包装入口。
@@ -74,15 +74,17 @@ bash "scripts/ipm_recalib_capture.sh"
 点选四点：
 
 ```bash
-bash "../ipm_autocal/user/pick_ipm_points.sh" \
-  "../ipm_autocal/.agentdocs/runtime/ipm_capture_only/ipm_raw.png"
+cmake -S "../TC264-Peripheral-perspective" -B "../TC264-Peripheral-perspective/build"
+cmake --build "../TC264-Peripheral-perspective/build"
+"../TC264-Peripheral-perspective/build/ipm_generator" \
+  --input ".diag/ipm_recalib/ipm_raw_640x360.png" \
+  --out ".diag/ipm_recalib"
 ```
 
-应用新矩阵：
+应用新 camera_param.c：
 
 ```bash
-bash "scripts/ipm_recalib_apply.sh" \
-  "../ipm_autocal/.agentdocs/runtime/ipm_manual_pick/ipm_matrix.txt"
+bash "scripts/ipm_recalib_apply.sh" ".diag/ipm_recalib/camera_param.c"
 ```
 
 离线诊断：
@@ -94,6 +96,6 @@ bash "scripts/ipm_recalib_apply.sh" \
 ## 当前约束
 
 - 默认输入坐标按 `160x120` 解释。
-- `FRONT_CAR_MATRIX` 默认 `/root/ipm_matrix.txt`。
+- IPM 标定结果只通过 `autop_reference/Project/CODE/camera_param.c` 接入。
 - `ring / cross` 只走自然状态树，不再保留运行时禁用旁路。
 - 删除 retired 脚本或旧 `.diag` 生成物前需要明确确认。
