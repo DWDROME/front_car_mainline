@@ -49,6 +49,7 @@ app/main.cpp
 
 ```text
 docs/13_mainline_pipeline_map.md
+docs/tracking-audit-notes.md
 docs/09_acceptance_checklist.md
 .agentdocs/index.md
 .agentdocs/tracking_mainline_contract.md

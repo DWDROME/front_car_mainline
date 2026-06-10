@@ -65,7 +65,6 @@ void draw_white_segment(uint8_t gray[RAW_H][RAW_W], point_t a, point_t b)
     }
 }
 
-// ==== 下弯边线测试图 ====
 void fill_left_down_bend(uint8_t gray[RAW_H][RAW_W])
 {
     std::memset(gray, 0, RAW_H * RAW_W);
@@ -74,7 +73,6 @@ void fill_left_down_bend(uint8_t gray[RAW_H][RAW_W])
     draw_white_segment(gray, {80, 50}, {80, 86});
 }
 
-// ==== 下弯边线测试图 ====
 void fill_right_down_bend(uint8_t gray[RAW_H][RAW_W])
 {
     std::memset(gray, 0, RAW_H * RAW_W);
@@ -264,7 +262,6 @@ int run_region_otsu_contract()
     uint8_t gray[RAW_H][RAW_W] = {};
     std::memset(gray, 240, RAW_H * RAW_W);
 
-    // ==== 区域OTSU合同 ====
     // Calvariaa/RT1064-Code PR #6 把 OTSU 改成区域接口；外部亮区不能污染目标区域。
     for(int y = 20; y <= 29; ++y)
     {

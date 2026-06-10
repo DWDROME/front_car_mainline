@@ -90,6 +90,7 @@ if [[ ${HOST} -eq 1 ]]; then
     "${OUT}/element_entry_contract_test"
     "${OUT}/midline_lookahead_test"
     "${OUT}/search_center_learning_test"
+    "${OUT}/element_deferred_mode_test"
     "${OUT}/ring_opp_diag_test"
     "${OUT}/config_parsing_test"
     "${OUT}/options_parsing_test"
