@@ -144,3 +144,8 @@ invx/invy: identity 去畸变原图 -> raw 表
 
 如果后面要补真实畸变，仍然应该继续生成同一个 `camera_param.c`，不要把旧
 `ipm_table_generated.*` 或运行时 matrix 路线加回来。
+
+## 相关文档
+
+- [IPM 重标定流程（SOP）](IPM重标定流程.md) — 队友可直接执行的操作手册
+- [PORTING.md](../autop_reference/PORTING.md) — port 边界和控制参数
