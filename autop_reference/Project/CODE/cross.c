@@ -1,4 +1,5 @@
 #include "cross.h"
+#include "common.h"
 #include "encoder_port.h"
 #include "main.h"
 
@@ -187,16 +188,8 @@ void cross_farline() {
 
 
     // 去畸变+透视变换
-    for (int i = 0; i < far_ipts0_num; i++) {
-        far_rpts0[i][0] = mapx[far_ipts0[i][1]][far_ipts0[i][0]];
-        far_rpts0[i][1] = mapy[far_ipts0[i][1]][far_ipts0[i][0]];
-    }
-    far_rpts0_num = far_ipts0_num;
-    for (int i = 0; i < far_ipts1_num; i++) {
-        far_rpts1[i][0] = mapx[far_ipts1[i][1]][far_ipts1[i][0]];
-        far_rpts1[i][1] = mapy[far_ipts1[i][1]][far_ipts1[i][0]];
-    }
-    far_rpts1_num = far_ipts1_num;
+    far_rpts0_num = autop_reference_project_points_until_invalid(far_ipts0, far_ipts0_num, far_rpts0, mapx, mapy);
+    far_rpts1_num = autop_reference_project_points_until_invalid(far_ipts1, far_ipts1_num, far_rpts1, mapx, mapy);
 
 
     // 边线滤波

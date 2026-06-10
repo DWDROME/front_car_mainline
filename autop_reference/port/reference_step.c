@@ -5,6 +5,7 @@
 
 #include "camera_param.h"
 #include "circle.h"
+#include "common.h"
 #include "cross.h"
 #include "flash_param.h"
 #include "imgproc.h"
@@ -101,18 +102,8 @@ void autop_reference_process_image(void)
         ipts1_num = 0;
     }
 
-    for(int i = 0; i < ipts0_num; i++)
-    {
-        rpts0[i][0] = mapx[ipts0[i][1]][ipts0[i][0]];
-        rpts0[i][1] = mapy[ipts0[i][1]][ipts0[i][0]];
-    }
-    rpts0_num = ipts0_num;
-    for(int i = 0; i < ipts1_num; i++)
-    {
-        rpts1[i][0] = mapx[ipts1[i][1]][ipts1[i][0]];
-        rpts1[i][1] = mapy[ipts1[i][1]][ipts1[i][0]];
-    }
-    rpts1_num = ipts1_num;
+    rpts0_num = autop_reference_project_points_until_invalid(ipts0, ipts0_num, rpts0, mapx, mapy);
+    rpts1_num = autop_reference_project_points_until_invalid(ipts1, ipts1_num, rpts1, mapx, mapy);
 
     blur_points(rpts0, rpts0_num, rpts0b, (int)roundf(line_blur_kernel));
     rpts0b_num = rpts0_num;
