@@ -1,13 +1,15 @@
 #include "perspective.hpp"
 
 extern "C" {
-#include "camera_param.h"
+float Cal_rot_x(float x, float y);
+float Cal_rot_y(float x, float y);
+float Cal_inv_rot_x(float x, float y);
+float Cal_inv_rot_y(float x, float y);
 }
 #include "clip.hpp"
 
-// 静态查表对齐参考版 mapx/mapy 用法：raw 点先查表，再进入点列平滑/重采样。
+// ATG 分支使用 ATG2022 rot/inv_rot 投影函数；算法层本身也走同一套函数。
 
-// raw -> IPM：查参考版 camera_param.c 的 mapx/mapy；表值 <0 表示该 raw 像素落在 IPM 视野外，返回 0。
 int perspective_lookup_raw_to_ipm(int x, int y, double *ix, double *iy)
 {
     if(ix == nullptr || iy == nullptr)
@@ -19,9 +21,9 @@ int perspective_lookup_raw_to_ipm(int x, int y, double *ix, double *iy)
         return 0;
     }
 
-    const float x0 = mapx[y][x];
-    const float y0 = mapy[y][x];
-    if(x0 < 0.0F || y0 < 0.0F)
+    const float x0 = Cal_rot_x(static_cast<float>(x), static_cast<float>(y));
+    const float y0 = Cal_rot_y(static_cast<float>(x), static_cast<float>(y));
+    if(x0 < 0.0F || y0 < 0.0F || x0 >= IPM_W || y0 >= IPM_H)
     {
         return 0;
     }
@@ -31,7 +33,6 @@ int perspective_lookup_raw_to_ipm(int x, int y, double *ix, double *iy)
     return 1;
 }
 
-// IPM -> raw 反查：走参考版 camera_param.c 的 map_inv()，由 H + invx/invy 给出原图点。
 int perspective_lookup_ipm_to_raw(int ix, int iy, int *x, int *y)
 {
     if(x == nullptr || y == nullptr)
@@ -43,15 +44,15 @@ int perspective_lookup_ipm_to_raw(int ix, int iy, int *x, int *y)
         return 0;
     }
 
-    float pt0[2] = {static_cast<float>(ix), static_cast<float>(iy)};
-    int pt1[2] = {-1, -1};
-    if(!map_inv(pt0, pt1))
+    const float x0 = Cal_inv_rot_x(static_cast<float>(ix), static_cast<float>(iy));
+    const float y0 = Cal_inv_rot_y(static_cast<float>(ix), static_cast<float>(iy));
+    if(x0 < 0.0F || y0 < 0.0F || x0 >= RAW_W || y0 >= RAW_H)
     {
         return 0;
     }
 
-    *x = pt1[0];
-    *y = pt1[1];
+    *x = clip_i(static_cast<int>(std::lround(x0)), 0, RAW_W - 1);
+    *y = clip_i(static_cast<int>(std::lround(y0)), 0, RAW_H - 1);
     return 1;
 }
 

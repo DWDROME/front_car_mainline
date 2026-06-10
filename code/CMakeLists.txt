@@ -39,15 +39,12 @@ set(DIR_SRCS
     drivers/drive_output.cpp
     drivers/imu_feedback.cpp
     tracking/perspective.cpp
-    tracking/autop_reference_mainline.cpp
-    ../autop_reference/port/reference_globals.c
-    ../autop_reference/port/reference_step.c
-    ../autop_reference/Project/CODE/camera_param.c
-    ../autop_reference/Project/CODE/imgproc.c
-    ../autop_reference/Project/CODE/utils.c
-    ../autop_reference/Project/CODE/cross.c
-    ../autop_reference/Project/CODE/circle.c
-    ../autop_reference/Project/CODE/flash_param.c
+    tracking/atg_reference_mainline.cpp
+    ../atg_reference/port/reference_globals.c
+    ../atg_reference/port/reference_step.c
+    ../atg_reference/Project/CODE/shy_Image.c
+    ../atg_reference/Project/CODE/imgproc.c
+    ../atg_reference/Project/CODE/utils.c
     core/control.cpp
     core/config.cpp
     ${ZF_ASSISTANT_SRCS}
@@ -66,9 +63,8 @@ target_include_directories(${PROJ_NAME} PRIVATE
     drivers
     tracking
     core
-    ../autop_reference/port
-    ../autop_reference/Project/CODE
-    ../autop_reference/Project/USER/inc
+    ../atg_reference/port
+    ../atg_reference/Project/CODE
     telemetry
     upper_monitor
     utils

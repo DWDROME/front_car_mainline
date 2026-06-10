@@ -1,7 +1,7 @@
 #include "app/options.hpp"
 #include "app/runners.hpp"
 #include "core/config.hpp"
-#include "tracking/autop_reference_mainline.hpp"
+#include "tracking/atg_reference_mainline.hpp"
 #include "tracking/perspective.hpp"
 
 #include <cstdio>

@@ -1,7 +1,7 @@
 #include "app/report.hpp"
 
 #include "app/options.hpp"
-#include "tracking/autop_reference_mainline.hpp"
+#include "tracking/atg_reference_mainline.hpp"
 #include "tracking/perspective.hpp"
 
 #include <cmath>
