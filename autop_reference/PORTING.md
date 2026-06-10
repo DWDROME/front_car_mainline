@@ -71,3 +71,8 @@ Not compiled from the reference tree:
 layer mirrors its line extraction, corner extraction, element check/run,
 selected centerline, and normalization flow while keeping the same reference
 globals.
+
+The imported `Project/CODE` directory is intentionally trimmed to the algorithm
+files above plus headers required by that build. Removed RT1064 peripheral and
+optional element modules are represented only by small `autop_reference/port`
+headers/globals when the active cross/circle chain needs their enums or stubs.

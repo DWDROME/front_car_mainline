@@ -16,6 +16,18 @@
 #define PI 3.14159265358979323846f
 #endif
 
+#ifndef MIN
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+#endif
+
+#ifndef MAX
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+#endif
+
+#ifndef MINMAX
+#define MINMAX(x, l, u) MIN(MAX((x), (l)), (u))
+#endif
+
 #define AT_DTCM_SECTION_ALIGN(name, align) name
 #define AT_DTCM_SECTION_ALIGN_INIT(name, align) name
 #define AT_ITCM_SECTION_INIT(name) name
