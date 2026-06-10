@@ -70,7 +70,6 @@ void refresh_ring_corners(runtime_t *rt, int has_matrix)
                              has_matrix);
 }
 
-// ==== 环岛检测补边 ====
 // IN 阶段补对侧 boundary，供 ring_process() 刷角点和连续状态；当前帧控制候选仍由 mainline 帧首点集生成。
 int build_ring_opp_for_detection(runtime_t &rt,
                                  const boundary_t &cur,
@@ -233,7 +232,7 @@ int build_ring_opp_for_detection(runtime_t &rt,
     return opp.original_step > 0;
 }
 
-// ==== 环岛补边诊断 ====
+// 记录 ring 内部补边的最终检测状态，不表示当前帧控制中线使用补线。
 void record_ring_opp_diag(runtime_t *rt,
                           const boundary_t *cur,
                           const boundary_t *opp,
@@ -260,7 +259,6 @@ void ring_reset(ring_state_t &ring)
 
 }
 
-// ==== 环岛状态机 ====
 // NONE -> BEGIN -> IN -> RUN -> OUT -> END；这里维护元素状态和检测边界，不直接发布控制中线。
 void ring_process(runtime_t *rt)
 {
@@ -304,11 +302,9 @@ void ring_process(runtime_t *rt)
 
     const int left = (rt->ring.kind == RING_KIND_LEFT);
 
-    // ==== 环岛当前边与对侧边 ====
-    // 左环用左边界作 cur 并补右边，右环用右边界作 cur 并补左边；补出的 opp 只用于检测/显示诊断。
+    // cur=贴边侧，opp=对侧；补出的 opp 只用于检测/显示诊断。
     boundary_t *cur = left ? &rt->track.left : &rt->track.right;
     boundary_t *opp = left ? &rt->track.right : &rt->track.left;
-    record_ring_opp_diag(rt, cur, opp, left, 0);
 
     const int has_matrix = rt->has_matrix;
     const int64_t enc = rt->encoder_total;
@@ -345,11 +341,14 @@ void ring_process(runtime_t *rt)
             return;
         }
         const int built = build_ring_opp_for_detection(*rt, *cur, *opp, left, has_matrix);
-        record_ring_opp_diag(rt, cur, opp, left, built ? 1 : -1);
         if(built)
         {
             refresh_ring_corners(rt, has_matrix);
             record_ring_opp_diag(rt, cur, opp, left, 1);
+        }
+        else
+        {
+            record_ring_opp_diag(rt, cur, opp, left, -1);
         }
         return;
     }

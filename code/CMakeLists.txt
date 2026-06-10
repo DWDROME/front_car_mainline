@@ -189,6 +189,18 @@ if(NOT SMARTCAR_CROSS_COMPILE)
         tracking/cross.cpp
     )
 
+    add_host_tracking_test(element_deferred_mode_test
+        test/element_deferred_mode_test.cpp
+        tracking/imgproc.cpp
+        tracking/perspective.cpp
+        tracking/ipm_table_generated.cpp
+        tracking/boundary.cpp
+        tracking/zebra.cpp
+        tracking/ring.cpp
+        tracking/element.cpp
+        tracking/cross.cpp
+    )
+
     add_host_tracking_test(ring_opp_diag_test
         test/ring_opp_diag_test.cpp
         tracking/imgproc.cpp

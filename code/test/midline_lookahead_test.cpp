@@ -134,7 +134,6 @@ int run_resample_no_repeat_contract()
     double out[POINT_MAX][2] = {};
     int out_num = 0;
 
-    // ==== 等距采样回归 ====
     // Calvariaa/RT1064-Code issue #3: (0,0)->(4,3) 长度为 5，按 2 采样时不能回到原点。
     in[0][0] = 0.0;
     in[0][1] = 0.0;
