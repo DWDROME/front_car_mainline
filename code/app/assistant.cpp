@@ -31,6 +31,7 @@ constexpr uint8_t k_ring_opp_value = 170;             // 环岛检测补边在�
 constexpr int k_seed_box_radius = 3;                  // seed 点显示方框半径
 constexpr int k_marker_radius = 3;                    // L 角/远线十字标记半径
 constexpr uint8_t k_marker_value = 255;               // L 角/远线十字标记亮度
+constexpr int k_reference_seed_row = 84;              // RT1064 begin_y 按 120 高度缩放后的起搜行
 
 enum display_channel_t
 {
@@ -198,7 +199,47 @@ void pad_pts(uint8_t *xs, uint8_t *ys, int count, int total)
     }
 }
 
-int seed_row_pts(uint8_t *xs, uint8_t *ys)
+point_t boundary_seed_pt(const boundary_t &bd)
+{
+    if(bd.original_step <= 0)
+    {
+        return {-1, -1};
+    }
+    const point_t seed = bd.original_pts[0];
+    if(!raw_point_valid(seed.x, seed.y))
+    {
+        return {-1, -1};
+    }
+    return seed;
+}
+
+int seed_display_row(const runtime_t *rt)
+{
+    if(rt == nullptr)
+    {
+        return k_reference_seed_row;
+    }
+
+    const point_t left = boundary_seed_pt(rt->track.left);
+    const point_t right = boundary_seed_pt(rt->track.right);
+    const int left_ok = raw_point_valid(left.x, left.y);
+    const int right_ok = raw_point_valid(right.x, right.y);
+    if(left_ok && right_ok)
+    {
+        return (left.y + right.y) / 2;
+    }
+    if(left_ok)
+    {
+        return left.y;
+    }
+    if(right_ok)
+    {
+        return right.y;
+    }
+    return k_reference_seed_row;
+}
+
+int seed_row_pts(const runtime_t *rt, uint8_t *xs, uint8_t *ys)
 {
     if(xs == nullptr || ys == nullptr)
     {
@@ -206,7 +247,7 @@ int seed_row_pts(uint8_t *xs, uint8_t *ys)
     }
 
     int n = 0;
-    const int y = std::clamp(static_cast<int>(START_HIGH), 0, RAW_H - 1);
+    const int y = std::clamp(seed_display_row(rt), 0, RAW_H - 1);
     for(int x = 0; x < RAW_W && n < k_point_limit; ++x)
     {
         append_display_pt(xs, ys, &n, x, y);
@@ -597,19 +638,22 @@ int config_points(const runtime_t *rt)
                  g_asst.display_x[DISPLAY_CHANNEL_RIGHT],
                  g_asst.display_y[DISPLAY_CHANNEL_RIGHT]);
     point_count[DISPLAY_CHANNEL_SEED_ROW] =
-        seed_row_pts(g_asst.display_x[DISPLAY_CHANNEL_SEED_ROW],
+        seed_row_pts(rt,
+                     g_asst.display_x[DISPLAY_CHANNEL_SEED_ROW],
                      g_asst.display_y[DISPLAY_CHANNEL_SEED_ROW]);
-    if(rt->track.seed_state_find & 1)
+    const point_t left_seed = boundary_seed_pt(rt->track.left);
+    const point_t right_seed = boundary_seed_pt(rt->track.right);
+    if(raw_point_valid(left_seed.x, left_seed.y))
     {
         point_count[DISPLAY_CHANNEL_LEFT_SEED] =
-            seed_box_pts(rt->track.seed_left_find,
+            seed_box_pts(left_seed,
                          g_asst.display_x[DISPLAY_CHANNEL_LEFT_SEED],
                          g_asst.display_y[DISPLAY_CHANNEL_LEFT_SEED]);
     }
-    if(rt->track.seed_state_find & 2)
+    if(raw_point_valid(right_seed.x, right_seed.y))
     {
         point_count[DISPLAY_CHANNEL_RIGHT_SEED] =
-            seed_box_pts(rt->track.seed_right_find,
+            seed_box_pts(right_seed,
                          g_asst.display_x[DISPLAY_CHANNEL_RIGHT_SEED],
                          g_asst.display_y[DISPLAY_CHANNEL_RIGHT_SEED]);
     }

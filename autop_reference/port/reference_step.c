@@ -17,6 +17,8 @@ extern int far_x1;
 extern int far_x2;
 
 static int g_ipm_ready = 0;
+static int g_control_fallback_x = 86;
+static int g_control_fallback_y = 116;
 
 static void fill_reference_ipm_tables(void)
 {
@@ -43,19 +45,27 @@ void autop_reference_reset(void)
     cross_type = CROSS_NONE;
     track_type = TRACK_RIGHT;
     g_autop_reference_encoder_total = 0;
+    g_control_fallback_x = 86;
+    g_control_fallback_y = 116;
     reset_frame_outputs();
+}
+
+void autop_reference_set_control_fallback(int x, int y)
+{
+    g_control_fallback_x = clip(x, 0, MT9V03X_CSI_W - 1);
+    g_control_fallback_y = clip(y, 0, MT9V03X_CSI_H - 1);
 }
 
 static void configure_reference_params(void)
 {
     thres = 140.0f;
-    block_size = 7.0f;
-    clip_value = 2.0f;
+    block_size = 5.0f;
+    clip_value = 8.0f;
     begin_x = 14.0f;
     begin_y = 84.0f;
     line_blur_kernel = 7.0f;
     pixel_per_meter = 26.0f * 2.0f / (float)ROAD_WIDTH;
-    sample_dist = 0.03f;
+    sample_dist = 3.0f / pixel_per_meter;
     angle_dist = 0.2f;
     aim_distance = 0.58f;
     far_rate = 0.5f;
@@ -265,8 +275,8 @@ static int build_reference_selected_midline(void)
     float cy = mapy[(int)(MT9V03X_CSI_H * 0.78f)][MT9V03X_CSI_W / 2];
     if(cx < 0.0f || cy < 0.0f)
     {
-        cx = 86.0f;
-        cy = 116.0f;
+        cx = (float)g_control_fallback_x;
+        cy = (float)g_control_fallback_y;
     }
 
     float min_dist = 1e10f;

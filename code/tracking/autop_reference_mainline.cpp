@@ -43,11 +43,15 @@ void clear_track_result(runtime_t *rt)
     rt->track.seed_right_find = {-1, -1};
 }
 
-point_t reference_control_ref()
+point_t reference_control_ref(const runtime_t *rt)
 {
     const int raw_y = static_cast<int>(RAW_H * 0.78F);
     const int raw_x = RAW_W / 2;
     point_t ref = {CONTROL_CENTER_X, START_HIGH};
+    if(rt != nullptr)
+    {
+        ref.x = clip_i(rt->control_center_x, 0, RAW_W - 1);
+    }
     if(raw_y >= 0 && raw_y < RAW_H && raw_x >= 0 && raw_x < RAW_W &&
        mapx[raw_y][raw_x] >= 0.0F && mapy[raw_y][raw_x] >= 0.0F)
     {
@@ -304,6 +308,7 @@ int tracking_process_frame(runtime_t *rt)
         return 0;
     }
 
+    autop_reference_set_control_fallback(rt->control_center_x, START_HIGH);
     const int ok = autop_reference_process_frame(rt->gray, rt->encoder_total);
     map_reference_element_state(rt);
     copy_reference_boundary(&rt->track.left,
@@ -320,7 +325,7 @@ int tracking_process_frame(runtime_t *rt)
                             rpts1s_num,
                             Lpt1_found ? 1 : 0,
                             Lpt1_rpts1s_id);
-    rt->track.control_ref = reference_control_ref();
+    rt->track.control_ref = reference_control_ref(rt);
     rt->track.track_type = clip_track_type();
     rt->track.action_cross_state0 = rt->cross.state;
     rt->track.action_ring_kind0 = rt->ring.kind;

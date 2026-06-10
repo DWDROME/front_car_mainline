@@ -290,7 +290,7 @@ void print_usage(const char *name)
     std::printf("  FRONT_CAR_PROFILE_DIV=30       # profile report divider\n");
     std::printf("  FRONT_CAR_STATE_BEEP=0         # disable state-change beep\n");
     std::printf("  FRONT_CAR_BEEP_PATH=/dev/zf_gpio_beep # beep device path\n");
-    std::printf("  SMARTCAR_CONTROL_CENTER_X=80   # tracking control center override\n");
+    std::printf("  SMARTCAR_CONTROL_CENTER_X=86   # tracking control center fallback override\n");
     std::printf("  SMARTCAR_ASSISTANT=1           # seekfree assistant stream\n");
     std::printf("  SMARTCAR_VIEWER=0              # legacy alias for disabling assistant stream\n");
     std::printf("  SMARTCAR_ASSISTANT_IP=192.168.0.101 # upper-monitor ip\n");
