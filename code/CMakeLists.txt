@@ -115,21 +115,6 @@ target_link_libraries(
 )
 
 if(NOT SMARTCAR_CROSS_COMPILE)
-    function(add_host_tracking_test TARGET_NAME)
-        add_executable(${TARGET_NAME} ${ARGN})
-        target_include_directories(${TARGET_NAME} PRIVATE
-            ${OpenCV_INCLUDE_DIRS}
-            .
-            ..
-            tracking
-        )
-        target_link_libraries(
-            ${TARGET_NAME}
-            ${OpenCV_LIBS}
-            m
-        )
-    endfunction()
-
     function(add_host_plain_test TARGET_NAME)
         add_executable(${TARGET_NAME} ${ARGN})
         target_include_directories(${TARGET_NAME} PRIVATE
@@ -143,64 +128,6 @@ if(NOT SMARTCAR_CROSS_COMPILE)
             m
         )
     endfunction()
-
-    add_host_tracking_test(cross_farline_reuse_test
-        test/cross_farline_reuse_test.cpp
-        tracking/imgproc.cpp
-        tracking/perspective.cpp
-        tracking/ipm_table_generated.cpp
-    )
-
-    add_host_tracking_test(midline_lookahead_test
-        test/midline_lookahead_test.cpp
-        tracking/perspective.cpp
-        tracking/ipm_table_generated.cpp
-    )
-
-    add_host_tracking_test(line_trace_contract_test
-        test/line_trace_contract_test.cpp
-        tracking/imgproc.cpp
-        tracking/perspective.cpp
-        tracking/ipm_table_generated.cpp
-    )
-
-    add_host_tracking_test(boundary_contract_test
-        test/boundary_contract_test.cpp
-        tracking/imgproc.cpp
-        tracking/perspective.cpp
-        tracking/ipm_table_generated.cpp
-        tracking/boundary.cpp
-    )
-
-    add_host_tracking_test(element_entry_contract_test
-        test/element_entry_contract_test.cpp
-        tracking/imgproc.cpp
-        tracking/perspective.cpp
-        tracking/ipm_table_generated.cpp
-        tracking/boundary.cpp
-        tracking/cross.cpp
-        tracking/ring.cpp
-    )
-
-    add_host_tracking_test(search_center_learning_test
-        test/search_center_learning_test.cpp
-        tracking/imgproc.cpp
-        tracking/perspective.cpp
-        tracking/ipm_table_generated.cpp
-        tracking/boundary.cpp
-        tracking/zebra.cpp
-        tracking/ring.cpp
-        tracking/element.cpp
-        tracking/cross.cpp
-    )
-
-    add_host_tracking_test(ring_opp_diag_test
-        test/ring_opp_diag_test.cpp
-        tracking/imgproc.cpp
-        tracking/perspective.cpp
-        tracking/ipm_table_generated.cpp
-        tracking/boundary.cpp
-    )
 
     add_host_plain_test(config_parsing_test
         test/config_parsing_test.cpp

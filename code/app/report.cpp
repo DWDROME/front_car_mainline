@@ -1,9 +1,7 @@
 #include "app/report.hpp"
 
 #include "app/options.hpp"
-#include "tracking/boundary.hpp"
-#include "tracking/imgproc.hpp"
-#include "tracking/mainline.hpp"
+#include "tracking/autop_reference_mainline.hpp"
 #include "tracking/perspective.hpp"
 
 #include <cmath>

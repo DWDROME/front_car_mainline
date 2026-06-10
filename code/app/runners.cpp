@@ -7,8 +7,8 @@
 #include "core/control.hpp"
 #include "drivers/device.hpp"
 #include "drivers/drive_output.hpp"
+#include "tracking/autop_reference_mainline.hpp"
 #include "tracking/perspective.hpp"
-#include "tracking/mainline.hpp"
 
 #include <chrono>
 #include <cstdint>
