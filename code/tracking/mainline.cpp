@@ -162,6 +162,7 @@ void reset_frame_tracking_state(runtime_t *rt)
 
 int build_frame_boundaries_and_candidates(runtime_t *rt, int use_matrix)
 {
+    // ==== 基础候选生成 ====
     // seed/trace 后先生成本帧基础 boundary 和 rptsc 候选；element_process() 之后不会自动重建这组候选。
     build_boundary_from_trace(&rt->left_trace, rt->matrix, use_matrix, &rt->track.left);
     build_boundary_from_trace(&rt->right_trace, rt->matrix, use_matrix, &rt->track.right);
@@ -296,6 +297,7 @@ void apply_frame_start_element_crop(runtime_t *rt, const frame_mode_t *mode, con
 
 int build_selected_midline(runtime_t *rt, const frame_mode_t *mode, point_t ref)
 {
+    // ==== 控制中线选择 ====
     // CROSS_IN 有远线重建候选；ring 只按帧首状态选用/裁剪基础 rptsc，不消费 ring_process() 的检测补边。
     if(mode->cross_far)
     {
@@ -1154,6 +1156,9 @@ int tracking_process_frame(runtime_t *rt)
     }
 
     const frame_mode_t mode = classify_frame_mode(rt, &action);
+    rt->track.action_cross_state0 = action.cross_state0;
+    rt->track.action_ring_kind0 = action.ring_kind0;
+    rt->track.action_ring_state0 = action.ring_state0;
     rt->track.action_base_ready = action.base_candidates_ready;
     rt->track.mode_cross_far = mode.cross_far;
     rt->track.mode_cross_near = mode.cross_near;

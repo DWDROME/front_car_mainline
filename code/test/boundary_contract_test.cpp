@@ -53,6 +53,7 @@ void copy_original(boundary_t *bd, const double pts[POINT_MAX][2], int num)
     }
 }
 
+// ==== 直线合同点列 ====
 void fill_straight(double pts[POINT_MAX][2], int *num, int x)
 {
     const int n = 60;
@@ -64,6 +65,7 @@ void fill_straight(double pts[POINT_MAX][2], int *num, int x)
     *num = n;
 }
 
+// ==== L角合同点列 ====
 void fill_l_corner(double pts[POINT_MAX][2], int *num, int x, int outward_dir)
 {
     const int n = 60;

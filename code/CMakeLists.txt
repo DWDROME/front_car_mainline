@@ -38,14 +38,15 @@ set(DIR_SRCS
     drivers/device.cpp
     drivers/drive_output.cpp
     drivers/imu_feedback.cpp
+    tracking/imgproc.cpp
     tracking/perspective.cpp
     tracking/ipm_table_generated.cpp
-    autop_ref/autop_runtime.cpp
-    autop_ref/report_helpers.cpp
-    autop_ref/imgproc.c
-    autop_ref/utils.c
-    autop_ref/cross.c
-    autop_ref/circle.c
+    tracking/boundary.cpp
+    tracking/mainline.cpp
+    tracking/zebra.cpp
+    tracking/ring.cpp
+    tracking/element.cpp
+    tracking/cross.cpp
     core/control.cpp
     core/config.cpp
     ${ZF_ASSISTANT_SRCS}
@@ -62,7 +63,6 @@ target_include_directories(${PROJ_NAME} PRIVATE
     ../utils
     app
     drivers
-    autop_ref
     tracking
     core
     telemetry
@@ -179,18 +179,6 @@ if(NOT SMARTCAR_CROSS_COMPILE)
 
     add_host_tracking_test(search_center_learning_test
         test/search_center_learning_test.cpp
-        tracking/imgproc.cpp
-        tracking/perspective.cpp
-        tracking/ipm_table_generated.cpp
-        tracking/boundary.cpp
-        tracking/zebra.cpp
-        tracking/ring.cpp
-        tracking/element.cpp
-        tracking/cross.cpp
-    )
-
-    add_host_tracking_test(element_deferred_mode_test
-        test/element_deferred_mode_test.cpp
         tracking/imgproc.cpp
         tracking/perspective.cpp
         tracking/ipm_table_generated.cpp
