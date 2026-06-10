@@ -1,5 +1,5 @@
 #include "cross.h"
-#include "motor.h"
+#include "encoder_port.h"
 #include "main.h"
 
 enum cross_type_e cross_type = CROSS_NONE;

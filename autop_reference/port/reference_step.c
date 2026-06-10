@@ -9,7 +9,7 @@
 #include "flash_param.h"
 #include "imgproc.h"
 #include "main.h"
-#include "motor.h"
+#include "encoder_port.h"
 
 extern int64_t g_autop_reference_encoder_total;
 extern int far_x1;

@@ -2,10 +2,41 @@
 #include "main.h"
 #include "camera_param.h"
 #include "flash_param.h"
-#include "garage.h"
-#include "yroad.h"
-#include "apriltag.h"
-#include "openart_mini.h"
+
+enum garage_type_e {
+    GARAGE_NONE = 0,
+    GARAGE_OUT_LEFT, GARAGE_OUT_RIGHT,
+    GARAGE_FOUND_LEFT, GARAGE_FOUND_RIGHT,
+    GARAGE_IN_LEFT, GARAGE_IN_RIGHT,
+    GARAGE_PASS_LEFT, GARAGE_PASS_RIGHT,
+    GARAGE_STOP,
+    GARAGE_NUM,
+};
+
+enum yroad_type_e {
+    YROAD_NONE = 0,
+    YROAD_FOUND,
+    YROAD_NEAR,
+    YROAD_LEFT_RUN, YROAD_RIGHT_RUN,
+    YROAD_LEFT_OUT, YROAD_RIGHT_OUT,
+    YROAD_NUM,
+};
+
+enum apriltag_type_e {
+    APRILTAG_NONE = 0,
+    APRILTAG_MAYBE,
+    APRILTAG_FOUND,
+    APRILTAG_LEAVE,
+    APRILTAG_NUM,
+};
+
+typedef struct openart_param_t {
+    uint8_t rx_buffer[10];
+    int fa_type;
+    int openart_result;
+    int64_t aprilencoder;
+    int64_t aprilwaitencoder;
+} openart_param_t;
 
 float angle;
 

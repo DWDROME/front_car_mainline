@@ -1,5 +1,5 @@
 #include "circle.h"
-#include "motor.h"
+#include "encoder_port.h"
 #include "main.h"
 
 enum circle_type_e circle_type = CIRCLE_NONE;
@@ -149,4 +149,3 @@ void run_circle() {
 void draw_circle() {
 
 }
-

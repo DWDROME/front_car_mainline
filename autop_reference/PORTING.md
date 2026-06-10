@@ -51,8 +51,12 @@ Current status:
 The main executable builds through the reference port:
   code/tracking/autop_reference_mainline.cpp
   code/tracking/autop_reference_ipm_bridge.cpp
+  autop_reference/port/headfile.h
+  autop_reference/port/common.h
+  autop_reference/port/encoder_port.h
   autop_reference/port/reference_step.c
   autop_reference/port/reference_globals.c
+  autop_reference/port/autop_reference_step.h
 
 Compiled reference algorithm files:
   Project/CODE/imgproc.c
@@ -74,5 +78,7 @@ globals.
 
 The imported `Project/CODE` directory is intentionally trimmed to the algorithm
 files above plus headers required by that build. Removed RT1064 peripheral and
-optional element modules are represented only by small `autop_reference/port`
-headers/globals when the active cross/circle chain needs their enums or stubs.
+optional element modules are represented only where the active cross/circle
+chain still needs a contract: encoder constants live in `encoder_port.h`, and
+inactive garage/yroad/apriltag/openart enums plus stubs live in
+`reference_globals.c`.

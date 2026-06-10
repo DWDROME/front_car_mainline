@@ -1,8 +1,8 @@
 #include "flash_param.h"
-#include "zf_flash.h"
+#include <string.h>
 
 //
-#define PARAM_FLASH_SECTOR        (FLASH_SECTOR_NUM-1)
+#define PARAM_FLASH_SECTOR        (0)
 
 //
 #define PARAM_FLASH_SECTOR_PAGE   (0)
@@ -32,11 +32,33 @@ __attribute__((section(".ARM.__at_0x2020002C"))) bool adc_cross = false;
 // 最后4个字节放校验值
 __attribute__((section(".ARM.__at_0x202000FC"))) static uint32_t check = 0;
 
+static void flash_read_page(int sector, int page, uint32_t *buffer, int len)
+{
+    (void)sector;
+    (void)page;
+    if(buffer != NULL && len > 0)
+    {
+        memset(buffer, 0, (size_t)len * sizeof(uint32_t));
+    }
+}
+
+static void flash_erase_sector(int sector)
+{
+    (void)sector;
+}
+
+static void flash_page_program(int sector, int page, const uint32_t *buffer, int len)
+{
+    (void)sector;
+    (void)page;
+    (void)buffer;
+    (void)len;
+}
+
 
 // 初始化flash，并将整个page的数据一次性读取出来
 void flash_param_init(){
-    flash_init();
-    flash_read_page(PARAM_FLASH_SECTOR, PARAM_FLASH_SECTOR_PAGE, (uint32*)flash_buffer, 64);
+    flash_read_page(PARAM_FLASH_SECTOR, PARAM_FLASH_SECTOR_PAGE, (uint32_t*)flash_buffer, 64);
 }
 
 // 检查校验值，用于判断flash是否存放了数据
@@ -61,5 +83,5 @@ void flash_param_write(){
     }
     // 先擦除再写入，否则写入会失败
     flash_erase_sector(PARAM_FLASH_SECTOR);
-    flash_page_program(PARAM_FLASH_SECTOR, PARAM_FLASH_SECTOR_PAGE, (uint32*)flash_data, 64);
+    flash_page_program(PARAM_FLASH_SECTOR, PARAM_FLASH_SECTOR_PAGE, (uint32_t*)flash_data, 64);
 }
