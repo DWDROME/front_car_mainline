@@ -9,7 +9,6 @@
 #include <stdlib.h>
 
 #include "imgproc.h"
-#include "round.h"
 
 #define ABS(x) (((x) > 0) ? (x) : (-(x)))
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
@@ -22,6 +21,8 @@
 #define BEGIN_X 7
 #define BEGIN_Y ((int16)(MT9V03X_H * 0.9f))
 #define AIM_DISTENCE aim_distance_far
+#define AIM_DISTANCE_UP (aim_distance + 0.4f)
+#define AIM_DISTANCE_UP_UP (aim_distance + 0.54f)
 
 #define X_zoom 1.86f
 #define Y_zoom 1.875f
@@ -34,6 +35,9 @@
 #define YELLOW 0
 
 #define lcd_drawpoint(x, y, color) ((void)0)
+#define lcd_showint8(x, y, value) ((void)0)
+#define lcd_showint16(x, y, value) ((void)0)
+#define lcd_showfloat(x, y, value, len, precision) ((void)0)
 
 enum track_type_e
 {
@@ -51,6 +55,15 @@ enum atg_port_garage_type_e
     GARAGE_OUT_LEFT,
     GARAGE_OUT_RIGHT,
 };
+
+#include "round.h"
+#include "cross.h"
+#include "circle.h"
+#include "Half_check.h"
+#include "Patching_Line.h"
+#include "Ramp.h"
+#include "yroad.h"
+#include "road.h"
 
 extern uint8 global_Img[MT9V03X_H][MT9V03X_W];
 extern uint8 global_Img2[Cut_height][Cut_Width];
@@ -101,12 +114,24 @@ extern int16 total_distence, Ramp_total_distence;
 extern uint8 Count_dis_Flag;
 extern uint8 Count_Garage_num;
 extern int garage_type;
+extern enum ramp_type_e ramp_type;
+extern enum yroad_type_e yroad_type;
+extern enum road_type_e road_type;
+extern enum speed_type_e speed_type;
 extern int16 LAimSpeed, RAimSpeed, SetSpeed, AimSpeed;
 extern uint16 Clean_Time_count, Clean_Time_count_flag;
 extern int TFmini_Plus_Dis, TFmini_Plus_Strong;
 extern float angle, angle_up, pure_angle, pure_angle_up, pure_angle_up_up;
-extern float Guide_up_up;
+extern float Guide, Guide_up, Guide_up_up;
+extern float cx, cy;
+extern float inv_aim_idx[2], inv_aim_idx_up[2], inv_aim_idx_up_up[2];
+extern float inv_rptsn[MT9V03X_HH][2];
+extern int broadcast_flag;
+extern uint8 if_check_ramp, if_clean_pid;
+extern int not_have_line;
 
 int range_limit(int x, int low, int up);
+
+#include "shy_Image.h"
 
 #endif

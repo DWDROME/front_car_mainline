@@ -21,7 +21,7 @@ peripheral, control, and upper-monitor layers.
 | Corner detection | Migrate to ATG thresholds and direction checks. |
 | Cross and half-cross | Migrate to ATG `cross.c` + `Half_check.c`. |
 | Circle and patching | Migrate to ATG `circle.c` + `Patching_Line.c`, preserving ATG enum order inside the ATG layer. |
-| Y-road, ramp, road classification | Keep source available; connect after the main line/cross/circle path is stable. |
+| Y-road, ramp, road classification | Compile and call ATG source from the port step; sensor-dependent trigger quality still needs real-car validation. |
 
 ## What Does Not Migrate
 
@@ -42,17 +42,57 @@ peripheral, control, and upper-monitor layers.
 
 ## Current Stage
 
-The branch currently builds the ATG base line-search path:
+The branch currently builds the copied ATG `Project/CODE` tracking and element
+mainline:
 
 | Active in build | Status |
 | --- | --- |
 | `atg_reference/Project/CODE/shy_Image.c` | active |
 | `atg_reference/Project/CODE/imgproc.c` | active |
 | `atg_reference/Project/CODE/utils.c` | active |
+| `atg_reference/Project/CODE/cross.c` | active |
+| `atg_reference/Project/CODE/Half_check.c` | active |
+| `atg_reference/Project/CODE/circle.c` | active |
+| `atg_reference/Project/CODE/Patching_Line.c` | active |
+| `atg_reference/Project/CODE/round.c` | active |
+| `atg_reference/Project/CODE/yroad.c` | active |
+| `atg_reference/Project/CODE/Ramp.c` | active |
+| `atg_reference/Project/CODE/road.c` | active |
 | `atg_reference/port/reference_step.c` | active |
 | `code/tracking/atg_reference_mainline.cpp` | active bridge |
 
-Element files such as `cross.c`, `Half_check.c`, `circle.c`, `Patching_Line.c`,
-`round.c`, `yroad.c`, and `Ramp.c` are copied but not yet compiled. They should
-be enabled one group at a time from the port layer so the copied algorithm files
-remain close to the source.
+The active port step follows the relevant `Cpu0_Main.c` order for:
+
+1. `image_handle()`
+2. `find_corners()`
+3. near-line `track_type` switching
+4. `check_round()`
+5. `check_Half()`
+6. `Check_ramp()`
+7. `check_circle()`
+8. `check_yroad()`
+9. `run_round()` / `Run_Ramp()` / `run_cross()` / `run_circle()` / `run_yroad()`
+10. circle splicing from `Patching_Line.c`
+11. selected-line normalization into `rptsn`
+12. `check_road()` after ATG preview variables are computed
+
+`code/tracking/atg_reference_mainline.cpp` maps ATG `cross_type`,
+`circle_type`, `round_type`, far-line points, and spliced-line diagnostics into
+the existing LS2K `runtime_t` report/control contract. It does not import ATG
+servo PID or motor output; current control remains
+`guide_error -> yaw_cmd -> differential motor duty`.
+
+TC264 garage action, motor/servo PID, UART broadcast, TFT display, flash, key,
+and sensor drivers are still outside the build. The ATG ramp state machine is
+compiled and called, but its distance-sensor inputs currently come from the
+port-layer globals and default to zero unless an LS2K sensor adapter is added.
+
+## Change Rationale
+
+| 参考版怎么样 | 当前代码差异 | 我修改什么 | 原因 | 不是兜底的证据 |
+| --- | --- | --- | --- | --- |
+| `Project/USER/Cpu0_Main.c` runs `image_handle()`, `find_corners()`, element checks, element runners, then selected-line normalization. | Previous ATG branch only ran base line-search and copied `rptsc0/rptsc1`; copied element files were not compiled or called. | `atg_reference/port/reference_step.c` now calls the ATG cross/half/circle sequence and selected-line logic. | The algorithm mainline must follow ATG's state-machine owner instead of the old local runtime. | Missing geometry still returns no `rptsn`; no old-frame midline is reused. |
+| ATG `cross.c` owns `CROSS_IN/CROSS_HALF` far-line control. | The bridge previously cleared cross state as unported. | `code/tracking/atg_reference_mainline.cpp` maps `cross_type` and `far_rpts*` to `runtime_t.cross`. | Upper monitor needs to see the active ATG state now that it participates in selection. | Mapping is diagnostic/current-frame data only; control still consumes the published current `rptsn`. |
+| ATG `circle.c` plus `Patching_Line.c` builds spliced center lines for circle in/out phases. | Circle state was previously hidden from runtime and spliced lines were not selected. | `reference_step.c` builds spliced lines for ATG circle IN/OUT states; bridge maps `circle_type` to ring diagnostics. | Circle selected-line behavior is part of the purchased ATG improvement path. | No synthetic fallback line is created; splicing only runs when ATG state and far-line evidence make that branch active. |
+| ATG `Cpu0_Main.c` checks round, ramp, y-road, and road classification in addition to cross/circle. | These copied files were present but not built or called. | `code/CMakeLists.txt` compiles `round.c`, `yroad.c`, `Ramp.c`, and `road.c`; `reference_step.c` calls them in the ATG order. | The branch goal is full ATG algorithm-mainline migration, not only base line search. | TC264 actuator/sensor side effects remain outside the build; missing current geometry still fails instead of holding output. |
+| ATG ISR accumulates `total_distence` only while `Count_dis_Flag` is set. | LS2K has no TC264 ISR/motor module. | Port layer updates `total_distence` from frame-to-frame `encoder_total` delta. | Circle state transitions depend on this ATG distance contract. | The counter resets exactly when ATG state clears `Count_dis_Flag`; it does not mask missing vision evidence. |

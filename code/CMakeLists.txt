@@ -45,6 +45,14 @@ set(DIR_SRCS
     ../atg_reference/Project/CODE/shy_Image.c
     ../atg_reference/Project/CODE/imgproc.c
     ../atg_reference/Project/CODE/utils.c
+    ../atg_reference/Project/CODE/cross.c
+    ../atg_reference/Project/CODE/Half_check.c
+    ../atg_reference/Project/CODE/circle.c
+    ../atg_reference/Project/CODE/Patching_Line.c
+    ../atg_reference/Project/CODE/round.c
+    ../atg_reference/Project/CODE/yroad.c
+    ../atg_reference/Project/CODE/Ramp.c
+    ../atg_reference/Project/CODE/road.c
     core/control.cpp
     core/config.cpp
     ${ZF_ASSISTANT_SRCS}

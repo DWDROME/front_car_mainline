@@ -51,7 +51,6 @@ bool Ypt0_found, Ypt1_found, Lpt0_found, Lpt1_found;
 bool is_turn0, is_turn1;
 
 enum track_type_e track_type = TRACK_RIGHT;
-enum round_type_e round_type = ROUND_NONE;
 
 uint16 OSTU_thres;
 int16 DisPlay_Flag;
@@ -63,7 +62,13 @@ int16 LAimSpeed, RAimSpeed, SetSpeed, AimSpeed;
 uint16 Clean_Time_count, Clean_Time_count_flag;
 int TFmini_Plus_Dis, TFmini_Plus_Strong;
 float angle, angle_up, pure_angle, pure_angle_up, pure_angle_up_up;
-float Guide_up_up;
+float Guide, Guide_up, Guide_up_up;
+float cx, cy;
+float inv_aim_idx[2], inv_aim_idx_up[2], inv_aim_idx_up_up[2];
+float inv_rptsn[MT9V03X_HH][2];
+int broadcast_flag = 1;
+uint8 if_check_ramp;
+uint8 if_clean_pid;
 
 int64_t g_atg_reference_encoder_total;
 

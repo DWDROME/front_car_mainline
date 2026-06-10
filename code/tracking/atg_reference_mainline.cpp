@@ -19,6 +19,90 @@ int clip_track_type()
     return track_type == TRACK_LEFT ? TRACK_TYPE_LEFT : TRACK_TYPE_RIGHT;
 }
 
+int map_atg_cross_state()
+{
+    if(cross_type == CROSS_BEGIN)
+    {
+        return CROSS_STATE_BEGIN;
+    }
+    if(cross_type == CROSS_IN || cross_type == CROSS_HALF)
+    {
+        return CROSS_STATE_IN;
+    }
+    return CROSS_STATE_NONE;
+}
+
+int map_atg_ring_kind()
+{
+    if(round_type == ROUND_LEFT_BEGIN ||
+       round_type == ROUND_LEFT_IN ||
+       round_type == ROUND_LEFT_END)
+    {
+        return RING_KIND_LEFT;
+    }
+    if(round_type == ROUND_RIGHT_BEGIN ||
+       round_type == ROUND_RIGHT_IN ||
+       round_type == ROUND_RIGHT_END)
+    {
+        return RING_KIND_RIGHT;
+    }
+    switch(circle_type)
+    {
+    case CIRCLE_LEFT_BEGIN:
+    case CIRCLE_LEFT_IN:
+    case CIRCLE_LEFT_RUNNING:
+    case CIRCLE_LEFT_OUT:
+    case CIRCLE_LEFT_END:
+        return RING_KIND_LEFT;
+    case CIRCLE_RIGHT_BEGIN:
+    case CIRCLE_RIGHT_IN:
+    case CIRCLE_RIGHT_RUNNING:
+    case CIRCLE_RIGHT_OUT:
+    case CIRCLE_RIGHT_END:
+        return RING_KIND_RIGHT;
+    default:
+        return RING_KIND_NONE;
+    }
+}
+
+int map_atg_ring_state()
+{
+    switch(round_type)
+    {
+    case ROUND_LEFT_BEGIN:
+    case ROUND_RIGHT_BEGIN:
+        return RING_STATE_BEGIN;
+    case ROUND_LEFT_IN:
+    case ROUND_RIGHT_IN:
+        return RING_STATE_IN;
+    case ROUND_LEFT_END:
+    case ROUND_RIGHT_END:
+        return RING_STATE_END;
+    default:
+        break;
+    }
+    switch(circle_type)
+    {
+    case CIRCLE_LEFT_BEGIN:
+    case CIRCLE_RIGHT_BEGIN:
+        return RING_STATE_BEGIN;
+    case CIRCLE_LEFT_IN:
+    case CIRCLE_RIGHT_IN:
+        return RING_STATE_IN;
+    case CIRCLE_LEFT_RUNNING:
+    case CIRCLE_RIGHT_RUNNING:
+        return RING_STATE_RUN;
+    case CIRCLE_LEFT_OUT:
+    case CIRCLE_RIGHT_OUT:
+        return RING_STATE_OUT;
+    case CIRCLE_LEFT_END:
+    case CIRCLE_RIGHT_END:
+        return RING_STATE_END;
+    default:
+        return RING_STATE_BEGIN;
+    }
+}
+
 void clear_track_result(runtime_t *rt)
 {
     std::memset(&rt->track, 0, sizeof(rt->track));
@@ -137,12 +221,82 @@ double atg_lookahead_error(const midline_t *mid, point_t ref)
     return -std::atan2(dx, dy) * 180.0 / 3.14159265358979323846;
 }
 
-void clear_unported_element_state(runtime_t *rt)
+void copy_far_points(double out[][2], int *out_num, const float in[][2], int in_num)
 {
-    rt->cross.state = CROSS_STATE_NONE;
+    if(out == nullptr || out_num == nullptr)
+    {
+        return;
+    }
+    *out_num = std::min(in_num, static_cast<int>(POINT_MAX));
+    for(int i = 0; i < *out_num; ++i)
+    {
+        out[i][0] = in[i][0];
+        out[i][1] = in[i][1];
+    }
+}
+
+void map_atg_element_state(runtime_t *rt)
+{
+    rt->cross.state = map_atg_cross_state();
+    rt->cross.not_have_line = not_have_line;
     rt->cross.track_type = clip_track_type();
-    rt->ring.kind = RING_KIND_NONE;
-    rt->ring.state = RING_STATE_BEGIN;
+    rt->cross.left_far_found = far_Lpt0_found ? 1 : 0;
+    rt->cross.right_far_found = far_Lpt1_found ? 1 : 0;
+    rt->cross.left_l = far_Lpt0_found ? far_Lpt0_rpts0s_id : -1;
+    rt->cross.right_l = far_Lpt1_found ? far_Lpt1_rpts1s_id : -1;
+    rt->cross.left_near_step = rpts0s_num;
+    rt->cross.right_near_step = rpts1s_num;
+    rt->cross.both_near_lost = (rpts0s_num < 5 && rpts1s_num < 5) ? 1 : 0;
+    rt->cross.both_near_recover = (rpts0s_num > 20 && rpts1s_num > 20) ? 1 : 0;
+    rt->cross.left_far_ok = far_Lpt0_found && far_rpts0s_num > 0 ? 1 : 0;
+    rt->cross.right_far_ok = far_Lpt1_found && far_rpts1s_num > 0 ? 1 : 0;
+    rt->cross.exit_ready = (not_have_line > 2 && rpts0s_num > 20 && rpts1s_num > 20) ? 1 : 0;
+    rt->cross.left_far_fail = far_rpts0s_num > 0 ? CROSS_FAR_FAIL_NONE : CROSS_FAR_FAIL_TRACE;
+    rt->cross.right_far_fail = far_rpts1s_num > 0 ? CROSS_FAR_FAIL_NONE : CROSS_FAR_FAIL_TRACE;
+    rt->cross.left_far_seed = {far_x11, far_y1};
+    rt->cross.right_far_seed = {far_x11, far_y2};
+    rt->cross.left_far_trace = far_ipts0_num;
+    rt->cross.right_far_trace = far_ipts1_num;
+    rt->cross.left_far_ipm = far_rpts0_num;
+    rt->cross.right_far_ipm = far_rpts1_num;
+    rt->cross.left_far_blur = far_rpts0b_num;
+    rt->cross.right_far_blur = far_rpts1b_num;
+    rt->cross.left_far_resample = far_rpts0s_num;
+    rt->cross.right_far_resample = far_rpts1s_num;
+    rt->cross.left_far_l_source = far_Lpt0_found ? CROSS_FAR_L_NEW : CROSS_FAR_L_NONE;
+    rt->cross.right_far_l_source = far_Lpt1_found ? CROSS_FAR_L_NEW : CROSS_FAR_L_NONE;
+    copy_far_points(rt->cross.left_pts, &rt->cross.left_num, far_rpts0s, far_rpts0s_num);
+    copy_far_points(rt->cross.right_pts, &rt->cross.right_num, far_rpts1s, far_rpts1s_num);
+
+    rt->ring.kind = map_atg_ring_kind();
+    rt->ring.state = map_atg_ring_state();
+    if(rt->ring.kind == RING_KIND_LEFT)
+    {
+        rt->ring.lost_count = none_left_line;
+        rt->ring.have_count = have_left_line;
+        rt->track.ring_opp_left = 1;
+        rt->track.ring_cur_step = rpts0s_num;
+        rt->track.ring_opp_step = rpts1s_num;
+        rt->track.ring_opp_l_ok = Lpt1_found ? 1 : 0;
+        rt->track.ring_opp_l_index = Lpt1_found ? Lpt1_rpts1s_id : -1;
+        rt->track.ring_opp_build_result = Splicing_rightline_center_num;
+    }
+    else if(rt->ring.kind == RING_KIND_RIGHT)
+    {
+        rt->ring.lost_count = none_right_line;
+        rt->ring.have_count = have_right_line;
+        rt->track.ring_opp_left = 0;
+        rt->track.ring_cur_step = rpts1s_num;
+        rt->track.ring_opp_step = rpts0s_num;
+        rt->track.ring_opp_l_ok = Lpt0_found ? 1 : 0;
+        rt->track.ring_opp_l_index = Lpt0_found ? Lpt0_rpts0s_id : -1;
+        rt->track.ring_opp_build_result = Splicing_leftline_center_num;
+    }
+    else
+    {
+        rt->ring.lost_count = 0;
+        rt->ring.have_count = 0;
+    }
 }
 
 } // namespace
@@ -231,7 +385,7 @@ int tracking_process_frame(runtime_t *rt)
     }
 
     const int ok = atg_reference_process_frame(rt->gray, rt->encoder_total);
-    clear_unported_element_state(rt);
+    map_atg_element_state(rt);
     copy_atg_boundary(&rt->track.left,
                       ipts0,
                       ipts0_num,
