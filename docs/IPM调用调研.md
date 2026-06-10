@@ -104,10 +104,10 @@ code/tracking/autop_reference_ipm_bridge.cpp
 
 ## 当前标定工具输出
 
-标定工具在：
+标定工具在本仓：
 
 ```text
-../TC264-Peripheral-perspective
+tools/ipm_generator
 ```
 
 它现在直接输出：
@@ -120,11 +120,7 @@ camera_param.c
 
 ```bash
 bash scripts/ipm_recalib_capture.sh
-cmake -S ../TC264-Peripheral-perspective -B ../TC264-Peripheral-perspective/build
-cmake --build ../TC264-Peripheral-perspective/build
-../TC264-Peripheral-perspective/build/ipm_generator \
-  --input .diag/ipm_recalib/ipm_raw_640x360.png \
-  --out .diag/ipm_recalib
+bash scripts/ipm_recalib_generate.sh
 bash scripts/ipm_recalib_apply.sh .diag/ipm_recalib/camera_param.c
 ```
 
@@ -137,7 +133,7 @@ bash code/test.sh
 
 ## 当前限制
 
-当前 `TC264-Peripheral-perspective` 生成的是无畸变模型：
+当前 `tools/ipm_generator` 生成的是无畸变模型：
 
 ```text
 K/D: 占位

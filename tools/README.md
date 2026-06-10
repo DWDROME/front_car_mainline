@@ -17,6 +17,7 @@ scripts/test.sh                 编译 host/target
 scripts/straight_baseline_audit.sh  直道 baseline 审计
 scripts/ipm_geometry_audit.sh       IPM 几何只读审计
 scripts/ipm_recalib_capture.sh      从当前板子抓一张 IPM 重标定灰度图
+scripts/ipm_recalib_generate.sh     交互点选四点并生成 camera_param.c
 scripts/ipm_recalib_apply.sh        把生成的 camera_param.c 放进参考版相机参数路径
 ```
 
@@ -74,11 +75,7 @@ bash "scripts/ipm_recalib_capture.sh"
 点选四点：
 
 ```bash
-cmake -S "../TC264-Peripheral-perspective" -B "../TC264-Peripheral-perspective/build"
-cmake --build "../TC264-Peripheral-perspective/build"
-"../TC264-Peripheral-perspective/build/ipm_generator" \
-  --input ".diag/ipm_recalib/ipm_raw_640x360.png" \
-  --out ".diag/ipm_recalib"
+bash "scripts/ipm_recalib_generate.sh"
 ```
 
 应用新 camera_param.c：

@@ -17,6 +17,11 @@ SSH_OPTS=(
 
 mkdir -p "${OUT_DIR}"
 
+if ! command -v ffmpeg >/dev/null 2>&1; then
+  echo "ERROR: ffmpeg is required to create ${OUT_INPUT}" >&2
+  exit 1
+fi
+
 ssh "${SSH_OPTS[@]}" "${REMOTE_USER}@${REMOTE_IP}" \
   "killall -9 front_car_mainline 2>/dev/null || true; \
    rm -f '${REMOTE_RAW}' '${REMOTE_CAPTURE_LOG}'; \
