@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD="${ROOT}/code/build-host"
 BIN="${BUILD}/front_car_mainline"
 OUT="${ROOT}/.diag/ipm_geometry_audit"
-REPORT_KEYS='^(line_found|track_reject_reason|track_type|matrix_loaded|ipm_geometry_reject_reason|ring_kind|ring_state|cross_state|zebra_detected|zebra_stop_line|left_seed|right_seed|seed_width|left_trace_step|right_trace_step|mid_step|center_x|guide_error)='
+REPORT_KEYS='^(line_found|track_reject_reason|track_type|ipm_source|seed_ipm_pair_diag|ring_kind|ring_state|cross_state|zebra_detected|zebra_stop_line|left_seed|right_seed|seed_width|left_trace_step|right_trace_step|mid_step|center_x|guide_error)='
 
 mkdir -p "${OUT}"
 
