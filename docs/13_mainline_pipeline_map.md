@@ -16,8 +16,9 @@ app/main.cpp
             -> image_handle()
             -> find_corners()
             -> 近线 track_type 切换
-            -> check_round() / check_Half() / Check_ramp() / check_circle() / check_yroad()
-            -> run_round() / Run_Ramp() / run_cross() / run_circle() / run_yroad()
+            -> 当前比赛元素 profile: check_Half() / check_circle()
+            -> run_cross() / run_circle()
+            -> round/ramp/yroad/garage 状态保持禁用
             -> 环岛补线拼接 (Patching_Line.c)
             -> 选线归一化到 rptsn
             -> check_road()
@@ -32,11 +33,11 @@ app/main.cpp
 
 ## 2. 各层合同
 
-- `atg_reference/Project/CODE/` 是算法 owner：起搜、追线、IPM(`rot/inv_rot`)、平滑、重采样、角点、十字/半十字/环岛/回环/Y 路/坡道/道路分类全部由 ATG 自己的全局变量和状态机维护。每帧顺序证据见 `atg_reference/Project/USER/Cpu0_Main.c` 和 `atg_reference/PORTING.md`。
-- `atg_reference/port/reference_step.c` 按 ATG 的 `Cpu0_Main.c` 顺序调用算法，并从帧间 `encoder_total` 增量维护 ATG 的 `total_distence` 距离合同。
+- `atg_reference/Project/CODE/` 是算法 owner：起搜、追线、IPM(`rot/inv_rot`)、平滑、重采样、角点、十字/半十字/环岛/回环/Y 路/坡道/道路分类全部保留在 ATG 原始源码中。当前比赛 profile 只激活十字/半十字和环岛；回环、Y 路、坡道、车库残留不删源码，但不进入状态机。
+- `atg_reference/port/reference_step.c` 按当前比赛 profile 调用 ATG 算法，并从帧间 `encoder_total` 增量维护 ATG 的 `total_distence` 距离合同。元素启用开关集中在该文件顶部的 `ATG_ENABLE_*` 常量。
 - `code/tracking/atg_reference_mainline.cpp` 是薄桥接层：`tracking_process_frame(rt)` 调用 ATG step，返回值就是 `line_found`；它只把控制必需的 `rptsn` 中线和 `guide_error` 写入 `rt->vision`，不再把 ATG 元素状态翻译成旧 `track/cross/ring/zebra` 字段。
 - `code/core/control.cpp` 只消费 `control_input_t`（`line_found`、`guide_error`、`element_active`、`stop_line`），不公开消费 `runtime_t`；输出链是 `guide_error -> target_yaw -> yaw_cmd -> target_l/r -> duty`。
-- `code/app/runners.cpp` 在 `tracking_process_frame(rt)` 之后直接用当前帧 ATG 结果生成 `control_input_t`；`line_found` 来自返回值，不在 runner 里重新解释 `track_type`/`reject_reason`。
+- `code/app/runners.cpp` 在 `tracking_process_frame(rt)` 之后直接用当前帧 ATG 结果生成 `control_input_t`；`line_found` 来自返回值，不在 runner 里重新解释 `track_type`/`reject_reason`。当前 `element_active` 只看 `cross_type/circle_type`，用于十字/环岛内降速。
 - `code/app/report.cpp` 和 `code/app/assistant.cpp` 直接读取 ATG 当前帧全局变量输出调试证据；`runtime_t` 只保留 `gray/encoder_total/control_center_x/vision/control`，不是算法状态 owner。
 - `code/drivers/` 保留 LS2K 外设事实：UVC 采集、`QUAD1=left`/`QUAD2=right` 编码器、`left->PWM2`/`right->PWM1` 电机映射和硬件占空上限。
 

@@ -40,7 +40,6 @@ for img in "$@"; do
     echo "====${img}===="
     "${BIN}" \
         --analyze "${ROOT}/${img}" \
-        --disable-cross \
         --ipm "${ipm}" \
         --report "${rpt}" >"${log}" 2>&1
     cat "${log}"

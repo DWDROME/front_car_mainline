@@ -19,7 +19,7 @@ app/main.cpp
 -> tracking_process_frame(rt)
    -> atg_reference_process_frame(rt->gray, rt->encoder_total)
       -> ATG image_handle / find_corners / elements / selected rptsn
-   -> copy ATG current-frame outputs into rt diagnostics
+   -> copy selected rptsn + guide_error into rt->vision
 -> control_input_t(line_found, guide_error, element_active, stop_line)
 -> solve_control_input / solve_control_input_with_feedback
 -> drive_output_apply

@@ -26,8 +26,6 @@ point_t atg_control_ref(const runtime_t *rt)
 void clear_vision_state(runtime_t *rt)
 {
     std::memset(&rt->vision, 0, sizeof(rt->vision));
-    rt->vision.track_type = static_cast<int>(TRACK_RIGHT);
-    rt->vision.control_center_x = rt->control_center_x;
     rt->vision.control_ref = atg_control_ref(rt);
 }
 
@@ -148,7 +146,6 @@ int tracking_process_frame(runtime_t *rt)
     }
 
     const int ok = atg_reference_process_frame(rt->gray, rt->encoder_total);
-    rt->vision.track_type = static_cast<int>(track_type);
     rt->vision.line_found = ok && atg_reference_track_line_found() ? 1 : 0;
     if(!rt->vision.line_found)
     {

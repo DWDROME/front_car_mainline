@@ -14,6 +14,25 @@ extern int64_t g_atg_reference_encoder_total;
 
 static int64_t last_encoder_total;
 
+#ifndef ATG_ENABLE_CROSS
+#define ATG_ENABLE_CROSS 1
+#endif
+#ifndef ATG_ENABLE_CIRCLE
+#define ATG_ENABLE_CIRCLE 1
+#endif
+#ifndef ATG_ENABLE_ROUND
+#define ATG_ENABLE_ROUND 0
+#endif
+#ifndef ATG_ENABLE_RAMP
+#define ATG_ENABLE_RAMP 0
+#endif
+#ifndef ATG_ENABLE_YROAD
+#define ATG_ENABLE_YROAD 0
+#endif
+#ifndef ATG_ENABLE_GARAGE
+#define ATG_ENABLE_GARAGE 0
+#endif
+
 enum
 {
     RAW_LEFT_ANCHOR_X = 5,
@@ -144,8 +163,33 @@ static void choose_track_type_from_near_lines(void)
     }
 }
 
+static void keep_disabled_elements_idle(void)
+{
+#if !ATG_ENABLE_ROUND
+    round_type = ROUND_NONE;
+    round_aim_distance = aim_distance_far;
+#endif
+#if !ATG_ENABLE_RAMP
+    ramp_type = RAMP_NONE;
+    Ramp_total_distence = 0;
+    Clean_Time_count = 0;
+    Clean_Time_count_flag = 0;
+#endif
+#if !ATG_ENABLE_YROAD
+    yroad_type = YROAD_NONE;
+    begin_y = BEGIN_Y;
+#endif
+#if !ATG_ENABLE_GARAGE
+    garage_type = GARAGE_NONE;
+    Count_Garage_num = 0;
+#endif
+}
+
 static void run_atg_elements(void)
 {
+    keep_disabled_elements_idle();
+
+#if ATG_ENABLE_ROUND
     if(!garage_type &&
        !yroad_type &&
        !ramp_type &&
@@ -157,43 +201,66 @@ static void run_atg_elements(void)
     {
         check_round();
     }
+#endif
+#if ATG_ENABLE_CROSS
     if(!yroad_type && !ramp_type && !circle_type && !cross_type && !round_type && !garage_type)
     {
         check_Half();
     }
+#endif
+#if ATG_ENABLE_RAMP
     if(!circle_type && !yroad_type && !garage_type && !ramp_type)
     {
         Check_ramp();
     }
+#endif
+#if ATG_ENABLE_CIRCLE
     if(!cross_type && !yroad_type && !round_type && !ramp_type && !garage_type)
     {
         check_circle();
     }
+#endif
+#if ATG_ENABLE_YROAD
     if(!circle_type && !ramp_type && !garage_type)
     {
         check_yroad();
     }
+#endif
 
+    keep_disabled_elements_idle();
+
+#if ATG_ENABLE_ROUND
     if(yroad_type == YROAD_NONE && round_type != ROUND_NONE && ramp_type == RAMP_NONE && !garage_type)
     {
         run_round();
     }
+#endif
+#if ATG_ENABLE_RAMP
     if(ramp_type != RAMP_NONE && !circle_type && !yroad_type && !round_type && !garage_type)
     {
         Run_Ramp();
     }
+#endif
+#if ATG_ENABLE_CROSS
     if(cross_type != CROSS_NONE && !circle_type && !yroad_type && round_type == ROUND_NONE && !garage_type)
     {
         run_cross();
     }
+#endif
+#if ATG_ENABLE_CIRCLE
     if(circle_type != CIRCLE_NONE && !cross_type && !yroad_type && round_type == ROUND_NONE && !garage_type)
     {
         run_circle();
     }
+#endif
+#if ATG_ENABLE_YROAD
     if(!circle_type && !cross_type && yroad_type != YROAD_NONE && round_type == ROUND_NONE && !garage_type)
     {
         run_yroad();
     }
+#endif
+
+    keep_disabled_elements_idle();
 }
 
 static void build_circle_spliced_lines(void)

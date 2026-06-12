@@ -25,8 +25,6 @@ struct vision_state_t
 {
     // 只保留控制层和外围输出真正需要的 ATG 当前帧薄结果。
     int line_found;
-    int track_type;
-    int control_center_x;
     point_t control_ref;
     midline_t mid;
     double guide_error;

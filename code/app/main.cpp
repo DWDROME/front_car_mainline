@@ -49,7 +49,11 @@ int run_mainline(int argc, char **argv)
 
     options_t opt = {};
     init_options(&opt);
-    parse_options(argc, argv, &opt);
+    if(!parse_options(argc, argv, &opt))
+    {
+        print_usage(prog);
+        return 1;
+    }
 
     tracking_reset(&g_rt);
     std::printf("front_car_mainline: ipm=atg rot/inv_rot\n");

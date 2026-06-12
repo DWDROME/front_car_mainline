@@ -40,16 +40,6 @@ int parse_int_text(const char *value, int *out)
     return 1;
 }
 
-int read_positive_arg(const char *value, int fallback)
-{
-    int parsed = 0;
-    if(!parse_int_text(value, &parsed) || parsed <= 0)
-    {
-        return fallback;
-    }
-    return parsed;
-}
-
 int option_value_present(int argc, char **argv, int index)
 {
     return argv != nullptr && index < argc && argv[index] != nullptr && argv[index][0] != '\0';
@@ -215,14 +205,14 @@ void init_options(options_t *opt)
 
 //-------------------------------------------------------------------------------------------------------------------
 //  @brief      解析命令行参数（--input / --analyze / --replay / --capture-frame / --ipm / --report）并写入 opt
-//  @return     void
-//  @note       未识别参数保持忽略，真正模式分发在 main.cpp。
+//  @return     int         1 表示解析成功，0 表示存在未知或不完整参数
+//  @note       未知参数必须显式失败，避免不存在的调试开关被静默忽略。
 //-------------------------------------------------------------------------------------------------------------------
-void parse_options(int argc, char **argv, options_t *opt)
+int parse_options(int argc, char **argv, options_t *opt)
 {
     if(opt == nullptr || argv == nullptr)
     {
-        return;
+        return 0;
     }
 
     for(int i = 1; i < argc; ++i)
@@ -245,7 +235,14 @@ void parse_options(int argc, char **argv, options_t *opt)
                 option_value_token(argc, argv, i + 2))
         {
             opt->replay_path = argv[++i];
-            opt->replay_count = read_positive_arg(argv[++i], 1);
+            int replay_count = 0;
+            if(!parse_int_text(argv[i + 1], &replay_count) || replay_count <= 0)
+            {
+                std::printf("ArgError: invalid replay count '%s'\n", argv[i + 1]);
+                return 0;
+            }
+            opt->replay_count = replay_count;
+            ++i;
         }
         else if(std::strcmp(a, "--capture-frame") == 0 && option_value_token(argc, argv, i + 1))
         {
@@ -259,7 +256,13 @@ void parse_options(int argc, char **argv, options_t *opt)
         {
             opt->report_path = argv[++i];
         }
+        else
+        {
+            std::printf("ArgError: unknown or incomplete argument '%s'\n", a);
+            return 0;
+        }
     }
+    return 1;
 }
 
 //-------------------------------------------------------------------------------------------------------------------

@@ -36,6 +36,24 @@ void expect_null(const char *name, const char *actual, int *failed)
         *failed = 1;
     }
 }
+
+void expect_true(const char *name, int actual, int *failed)
+{
+    if(!actual)
+    {
+        std::fprintf(stderr, "FAIL: %s actual=false expected=true\n", name);
+        *failed = 1;
+    }
+}
+
+void expect_false(const char *name, int actual, int *failed)
+{
+    if(actual)
+    {
+        std::fprintf(stderr, "FAIL: %s actual=true expected=false\n", name);
+        *failed = 1;
+    }
+}
 }
 
 int main()
@@ -55,6 +73,7 @@ int main()
     char arg0[] = "front_car_mainline";
     char input_flag[] = "--input";
     char input_path[] = "frame.png";
+    char analyze_flag[] = "--analyze";
     char replay_flag[] = "--replay";
     char replay_path[] = "loop.png";
     char replay_count[] = "7";
@@ -74,7 +93,9 @@ int main()
         report_flag,
         report_path,
     };
-    parse_options(static_cast<int>(sizeof(argv) / sizeof(argv[0])), argv, &opt);
+    expect_true("parse normal argv",
+                parse_options(static_cast<int>(sizeof(argv) / sizeof(argv[0])), argv, &opt),
+                &failed);
     expect_text("parsed input_path", opt.input_path, input_path, &failed);
     expect_text("parsed replay_path", opt.replay_path, replay_path, &failed);
     expect_int("parsed replay_count", opt.replay_count, 7, &failed);
@@ -83,25 +104,19 @@ int main()
 
     options_t null_argv = {};
     init_options(&null_argv);
-    parse_options(3, nullptr, &null_argv);
+    expect_false("null argv fails", parse_options(3, nullptr, &null_argv), &failed);
     expect_null("null argv keeps input null", null_argv.input_path, &failed);
     expect_text("null argv keeps report default", null_argv.report_path, default_report_path(), &failed);
-
-    options_t null_item = {};
-    init_options(&null_item);
-    char *null_item_argv[] = {arg0, nullptr, input_flag, input_path};
-    parse_options(static_cast<int>(sizeof(null_item_argv) / sizeof(null_item_argv[0])),
-                  null_item_argv,
-                  &null_item);
-    expect_text("null argv item skipped", null_item.input_path, input_path, &failed);
 
     options_t null_value = {};
     init_options(&null_value);
     char empty_value[] = "";
     char *null_value_argv[] = {arg0, input_flag, nullptr, ipm_flag, empty_value};
-    parse_options(static_cast<int>(sizeof(null_value_argv) / sizeof(null_value_argv[0])),
-                  null_value_argv,
-                  &null_value);
+    expect_false("null input value fails",
+                 parse_options(static_cast<int>(sizeof(null_value_argv) / sizeof(null_value_argv[0])),
+                               null_value_argv,
+                               &null_value),
+                 &failed);
     expect_null("null input value ignored", null_value.input_path, &failed);
     expect_text("empty ipm value ignored", null_value.ipm_path, default_ipm_path(), &failed);
 
@@ -121,39 +136,68 @@ int main()
         capture_flag,
         report_flag,
     };
-    parse_options(static_cast<int>(sizeof(flag_value_argv) / sizeof(flag_value_argv[0])),
-                  flag_value_argv,
-                  &flag_value);
+    expect_false("flag token value fails",
+                 parse_options(static_cast<int>(sizeof(flag_value_argv) / sizeof(flag_value_argv[0])),
+                               flag_value_argv,
+                               &flag_value),
+                 &failed);
     expect_null("flag token not input path", flag_value.input_path, &failed);
     expect_null("missing replay count ignored", flag_value.replay_path, &failed);
-    expect_text("later report still parsed", flag_value.report_path, report2_path, &failed);
+    expect_text("later report not parsed after failure", flag_value.report_path, default_report_path(), &failed);
     expect_null("flag token not capture path", flag_value.capture_path, &failed);
 
     options_t bad_replay = {};
     init_options(&bad_replay);
     char bad_count[] = "bad";
     char *bad_argv[] = {arg0, replay_flag, replay_path, bad_count};
-    parse_options(static_cast<int>(sizeof(bad_argv) / sizeof(bad_argv[0])), bad_argv, &bad_replay);
-    expect_text("bad replay path still parsed", bad_replay.replay_path, replay_path, &failed);
-    expect_int("bad replay count falls back", bad_replay.replay_count, 1, &failed);
+    expect_false("bad replay count fails",
+                 parse_options(static_cast<int>(sizeof(bad_argv) / sizeof(bad_argv[0])), bad_argv, &bad_replay),
+                 &failed);
+    expect_text("bad replay path parsed before failure", bad_replay.replay_path, replay_path, &failed);
+    expect_int("bad replay count keeps default", bad_replay.replay_count, 1, &failed);
 
     options_t zero_replay = {};
     init_options(&zero_replay);
     char zero_count[] = "0";
     char *zero_argv[] = {arg0, replay_flag, replay_path, zero_count};
-    parse_options(static_cast<int>(sizeof(zero_argv) / sizeof(zero_argv[0])), zero_argv, &zero_replay);
-    expect_text("zero replay path still parsed", zero_replay.replay_path, replay_path, &failed);
-    expect_int("zero replay count falls back", zero_replay.replay_count, 1, &failed);
+    expect_false("zero replay count fails",
+                 parse_options(static_cast<int>(sizeof(zero_argv) / sizeof(zero_argv[0])), zero_argv, &zero_replay),
+                 &failed);
+    expect_text("zero replay path parsed before failure", zero_replay.replay_path, replay_path, &failed);
+    expect_int("zero replay count keeps default", zero_replay.replay_count, 1, &failed);
 
     options_t negative_replay = {};
     init_options(&negative_replay);
     char negative_count[] = "-3";
     char *negative_argv[] = {arg0, replay_flag, replay_path, negative_count};
-    parse_options(static_cast<int>(sizeof(negative_argv) / sizeof(negative_argv[0])),
-                  negative_argv,
-                  &negative_replay);
-    expect_text("negative replay path still parsed", negative_replay.replay_path, replay_path, &failed);
-    expect_int("negative replay count falls back", negative_replay.replay_count, 1, &failed);
+    expect_false("negative replay count fails",
+                 parse_options(static_cast<int>(sizeof(negative_argv) / sizeof(negative_argv[0])),
+                               negative_argv,
+                               &negative_replay),
+                 &failed);
+    expect_text("negative replay path parsed before failure", negative_replay.replay_path, replay_path, &failed);
+    expect_int("negative replay count keeps default", negative_replay.replay_count, 1, &failed);
+
+    options_t unknown_arg = {};
+    init_options(&unknown_arg);
+    char disable_cross_flag[] = "--disable-cross";
+    char *unknown_argv[] = {arg0, disable_cross_flag};
+    expect_false("unknown arg fails",
+                 parse_options(static_cast<int>(sizeof(unknown_argv) / sizeof(unknown_argv[0])),
+                               unknown_argv,
+                               &unknown_arg),
+                 &failed);
+    expect_null("unknown arg keeps analyze null", unknown_arg.analyze_path, &failed);
+
+    options_t missing_value = {};
+    init_options(&missing_value);
+    char *missing_value_argv[] = {arg0, analyze_flag};
+    expect_false("missing analyze value fails",
+                 parse_options(static_cast<int>(sizeof(missing_value_argv) / sizeof(missing_value_argv[0])),
+                               missing_value_argv,
+                               &missing_value),
+                 &failed);
+    expect_null("missing analyze value keeps null", missing_value.analyze_path, &failed);
 
     unsetenv("FRONT_CAR_TEST_INT");
     expect_int("null env int fallback", read_env_int(nullptr, 42), 42, &failed);

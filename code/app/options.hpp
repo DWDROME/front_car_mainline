@@ -31,5 +31,5 @@ int read_env_flag(const char *name, int fallback);
 
 // 初始化和解析命令行参数，不负责启动任何运行模式。
 void init_options(options_t *opt);
-void parse_options(int argc, char **argv, options_t *opt);
+int parse_options(int argc, char **argv, options_t *opt);
 void print_usage(const char *name);
