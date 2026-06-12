@@ -1,130 +1,109 @@
 # IPM 调用调研
 
-这份文档记录当前 `port/autop-direct-reference-control` 分支的真实 IPM 合同。旧的
-`ipm_table_generated.*`、`g_raw_to_ipm_*`、`g_ipm_to_raw_*` 和 `/root/ipm_matrix.txt`
-主线路线已经删除，不再作为当前实现依据。
+这份文档记录当前 `port/atg2022-reference-control` 分支的真实 IPM 合同。旧 RT1064 路线里的 `camera_param.c`、`mapx/mapy` 查表、`autop_reference` IPM bridge 和运行时 `/root/ipm_matrix.txt` 都不是当前生产路径。
 
 ## 当前结论
 
 当前主线只保留一个 IPM 真相源：
 
 ```text
-autop_reference/Project/CODE/camera_param.c
+atg_reference/Project/CODE/shy_Image.c
+  -> rot[3][3]
+  -> inv_rot[3][3]
+  -> Cal_rot_x() / Cal_rot_y()
+  -> Cal_inv_rot_x() / Cal_inv_rot_y()
 ```
 
-这个文件使用 RT1064 参考版同名符号：
+`rot` 表示 raw 原图坐标到 ATG IPM 坐标的单应矩阵，`inv_rot` 表示 IPM 坐标反投回 raw 原图坐标的单应矩阵。当前运行尺寸仍是本车的 `160x120`，不是上游 ATG/RT 工程的原始相机尺寸。
 
-```text
-K[3][3]
-D[4]
-H[3][3]
-H_inv[3][3]
-mapx[MT9V03X_CSI_H][MT9V03X_CSI_W]
-mapy[MT9V03X_CSI_H][MT9V03X_CSI_W]
-invx[MT9V03X_CSI_H][MT9V03X_CSI_W]
-invy[MT9V03X_CSI_H][MT9V03X_CSI_W]
-map_inv()
-```
-
-当前尺寸仍是本车运行时的 `160x120`，不是 RT1064 的 `376x240`。这是硬件输入尺寸差异，不是第二套 IPM 结构。
-
-## 参考版合同
-
-RT1064 参考版核心文件：
-
-```text
-RT1064_Code_ref/SJTU-AuTop-RT1064-Code/Project/CODE/camera_param.c
-RT1064_Code_ref/SJTU-AuTop-RT1064-Code/Project/CODE/camera_param.h
-```
-
-参考版语义：
-
-```text
-mapx/mapy:
-  raw 原图点 -> IPM 点
-
-map_inv():
-  IPM 点
-  -> H 投影到去畸变原图坐标
-  -> invx/invy 查回 raw 原图坐标
-```
-
-当前工程保持同一读取方式：算法和显示都通过 `camera_param.c` 的这些符号拿 IPM 数据。
+尺度合同也必须同源：当前 ATG 参数是 `ROAD_WIDTH=0.45m`、`pixel_per_meter=116`，因此 IPM 里的赛道宽度应约为 `52.2px`。标定生成器的默认目标矩形按这个宽度生成，避免 `sample_dist`、`pixel_per_meter` 和元素距离门槛互相打架。
 
 ## 当前代码路径
 
-主算法路径：
+ATG 算法路径：
 
 ```text
-autop_reference/port/reference_step.c
-  -> autop_reference_process_image()
-  -> autop_reference_project_points_until_invalid(..., mapx, mapy)
-  -> blur_points()
-  -> resample_points()
+atg_reference/port/reference_step.c
+  -> atg_reference_process_frame(gray, encoder_total)
+  -> image_handle()
   -> find_corners()
-  -> check_cross() / run_cross()
-  -> check_circle() / run_circle()
+  -> check_round/check_Half/Check_ramp/check_circle/check_yroad
+  -> run_round/Run_Ramp/run_cross/run_circle/run_yroad
+  -> selected rptsn
 ```
 
-十字远线：
+其中 IPM 投影由 ATG 原始函数负责：
 
 ```text
-autop_reference/Project/CODE/cross.c
-  -> cross_farline()
-  -> autop_reference_project_points_until_invalid(..., mapx, mapy)
+atg_reference/Project/CODE/shy_Image.c
+  -> Cal_rot_x() / Cal_rot_y()        # raw -> IPM
+  -> Cal_inv_rot_x() / Cal_inv_rot_y()# IPM -> raw
 ```
 
-上位机 / IPM 预览：
+上位机 / IPM 预览也走同一套函数：
 
 ```text
 code/tracking/perspective.cpp
-  -> perspective_lookup_raw_to_ipm(): 读 mapx/mapy
-  -> perspective_lookup_ipm_to_raw(): 调 map_inv()
+  -> perspective_lookup_raw_to_ipm(): 调 Cal_rot_x()/Cal_rot_y()
+  -> perspective_lookup_ipm_to_raw(): 调 Cal_inv_rot_x()/Cal_inv_rot_y()
 ```
 
 构建入口：
 
 ```text
 code/CMakeLists.txt
-  -> ../autop_reference/Project/CODE/camera_param.c
+  -> ../atg_reference/Project/CODE/shy_Image.c
 ```
 
-## 为什么删除旧表
+## 为什么不再使用 camera_param.c
 
-旧结构有第二套真相源：
+旧 RT1064 移植分支曾经使用：
 
 ```text
-code/tracking/ipm_table_generated.hpp
-code/tracking/ipm_table_generated.cpp
-code/tracking/autop_reference_ipm_bridge.cpp
+autop_reference/Project/CODE/camera_param.c
+mapx/mapy/invx/invy/map_inv()
 ```
 
-问题是它让参考算法看到的是被中间层填充后的表，而不是参考版自己的
-`camera_param.c` 符号。当前分支已经删除这些文件，避免重新标定后又生成旧表。
+这条路线现在已经不是 ATG 分支的生产合同。ATG 算法本身直接调用 `Cal_rot_*` / `Cal_inv_rot_*`，如果继续把标定结果写进 `camera_param.c`，算法层和显示层会看到不同 IPM 来源，反而形成第二套真相源。
 
-## 当前标定工具输出
+## 当前标定工具输出和应用
 
-标定工具在本仓：
+标定工具仍在本仓：
 
 ```text
 tools/ipm_generator
 ```
 
-它现在直接输出：
+它会生成预览图和矩阵文件：
 
 ```text
-camera_param.c
+selected_points.json
+ipm_matrix_initial.txt
+ipm_matrix_tuned.txt
+preview_original_points.png
+preview_ipm_initial.png
+preview_ipm_tuned.png
+camera_param.c              # 兼容旧生成器输出，当前 ATG 分支不直接应用它
 ```
 
-生成结果通过脚本安装：
+当前 ATG 分支真正应用的是：
 
 ```bash
-bash scripts/ipm_recalib_capture.sh
-bash scripts/ipm_recalib_generate.sh
-bash scripts/ipm_recalib_apply.sh .diag/ipm_recalib/camera_param.c
+bash scripts/ipm_recalib_apply.sh .diag/ipm_recalib/ipm_matrix_tuned.txt
 ```
 
-安装后必须重新构建：
+这个脚本会把 `ipm_matrix_tuned.txt` 转成 ATG 的矩阵排布，并替换：
+
+```text
+atg_reference/Project/CODE/shy_Image.c::rot
+atg_reference/Project/CODE/shy_Image.c::inv_rot
+```
+
+为了兼容旧命令，如果传入 `.diag/ipm_recalib/camera_param.c`，脚本会自动改用同目录下的 `ipm_matrix_tuned.txt`。
+
+环岛补线里需要从 raw 底边左右锚点投到 IPM。当前 port 使用 `MT9V03X_W/H` 推导的锚点，不再保留 ATG 原作者 188 宽图像下的 `180/185` 旧坐标。
+
+应用后必须重新构建：
 
 ```bash
 bash code/test.sh --host
@@ -133,19 +112,9 @@ bash code/test.sh
 
 ## 当前限制
 
-当前 `tools/ipm_generator` 生成的是无畸变模型：
-
-```text
-K/D: 占位
-H/H_inv: 真实四点单应矩阵
-mapx/mapy: raw -> IPM 查表
-invx/invy: identity 去畸变原图 -> raw 表
-```
-
-如果后面要补真实畸变，仍然应该继续生成同一个 `camera_param.c`，不要把旧
-`ipm_table_generated.*` 或运行时 matrix 路线加回来。
+当前 `tools/ipm_generator` 使用的是四点无畸变单应矩阵模型。它不做镜头畸变建模；如果后面要补真实畸变，也应该先明确 ATG `Cal_rot_*`/`Cal_inv_rot_*` 的新合同，不要把旧 `camera_param.c` 查表路线重新接回生产主线。
 
 ## 相关文档
 
 - [IPM 重标定流程（SOP）](IPM重标定流程.md) — 队友可直接执行的操作手册
-- [PORTING.md](../autop_reference/PORTING.md) — port 边界和控制参数
+- [PORTING.md](../atg_reference/PORTING.md) — ATG port 边界和控制参数

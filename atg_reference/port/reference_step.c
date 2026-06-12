@@ -14,6 +14,13 @@ extern int64_t g_atg_reference_encoder_total;
 
 static int64_t last_encoder_total;
 
+enum
+{
+    RAW_LEFT_ANCHOR_X = 5,
+    RAW_RIGHT_ANCHOR_X = MT9V03X_W - 6,
+    RAW_BOTTOM_ANCHOR_Y = MT9V03X_H - 2,
+};
+
 static void reset_atg_params(void)
 {
     begin_x = BEGIN_X;
@@ -195,8 +202,8 @@ static void build_circle_spliced_lines(void)
     {
         if(far_Lpt1_found)
         {
-            point_Cal_Line(Cal_rot_x(5, 118),
-                           Cal_rot_y(5, 118),
+            point_Cal_Line(Cal_rot_x(RAW_LEFT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
+                           Cal_rot_y(RAW_LEFT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
                            far_rpts1s[far_Lpt1_rpts1s_id][0],
                            far_rpts1s[far_Lpt1_rpts1s_id][1],
                            leftline,
@@ -223,8 +230,8 @@ static void build_circle_spliced_lines(void)
         }
         else if(far_rpts1s_num > 10 && far_rpts1s[1][1] > 20)
         {
-            point_Cal_Line(Cal_rot_x(5, 118),
-                           Cal_rot_y(5, 118),
+            point_Cal_Line(Cal_rot_x(RAW_LEFT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
+                           Cal_rot_y(RAW_LEFT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
                            far_rpts1s[1][0],
                            far_rpts1s[1][1],
                            leftline,
@@ -247,8 +254,8 @@ static void build_circle_spliced_lines(void)
     {
         point_Cal_Line(far_rpts0s[far_rpts0s_num - 1][0],
                        far_rpts0s[far_rpts0s_num - 1][1],
-                       Cal_rot_x(5, 118),
-                       Cal_rot_y(5, 118),
+                       Cal_rot_x(RAW_LEFT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
+                       Cal_rot_y(RAW_LEFT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
                        leftline,
                        &leftline_num);
         Splicing_leftline_s1s_num = MT9V03X_H;
@@ -268,8 +275,8 @@ static void build_circle_spliced_lines(void)
     {
         if(far_Lpt0_found)
         {
-            point_Cal_Line_2(Cal_rot_x(185, 118),
-                             Cal_rot_y(185, 118),
+            point_Cal_Line_2(Cal_rot_x(RAW_RIGHT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
+                             Cal_rot_y(RAW_RIGHT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
                              far_rpts0s[far_Lpt0_rpts0s_id][0],
                              far_rpts0s[far_Lpt0_rpts0s_id][1],
                              rightline,
@@ -296,8 +303,8 @@ static void build_circle_spliced_lines(void)
         }
         else if(far_rpts0s_num > 10 && far_rpts0s[1][1] > 20)
         {
-            point_Cal_Line_2(Cal_rot_x(185, 118),
-                             Cal_rot_y(185, 118),
+            point_Cal_Line_2(Cal_rot_x(RAW_RIGHT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
+                             Cal_rot_y(RAW_RIGHT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
                              far_rpts0s[1][0],
                              far_rpts0s[1][1],
                              rightline,
@@ -320,8 +327,8 @@ static void build_circle_spliced_lines(void)
     {
         point_Cal_Line(far_rpts1s[far_rpts1s_num - 1][0],
                        far_rpts1s[far_rpts1s_num - 1][1],
-                       Cal_rot_x(180, 118),
-                       Cal_rot_y(180, 118),
+                       Cal_rot_x(RAW_RIGHT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
+                       Cal_rot_y(RAW_RIGHT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
                        rightline,
                        &rightline_num);
         Splicing_rightline_s0s_num = MT9V03X_H;

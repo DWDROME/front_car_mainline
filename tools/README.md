@@ -19,8 +19,8 @@ scripts/test.sh                 编译 host/target
 scripts/straight_baseline_audit.sh  直道 baseline 审计
 scripts/ipm_geometry_audit.sh       IPM 几何只读审计
 scripts/ipm_recalib_capture.sh      从当前板子抓一张 IPM 重标定灰度图
-scripts/ipm_recalib_generate.sh     交互点选四点并生成 camera_param.c
-scripts/ipm_recalib_apply.sh        把生成的 camera_param.c 放进参考版相机参数路径
+scripts/ipm_recalib_generate.sh     交互点选四点并生成 IPM 矩阵和预览图
+scripts/ipm_recalib_apply.sh        把生成的矩阵写入 ATG shy_Image.c::rot/inv_rot
 ```
 
 `tools/straight_baseline_audit.sh` 和 `tools/ipm_geometry_audit.sh` 是实际执行体；用户侧优先走 `scripts/` 包装入口。
@@ -80,10 +80,10 @@ bash "scripts/ipm_recalib_capture.sh"
 bash "scripts/ipm_recalib_generate.sh"
 ```
 
-应用新 camera_param.c：
+应用新 ATG IPM 矩阵：
 
 ```bash
-bash "scripts/ipm_recalib_apply.sh" ".diag/ipm_recalib/camera_param.c"
+bash "scripts/ipm_recalib_apply.sh" ".diag/ipm_recalib/ipm_matrix_tuned.txt"
 ```
 
 离线诊断：
@@ -95,6 +95,6 @@ bash "scripts/ipm_recalib_apply.sh" ".diag/ipm_recalib/camera_param.c"
 ## 当前约束
 
 - 默认输入坐标按 `160x120` 解释。
-- IPM 标定结果只通过 `autop_reference/Project/CODE/camera_param.c` 接入。
+- IPM 标定结果只通过 `atg_reference/Project/CODE/shy_Image.c` 的 `rot/inv_rot` 接入。
 - `ring / cross` 只走自然状态树，不再保留运行时禁用旁路。
 - 删除 retired 脚本或旧 `.diag` 生成物前需要明确确认。

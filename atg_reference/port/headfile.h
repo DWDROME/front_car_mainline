@@ -11,8 +11,12 @@
 #include "imgproc.h"
 
 #define ABS(x) (((x) > 0) ? (x) : (-(x)))
+#ifndef MIN
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
+#endif
+#ifndef MAX
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
+#endif
 
 #define MT9V03X_W 160
 #define MT9V03X_H 120

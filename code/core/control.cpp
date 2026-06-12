@@ -92,20 +92,6 @@ float count_to_rps(int cnt, int ms)
     return static_cast<float>(cnt) / k_counts_per_rev * 1000.0F / static_cast<float>(ms);
 }
 
-// 当前帧必须有有效赛道线，才允许进入 duty 计算。
-int line_ok(const runtime_t *rt)
-{
-    if(rt->track.track_type == TRACK_TYPE_NONE)
-    {
-        return 0;
-    }
-    if(rt->track.reject_reason != TRACK_REJECT_NONE)
-    {
-        return 0;
-    }
-    return 1;
-}
-
 // 对 IMU yaw-rate 做滑动平均；单位 rad/s。g_yaw_buf 是环形缓冲，g_yaw_pos 写满 window 后回绕。
 float yaw_avg(float yaw, int window)
 {
@@ -129,7 +115,7 @@ float yaw_avg(float yaw, int window)
     return sum / static_cast<float>(g_yaw_num);
 }
 
-void solve(const runtime_t *rt, const control_feedback_t *fb, control_state_t *out)
+void solve(const control_input_t *input, const control_feedback_t *fb, control_state_t *out)
 {
     *out = {};
     if(fb != nullptr)
@@ -137,13 +123,18 @@ void solve(const runtime_t *rt, const control_feedback_t *fb, control_state_t *o
         out->actual_yaw_rate_mrad_s = fb->actual_yaw_rate_mrad_s;
     }
 
-    if(rt->zebra.stop_line)
+    if(input == nullptr)
+    {
+        clear_state();
+        return;
+    }
+    if(input->stop_line)
     {
         clear_state();
         out->stop_request = 1;
         return;
     }
-    if(!line_ok(rt))
+    if(!input->line_found)
     {
         clear_state();
         return;
@@ -162,23 +153,13 @@ void solve(const runtime_t *rt, const control_feedback_t *fb, control_state_t *o
     const float dt = static_cast<float>(ms) / 1000.0F;
 
     // 元素内降速：
-    // 输入：rt->ring.kind、rt->cross.state。
+    // 输入：input->element_active。
     // 输出：center_rps。
     // 控制类型：速度目标切换，不是 PID。
     // 主要参数：target_rps 普通巡线速度；element_target_rps 十字/环岛速度。
     // 调参风险：element_target_rps 太高会导致元素内来不及转向，太低会影响通过连续性。
-    int element = 0;
-    if(rt->ring.kind != RING_KIND_NONE)
-    {
-        element = 1;
-    }
-    if(rt->cross.state != CROSS_STATE_NONE)
-    {
-        element = 1;
-    }
-
     float center_rps = c.target_rps;
-    if(element)
+    if(input->element_active)
     {
         center_rps = c.element_target_rps;
     }
@@ -240,7 +221,7 @@ void solve(const runtime_t *rt, const control_feedback_t *fb, control_state_t *o
     //   straight_error_threshold / straight_turn_scale 抑制直道小摆动；
     //   max_target_yaw_rate 限制视觉外环最大目标角速度。
     // 调参风险：outer_kp 太大容易蛇形；outer_sign 反了会越修越偏；outer_kd 会放大视觉抖动。
-    const float err = static_cast<float>(rt->track.guide_error);
+    const float err = static_cast<float>(input->guide_error);
     float derr = 0.0F;
     if(g_has_err && dt > 0.0F)
     {
@@ -434,25 +415,25 @@ void solve(const runtime_t *rt, const control_feedback_t *fb, control_state_t *o
 
 } // namespace
 
-void solve_runtime(const runtime_t *rt, control_state_t *ctrl)
+void solve_control_input(const control_input_t *input, control_state_t *ctrl)
 {
-    if(rt == nullptr || ctrl == nullptr)
+    if(input == nullptr || ctrl == nullptr)
     {
         return;
     }
 
     control_feedback_t fb = {};
     fb.period_ms = control_config().control_period_ms;
-    solve(rt, &fb, ctrl);
+    solve(input, &fb, ctrl);
 }
 
-// solve_runtime_with_feedback 是实车闭环入口：
-// runners.cpp 每帧先读取 drive_output_read_feedback()，再调用这里计算 duty。
-void solve_runtime_with_feedback(const runtime_t *rt, const control_feedback_t *fb, control_state_t *ctrl)
+void solve_control_input_with_feedback(const control_input_t *input,
+                                       const control_feedback_t *fb,
+                                       control_state_t *ctrl)
 {
-    if(rt == nullptr || ctrl == nullptr)
+    if(input == nullptr || ctrl == nullptr)
     {
         return;
     }
-    solve(rt, fb, ctrl);
+    solve(input, fb, ctrl);
 }

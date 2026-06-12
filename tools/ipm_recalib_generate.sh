@@ -13,4 +13,5 @@ cmake -S "${GEN_DIR}" -B "${BUILD_DIR}"
 cmake --build "${BUILD_DIR}"
 "${BUILD_DIR}/ipm_generator" --input "${INPUT}" --out "${OUT_DIR}" "$@"
 
-echo "Generated camera_param.c -> ${OUT_DIR}/camera_param.c"
+echo "Generated IPM matrix -> ${OUT_DIR}/ipm_matrix_tuned.txt"
+echo "Generated compatibility camera_param.c -> ${OUT_DIR}/camera_param.c"

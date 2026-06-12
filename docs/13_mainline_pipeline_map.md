@@ -1,91 +1,62 @@
 # 主流程快照
 
-这份文档只记录当前 `front_car_mainline` 的活跃主链。历史方案、已退休入口和阶段性推测不写进这里。
+这份文档只记录当前 `port/atg2022-reference-control` 分支的活跃主链。历史方案、已退休入口和阶段性推测不写进这里。
 
 ## 1. 当前一帧主链
 
 ```text
 app/main.cpp
 -> run_mainline()
-   -> live() / analyze() / replay()
+   -> live() / analyze() / replay() / offline()
       -> device_capture_gray() / device_load_gray()
-      -> tracking_process_frame()
-         -> find_seeds()
-         -> trace_edges()
-         -> build_frame_boundaries_and_candidates()
-            -> build_boundary_from_trace(left/right)
-            -> build_rpts0() / build_rpts1()
-            -> refresh_boundary_corners()
-            -> track_leftline() / track_rightline() into rptsc0/rptsc1
-         -> snapshot_ring_frame_start_action()
-         -> element_process()
-         -> classify_frame_mode()
-         -> apply_frame_start_element_crop()
-         -> build_selected_midline()
-         -> publish_track_result()
-         -> run_zebra_scan()
-      -> solve_runtime()
-      -> print / display / assistant stream
+      -> drive_output_read_feedback(&fb)            # live 闭环路径
+      -> encoder_total += 左右编码器增量均值          # live 闭环路径
+      -> tracking_process_frame(rt)
+         -> atg_reference_process_frame(rt->gray, rt->encoder_total)
+            -> image_handle()
+            -> find_corners()
+            -> 近线 track_type 切换
+            -> check_round() / check_Half() / Check_ramp() / check_circle() / check_yroad()
+            -> run_round() / Run_Ramp() / run_cross() / run_circle() / run_yroad()
+            -> 环岛补线拼接 (Patching_Line.c)
+            -> 选线归一化到 rptsn
+            -> check_road()
+         -> 拷贝 ATG 当前帧状态/点列到 rt 诊断快照
+         -> copy_atg_midline() + atg_lookahead_error() -> rt->track.guide_error
+      -> control_input_t(line_found, guide_error, element_active, stop_line)
+      -> solve_control_input() / solve_control_input_with_feedback()
+      -> drive_output_apply()                       # live 闭环路径
+      -> assistant / report / print 输出
 ```
 
 主链只保留一条。不要新增 parallel pipeline、shadow pipeline 或强制元素状态入口。
 
-## 2. tracking 内部合同
+## 2. 各层合同
 
-当前控制中线发布链：
+- `atg_reference/Project/CODE/` 是算法 owner：起搜、追线、IPM(`rot/inv_rot`)、平滑、重采样、角点、十字/半十字/环岛/回环/Y 路/坡道/道路分类全部由 ATG 自己的全局变量和状态机维护。每帧顺序证据见 `atg_reference/Project/USER/Cpu0_Main.c` 和 `atg_reference/PORTING.md`。
+- `atg_reference/port/reference_step.c` 按 ATG 的 `Cpu0_Main.c` 顺序调用算法，并从帧间 `encoder_total` 增量维护 ATG 的 `total_distence` 距离合同。
+- `code/tracking/atg_reference_mainline.cpp` 是桥接层：`tracking_process_frame(rt)` 调用 ATG step，返回值就是 `line_found`；同时把 ATG 当前帧 `cross_type`/`circle_type`/`round_type`/点列拷贝到 `runtime_t` 供 report/assistant 消费，并从 `rptsn` 计算 `guide_error`。
+- `code/core/control.cpp` 只消费 `control_input_t`（`line_found`、`guide_error`、`element_active`、`stop_line`），不公开消费 `runtime_t`；输出链是 `guide_error -> target_yaw -> yaw_cmd -> target_l/r -> duty`。
+- `code/app/runners.cpp` 在 `tracking_process_frame(rt)` 之后直接用当前帧 ATG 结果生成 `control_input_t`；`line_found` 来自返回值，不在 runner 里重新解释 `track_type`/`reject_reason`。
+- `runtime_t` 只是 report/assistant 等外围消费者的当前帧快照，不是控制 API，也不是算法状态 owner。
+- `code/drivers/` 保留 LS2K 外设事实：UVC 采集、`QUAD1=left`/`QUAD2=right` 编码器、`left->PWM2`/`right->PWM1` 电机映射和硬件占空上限。
 
-```text
-raw boundary
--> rpts0s/rpts1s
--> rptsc0/rptsc1 or CROSS_IN far candidate
--> build_rptsn()
--> rt->track.mid
--> guide_error
-```
-
-关键边界：
-
-- `imgproc.cpp` 负责 seed、trace、点列 perspective/blur/resample、单边候选外扩和 `build_rptsn()` 等底层工具。
-- `boundary.cpp` 负责解释边界几何：`l_found`、`l_ok`、`l_pair_ok`、直线判定。
-- `element.cpp` 只做元素互斥调度；cross 优先，只有没有 cross 时才推进或检测 ring。
-- `cross.cpp` 只维护 cross 状态、远线点列和 `cross.track_type`；不发布 `rt->track.mid`。
-- `ring.cpp` 只维护 ring 状态和检测/状态连续用边界；不重建当前帧控制候选。
-- `mainline.cpp` 是当前帧唯一的控制中线 owner。
-- `zebra.cpp` 只消费 mainline 给的 scan midline 和 raw image；不选择控制中线。
-- `report.cpp` / `runners.cpp` 只输出诊断字段；不定义算法门槛。
-- `control.cpp` 只消费 `track_line_found()`、`guide_error` 和停车状态；不重新解释视觉几何。
-
-## 3. 元素对中线的影响
+## 3. 控制中线发布链
 
 ```text
-build_frame_boundaries_and_candidates()
-  -> 当前帧 rptsc0/rptsc1 已经生成
-snapshot_ring_frame_start_action()
-  -> 捕获帧首 ring 选边和 RUN 裁剪动作
-element_process()
-  -> cross/ring 状态推进
-classify_frame_mode()
-  -> cross_far / cross_near / ring / ordinary
-apply_frame_start_element_crop()
-  -> 只裁剪已存在的 rptsc0/rptsc1 点数
-build_selected_midline()
-  -> CROSS_IN farline 或 rptsc0/rptsc1 -> rt->track.mid
+ATG ipts0/ipts1 (raw 追线)
+-> rpts0s/rpts1s (IPM + blur + resample)
+-> 元素状态机选线 / 环岛补线
+-> rptsn (归一化选线)
+-> copy_atg_midline() -> rt->track.mid
+-> atg_lookahead_error() -> guide_error
 ```
 
-`ring.cpp` 可能在 `element_process()` 内补边或截边并刷新角点，但这只服务 ring 检测和状态连续；当前帧控制候选不会从 ring 修改后的 `boundary_t` 重建。
+`guide_error` 是差速 yaw-rate 外环输入；不要把 ATG 舵机 `pure_angle -> servo_pid` 移植进这条链。
 
-## 4. 已删除的旁路
+## 4. 已退休的旧主线
 
-这些不再属于当前主线：
-
-```text
-state_machine_enabled
-FRONT_CAR_ELEMENTS
---force-cross-in
---force-ring
-```
-
-含义：元素状态必须从主链自然推进，不能靠 CLI 或环境变量伪造状态。
+旧本地 tracking 实现（`find_seeds/trace_edges/boundary/element/cross/ring/zebra/mainline` 一族）和旧控制入口 `solve_runtime*` 已不参与构建。`code/tracking/autop_reference_mainline.cpp` 也不在构建里，仅作为上一条 RT1064 路线的残留文件存在。元素状态必须从 ATG 状态机自然推进，不能靠 CLI 或环境变量伪造。
 
 ## 5. 当前有效验证入口
 
@@ -94,12 +65,3 @@ bash code/test.sh --host
 ```
 
 如需离线行为证据，必须提供满足 `RAW_W x RAW_H` 的真实回放图像序列；文档截图不能作为 replay 输入。
-
-## 6. 当前仍重但边界已定的地方
-
-1. `mainline.cpp` 仍是帧级 orchestration owner；这是当前主链合同，不是未决边界。
-2. `boundary.cpp` 同时做边界点解释、L 角和直线判定；这是 boundary 几何 owner，不是元素 owner。
-3. `cross.cpp` 和 `ring.cpp` 保留状态树；是否调整 weak cross entry 或 ring 阈值属于行为证据门槛，不是 owner 未定。
-4. `track_dualline()` 保留为明确实验入口；普通主线不主动选择 `TRACK_TYPE_DUAL`。
-
-当前目标是职责清楚，而不是把核心算法硬塞回一个大文件。

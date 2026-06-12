@@ -26,7 +26,7 @@ void drive_output_read_feedback(control_feedback_t *fb, int period_ms);
 
 //----------------------------------------------------------------------------------------------------------------------
 //  @brief      按控制输出下发左右 PWM
-//  @param      ctrl  solve_runtime_with_feedback() 计算出的控制结果
+//  @param      ctrl  solve_control_input_with_feedback() 计算出的控制结果
 //  @note       未使能、停车请求或 input_valid=0 时会保持停止。
 //              当前硬件映射：left -> PWM2，right -> PWM1；不要在控制层重复修正。
 //----------------------------------------------------------------------------------------------------------------------

@@ -30,12 +30,16 @@ constexpr int kValidRowThreshold = 40;
 constexpr double kEpsilon = 1e-9;
 constexpr double kMinQuadrilateralArea = 1.0;
 constexpr double kMaxHomographyReprojectionError = 0.25;
+constexpr float kAtgRoadWidthMeters = 0.45f;
+constexpr float kAtgPixelPerMeter = 116.0f;
+constexpr float kTargetCenterX = static_cast<float>(kIpmWidth) * 0.5f;
+constexpr float kTargetHalfRoadWidth = kAtgRoadWidthMeters * kAtgPixelPerMeter * 0.5f;
 
 const std::array<cv::Point2f, 4> kDefaultTarget = {
-    cv::Point2f(63.0f, 70.0f),  // left-bottom
-    cv::Point2f(97.0f, 70.0f),  // right-bottom
-    cv::Point2f(63.0f, 30.0f),  // left-top
-    cv::Point2f(97.0f, 30.0f),  // right-top
+    cv::Point2f(kTargetCenterX - kTargetHalfRoadWidth, 70.0f),  // left-bottom
+    cv::Point2f(kTargetCenterX + kTargetHalfRoadWidth, 70.0f),  // right-bottom
+    cv::Point2f(kTargetCenterX - kTargetHalfRoadWidth, 30.0f),  // left-top
+    cv::Point2f(kTargetCenterX + kTargetHalfRoadWidth, 30.0f),  // right-top
 };
 
 struct Options {

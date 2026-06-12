@@ -74,11 +74,11 @@ ssh root@192.168.0.102 "ls -l /root/front_car_mainline"
 # 步骤 1：从板子抓一张 640x360 灰度标定图
 bash scripts/ipm_recalib_capture.sh
 
-# 步骤 2：在图上交互点选四个点，生成 camera_param.c
+# 步骤 2：在图上交互点选四个点，生成 IPM 矩阵和预览图
 bash scripts/ipm_recalib_generate.sh
 
-# 步骤 3：把生成的 camera_param.c 放进参考版相机参数路径
-bash scripts/ipm_recalib_apply.sh .diag/ipm_recalib/camera_param.c
+# 步骤 3：把生成的矩阵写入 ATG rot/inv_rot
+bash scripts/ipm_recalib_apply.sh .diag/ipm_recalib/ipm_matrix_tuned.txt
 
 # 步骤 4：编译验证（host + target）
 bash code/test.sh --host
@@ -163,7 +163,9 @@ bash scripts/ipm_recalib_generate.sh
 
 **怎么看 preview_ipm_tuned.png**：
 - 赛道左右边界线应该近似**竖直**
+- 左右边界之间的宽度应接近 **52px**（当前 ATG 参数 `ROAD_WIDTH=0.45m`、`pixel_per_meter=116`）
 - 如果边界线明显倾斜，说明点选的位置不够好，重新选
+- 如果边界是直的但宽度明显不是 52px，说明 IPM 尺度和 ATG 距离阈值不一致，也需要重做
 
 #### 非交互模式（自动化/CI）
 
@@ -182,14 +184,17 @@ bash scripts/ipm_recalib_generate.sh \
 ### 4.3 步骤 3：应用
 
 ```bash
-bash scripts/ipm_recalib_apply.sh .diag/ipm_recalib/camera_param.c
+bash scripts/ipm_recalib_apply.sh .diag/ipm_recalib/ipm_matrix_tuned.txt
 ```
 
 这个脚本做的事：
-1. 检查生成的 `camera_param.c` 是否包含全部必需符号（K, D, H, H_inv, mapx, mapy, invx, invy, map_inv）
-2. 拷贝到 `autop_reference/Project/CODE/camera_param.c`
+1. 检查 `ipm_matrix_tuned.txt` 是否是 3x3 单应矩阵
+2. 计算反矩阵并转换成 ATG 的矩阵排布
+3. 替换 `atg_reference/Project/CODE/shy_Image.c` 里的 `rot` 和 `inv_rot`
 
-如果符号检查不通过会直接报错退出，不会覆盖。
+如果矩阵文件缺失、格式不对或不可逆，会直接报错退出。
+
+兼容说明：如果误传 `.diag/ipm_recalib/camera_param.c`，脚本会自动改用同目录下的 `ipm_matrix_tuned.txt`。当前 ATG 分支真正生效的是 `shy_Image.c::rot/inv_rot`，不是旧 `camera_param.c`。
 
 **不会**自动提交 git——应用后你需要自己确认效果再提交。
 
@@ -214,6 +219,7 @@ bash scripts/ipm_geometry_audit.sh
 |--------|---------|
 | 编译通过 | `code/test.sh --host` 和 `code/test.sh` 都返回 0 |
 | IPM 预览直道近似竖直 | 看 `preview_ipm_tuned.png`，边界线不应明显倾斜 |
+| IPM 赛道宽度接近 52px | 当前 ATG `0.45m * 116px/m = 52.2px`，偏差太大会影响元素距离门槛 |
 | 中线不系统性偏移 | 跑直道时 `control_ref` 的 x 坐标不应持续偏左或偏右 |
 | `m0` 和 `ml` 接近 | report 里 `m0.x` 和 `ml.x` 差异小 |
 
@@ -233,9 +239,9 @@ bash scripts/ipm_geometry_audit.sh
 | `preview_original_points.png` | 生成 | 原图 + 标记的四个点 |
 | `preview_ipm_initial.png` | 生成 | 初始 IPM 投影预览 |
 | `preview_ipm_tuned.png` | 生成 | 最终 IPM 投影预览 |
-| `camera_param.c` | 生成 | **最终产物**——拷贝到 `autop_reference/Project/CODE/` |
+| `camera_param.c` | 生成 | 旧 RT1064 查表格式的兼容产物，当前 ATG 分支不直接应用 |
 
-最终生效的只有 `camera_param.c`。其他文件是中间产物，用于调试和审计。
+当前 ATG 分支最终生效的是 `ipm_matrix_tuned.txt` 经 `ipm_recalib_apply.sh` 写入后的 `atg_reference/Project/CODE/shy_Image.c::rot/inv_rot`。其他文件用于调试和审计。
 
 ---
 
@@ -283,13 +289,15 @@ left-bottom → right-bottom → left-top → right-top
 
 如果顺序反了，生成的 IPM 投影会是乱的（图像翻转、镜像、严重扭曲）。解决：重新运行 `ipm_recalib_generate.sh`。
 
-### 6.5 生成的 camera_param.c 符号缺失
+### 6.5 矩阵文件格式不对
 
 ```
-ERROR: generated camera_param.c missing symbol pattern: ...
+ERROR: expected 3 rows ...
+ERROR: expected 3 columns ...
+ERROR: IPM matrix is singular
 ```
 
-说明 `ipm_generator` 生成的 C 文件有问题。检查是否用了最新的 `tools/ipm_generator` 代码。必要时重新编译：
+说明 `ipm_matrix_tuned.txt` 不是有效 3x3 单应矩阵，或矩阵不可逆。检查是否用了最新的 `tools/ipm_generator` 代码，必要时重新生成：
 ```bash
 rm -rf tools/ipm_generator/build
 bash scripts/ipm_recalib_generate.sh
@@ -297,12 +305,12 @@ bash scripts/ipm_recalib_generate.sh
 
 ### 6.6 编译失败
 
-先确认 `camera_param.c` 已经正确应用：
+先确认 `shy_Image.c` 里已经写入新的 `rot/inv_rot`：
 ```bash
-head -20 autop_reference/Project/CODE/camera_param.c
+sed -n '1,28p' atg_reference/Project/CODE/shy_Image.c
 ```
 
-如果 `mapx`/`mapy` 尺寸不是 `MT9V03X_CSI_H x MT9V03X_CSI_W`（当前为 120x160），说明生成器输出有问题。
+如果 `rot` / `inv_rot` 仍是旧值，说明应用脚本没有执行成功。
 
 ### 6.7 重标定后效果更差
 
@@ -320,10 +328,10 @@ head -20 autop_reference/Project/CODE/camera_param.c
 
 ```bash
 # 查看当前状态
-git diff autop_reference/Project/CODE/camera_param.c
+git diff atg_reference/Project/CODE/shy_Image.c
 
 # 回滚到上一个提交的版本
-git checkout -- autop_reference/Project/CODE/camera_param.c
+git checkout -- atg_reference/Project/CODE/shy_Image.c
 
 # 重新编译
 bash code/test.sh --host
@@ -340,15 +348,15 @@ bash code/test.sh
 |------|------|
 | 恢复 `ipm_table_generated.*` 文件 | 这些文件已删除，旧路线有第二套真相源，会导致算法看到不一致的 IPM 数据 |
 | 使用 `/root/ipm_matrix.txt` | 旧路线，不再作为当前实现依据 |
-| 改旧 tracking 实现 | 当前分支已删除旧 tracking，只有 `camera_param.c` 一条路线 |
-| 手动编辑 `camera_param.c` | 必须由 `ipm_generator` 生成，手工改容易破坏符号合同 |
-| 跳过编译步骤 | 不编译就无法确认 `camera_param.c` 和代码兼容 |
+| 改旧 tracking 实现 | 当前分支已删除旧 tracking，只有 ATG `rot/inv_rot` 一条生产路线 |
+| 手动编辑 `rot/inv_rot` | 必须由 `ipm_generator` 生成矩阵再应用，手工改容易破坏坐标排布 |
+| 跳过编译步骤 | 不编译就无法确认 `shy_Image.c` 和代码兼容 |
 
 ---
 
 ## 9. 相关文档
 
 - [IPM 调用调研](IPM调用调研.md) — 当前 IPM 合同和代码路径
-- [PORTING.md](../autop_reference/PORTING.md) — port 边界和控制参数
+- [PORTING.md](../atg_reference/PORTING.md) — port 边界和控制参数
 - [tools/README.md](../tools/README.md) — 工具入口索引
 - [ipm_generator README](../tools/ipm_generator/README.md) — 生成器详细说明

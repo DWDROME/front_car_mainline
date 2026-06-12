@@ -317,6 +317,15 @@ struct control_state_t
     int right_duty;
 };
 
+struct control_input_t
+{
+    // 控制层需要的当前帧视觉输入，由 runner 从当前 ATG step 结果生成。
+    int line_found;
+    int stop_line;
+    int element_active;
+    double guide_error;
+};
+
 struct control_feedback_t
 {
     // 一个控制周期内的编码器增量和 IMU yaw-rate 反馈。

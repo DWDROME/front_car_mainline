@@ -4,10 +4,44 @@
 #include "tracking/atg_reference_mainline.hpp"
 #include "tracking/perspective.hpp"
 
+#include <cstdint>
+
+extern "C" {
+extern int ipts0_num, ipts1_num;
+extern int rpts0_num, rpts1_num;
+extern int rpts0s_num, rpts1s_num;
+extern int rptsc0_num, rptsc1_num;
+extern int rpts_num, rptsn_num;
+extern int far_ipts0_num, far_ipts1_num;
+extern int far_rpts0s_num, far_rpts1s_num;
+extern bool is_straight0, is_straight1, is_straight_far_0, is_straight_far_1;
+extern bool Ypt0_found, Ypt1_found, Lpt0_found, Lpt1_found;
+extern bool far_Lpt0_found, far_Lpt1_found;
+extern int Lpt0_rpts0s_id, Lpt1_rpts1s_id, Ypt0_rpts0s_id, Ypt1_rpts1s_id;
+extern int far_Lpt0_rpts0s_id, far_Lpt1_rpts1s_id;
+extern float conf1_max, conf2_max, conf3_max, conf4_max;
+extern int track_type;
+extern int cross_type;
+extern int circle_type;
+extern int round_type;
+extern int yroad_type;
+extern int ramp_type;
+extern int road_type;
+extern int speed_type;
+extern int16_t begin_x, begin_y;
+extern int16_t block_size, clip_value, line_blur_kernel;
+extern float sample_dist;
+extern int16_t pixel_per_meter;
+extern float angle_dist, ROAD_WIDTH;
+extern float aim_distance, aim_distance_far, round_aim_distance;
+extern int aim_idx, aim_idx_up, aim_idx_up_up;
+extern float cx, cy;
+extern float Guide, Guide_up, Guide_up_up;
+}
+
 #include <cmath>
 #include <array>
 #include <chrono>
-#include <cstdint>
 #include <cstdio>
 #include <fstream>
 #include <tuple>
@@ -824,5 +858,68 @@ int write_report(const runtime_t *rt, const char *report_path)
     out << "mid_forward_lookahead=" << ml_forward << "\n";
     out << "center_x=" << rt->track.center_x << "\n";
     out << "guide_error=" << rt->track.guide_error << "\n";
+
+    out << "atg_ipts0_num=" << ipts0_num << "\n";
+    out << "atg_ipts1_num=" << ipts1_num << "\n";
+    out << "atg_rpts0_num=" << rpts0_num << "\n";
+    out << "atg_rpts1_num=" << rpts1_num << "\n";
+    out << "atg_rpts0s_num=" << rpts0s_num << "\n";
+    out << "atg_rpts1s_num=" << rpts1s_num << "\n";
+    out << "atg_rptsc0_num=" << rptsc0_num << "\n";
+    out << "atg_rptsc1_num=" << rptsc1_num << "\n";
+    out << "atg_rpts_num=" << rpts_num << "\n";
+    out << "atg_rptsn_num=" << rptsn_num << "\n";
+    out << "atg_far_ipts0_num=" << far_ipts0_num << "\n";
+    out << "atg_far_ipts1_num=" << far_ipts1_num << "\n";
+    out << "atg_far_rpts0s_num=" << far_rpts0s_num << "\n";
+    out << "atg_far_rpts1s_num=" << far_rpts1s_num << "\n";
+    out << "atg_is_straight0=" << is_straight0 << "\n";
+    out << "atg_is_straight1=" << is_straight1 << "\n";
+    out << "atg_is_straight_far_0=" << is_straight_far_0 << "\n";
+    out << "atg_is_straight_far_1=" << is_straight_far_1 << "\n";
+    out << "atg_lpt0_found=" << Lpt0_found << "\n";
+    out << "atg_lpt1_found=" << Lpt1_found << "\n";
+    out << "atg_lpt0_id=" << Lpt0_rpts0s_id << "\n";
+    out << "atg_lpt1_id=" << Lpt1_rpts1s_id << "\n";
+    out << "atg_ypt0_found=" << Ypt0_found << "\n";
+    out << "atg_ypt1_found=" << Ypt1_found << "\n";
+    out << "atg_ypt0_id=" << Ypt0_rpts0s_id << "\n";
+    out << "atg_ypt1_id=" << Ypt1_rpts1s_id << "\n";
+    out << "atg_far_lpt0_found=" << far_Lpt0_found << "\n";
+    out << "atg_far_lpt1_found=" << far_Lpt1_found << "\n";
+    out << "atg_far_lpt0_id=" << far_Lpt0_rpts0s_id << "\n";
+    out << "atg_far_lpt1_id=" << far_Lpt1_rpts1s_id << "\n";
+    out << "atg_conf1_max_deg=" << conf1_max * 180.0f / 3.14159265358979323846f << "\n";
+    out << "atg_conf2_max_deg=" << conf2_max * 180.0f / 3.14159265358979323846f << "\n";
+    out << "atg_conf3_max_deg=" << conf3_max * 180.0f / 3.14159265358979323846f << "\n";
+    out << "atg_conf4_max_deg=" << conf4_max * 180.0f / 3.14159265358979323846f << "\n";
+    out << "atg_track_type=" << track_type << "\n";
+    out << "atg_cross_type=" << cross_type << "\n";
+    out << "atg_circle_type=" << circle_type << "\n";
+    out << "atg_round_type=" << round_type << "\n";
+    out << "atg_yroad_type=" << yroad_type << "\n";
+    out << "atg_ramp_type=" << ramp_type << "\n";
+    out << "atg_road_type=" << road_type << "\n";
+    out << "atg_speed_type=" << speed_type << "\n";
+    out << "atg_begin_x=" << begin_x << "\n";
+    out << "atg_begin_y=" << begin_y << "\n";
+    out << "atg_block_size=" << block_size << "\n";
+    out << "atg_clip_value=" << clip_value << "\n";
+    out << "atg_line_blur_kernel=" << line_blur_kernel << "\n";
+    out << "atg_sample_dist=" << sample_dist << "\n";
+    out << "atg_pixel_per_meter=" << pixel_per_meter << "\n";
+    out << "atg_angle_dist=" << angle_dist << "\n";
+    out << "atg_road_width=" << ROAD_WIDTH << "\n";
+    out << "atg_aim_distance=" << aim_distance << "\n";
+    out << "atg_aim_distance_far=" << aim_distance_far << "\n";
+    out << "atg_round_aim_distance=" << round_aim_distance << "\n";
+    out << "atg_aim_idx=" << aim_idx << "\n";
+    out << "atg_aim_idx_up=" << aim_idx_up << "\n";
+    out << "atg_aim_idx_up_up=" << aim_idx_up_up << "\n";
+    out << "atg_cx=" << cx << "\n";
+    out << "atg_cy=" << cy << "\n";
+    out << "atg_guide=" << Guide << "\n";
+    out << "atg_guide_up=" << Guide_up << "\n";
+    out << "atg_guide_up_up=" << Guide_up_up << "\n";
     return 1;
 }

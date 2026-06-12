@@ -41,6 +41,23 @@ struct camera_options_t
     int fps;
 };
 
+control_input_t control_input_from_current_frame(const runtime_t *rt, int line_found)
+{
+    control_input_t input = {};
+    if(rt == nullptr)
+    {
+        return input;
+    }
+
+    input.line_found = line_found ? 1 : 0;
+    input.guide_error = rt->track.guide_error;
+    input.element_active =
+        rt->ring.kind != RING_KIND_NONE ||
+        rt->cross.state != CROSS_STATE_NONE ? 1 : 0;
+    input.stop_line = rt->zebra.stop_line ? 1 : 0;
+    return input;
+}
+
 // ==== 摄像头运行参数 ====
 camera_options_t read_camera_options()
 {
@@ -189,8 +206,9 @@ int process_loaded_frame(runtime_t *rt, const char *image_path, int print_detail
     }
 
     init_frame(rt);
-    tracking_process_frame(rt);
-    solve_runtime(rt, &rt->control);
+    const int line_found = tracking_process_frame(rt);
+    const control_input_t control_input = control_input_from_current_frame(rt, line_found);
+    solve_control_input(&control_input, &rt->control);
     if(print_detail_enabled)
     {
         print_detail(rt);
@@ -442,7 +460,7 @@ int offline(runtime_t *rt, const char *image_path)
 }
 
 //-------------------------------------------------------------------------------------------------------------------
-//  @brief      实时模式主循环：开摄像头 → 采集 → 识别 → 读编码器 → 控制 → 下发电机 → 同步打印
+//  @brief      实时模式主循环：开摄像头 → 采集 → 读反馈/里程 → ATG识别 → 薄输入控制 → 下发电机 → 同步打印
 //  @return     int          摄像头初始化失败时返回 1，正常情况下进入死循环不返回
 //  @note       drive 是否真正输出由 FRONT_CAR_ENABLE_DRIVE 控制，默认不开电机。
 //-------------------------------------------------------------------------------------------------------------------
@@ -501,17 +519,19 @@ int live(runtime_t *rt)
         }
         const uint64_t t1 = prof.enabled ? monotonic_us() : 0;
 
-        // [t1->t2] 视觉识别：seed -> trace -> boundary -> element -> midline -> guide_error
-        rt->gray_valid = 1;
-        tracking_process_frame(rt);
-        const uint64_t t2 = prof.enabled ? monotonic_us() : 0;
-        // [t2->t3] 读编码器/IMU 反馈，并把左右编码器均值累加到里程
+        // [t1->t2] 读编码器/IMU 反馈，并把左右编码器均值累加到 ATG 里程输入。
         control_feedback_t fb = {};
         drive_output_read_feedback(&fb, control_period_ms);
         rt->encoder_total += (int64_t)(fb.left_speed_count + fb.right_speed_count) / 2;
+        const uint64_t t2 = prof.enabled ? monotonic_us() : 0;
+
+        // [t2->t3] ATG 视觉识别：image_handle -> find_corners -> elements -> selected line。
+        rt->gray_valid = 1;
+        const int line_found = tracking_process_frame(rt);
         const uint64_t t3 = prof.enabled ? monotonic_us() : 0;
-        // [t3->t4] 闭环控制：guide_error -> target_yaw -> 左右 duty
-        solve_runtime_with_feedback(rt, &fb, &rt->control);
+        // [t3->t4] 闭环控制：当前 ATG 帧 -> 薄控制输入 -> target_yaw -> 左右 duty。
+        const control_input_t control_input = control_input_from_current_frame(rt, line_found);
+        solve_control_input_with_feedback(&control_input, &fb, &rt->control);
         const uint64_t t4 = prof.enabled ? monotonic_us() : 0;
         // [t4->t5] 下发电机 PWM + 推送上位机显示
         drive_output_apply(&rt->control);
@@ -524,8 +544,8 @@ int live(runtime_t *rt)
             const uint64_t t6 = monotonic_us();
             prof.frames++;
             profile_add(&prof.capture_us, t0, t1);
-            profile_add(&prof.pts_us, t1, t2);
-            profile_add(&prof.feedback_us, t2, t3);
+            profile_add(&prof.feedback_us, t1, t2);
+            profile_add(&prof.pts_us, t2, t3);
             profile_add(&prof.control_us, t3, t4);
             profile_add(&prof.drive_us, t4, t5);
             profile_add(&prof.total_us, t0, t6);

@@ -64,13 +64,17 @@ preview_ipm_tuned.png
 camera_param.c
 ```
 
-The generated file is copied directly into the reference-shaped runtime path:
+On the current ATG branch, `ipm_matrix_tuned.txt` is the file consumed by the
+apply script. It is converted into the ATG runtime matrices:
 
 ```text
-autop_reference/Project/CODE/camera_param.c
+atg_reference/Project/CODE/shy_Image.c::rot
+atg_reference/Project/CODE/shy_Image.c::inv_rot
 ```
 
-The generated C symbol contract matches the RT1064 reference naming:
+`camera_param.c` is still emitted as a compatibility artifact for the old
+RT1064/table workflow, but it is not the active ATG runtime target. Its C symbol
+contract matches the RT1064 reference naming:
 
 ```text
 K[3][3]
@@ -87,18 +91,21 @@ map_inv()
 `mapx/mapy` are raw -> IPM tables. Negative values mean that no valid mapping
 exists for that raw point. The current calibration tool does not model lens
 distortion, so `K/D` are placeholders and `invx/invy` are identity
-undistorted-raw -> raw tables; `H/H_inv` carry the homography.
+undistorted-raw -> raw tables; `H/H_inv` carry the homography. The ATG apply
+script reads `ipm_matrix_tuned.txt` directly and does not install these tables.
 
 ## Current Defaults
 
 The tool reads a `640x360` grayscale calibration image, scales selected points to
-the runtime `160x120` coordinate system, and uses this default target rectangle:
+the runtime `160x120` coordinate system, and uses this default target rectangle.
+The width is tied to the active ATG runtime scale: `ROAD_WIDTH=0.45m` and
+`pixel_per_meter=116`, so the road width is about `52.2px`.
 
 ```text
-left-bottom:  (63, 70)
-right-bottom: (97, 70)
-left-top:     (63, 30)
-right-top:    (97, 30)
+left-bottom:  (53.9, 70)
+right-bottom: (106.1, 70)
+left-top:     (53.9, 30)
+right-top:    (106.1, 30)
 ```
 
 The tuned result shifts this target rectangle vertically based on the geometric
