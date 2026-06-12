@@ -31,7 +31,7 @@ app/main.cpp
 - tracking 主体来自 `atg_reference/Project/CODE` 的 ATG2022 算法。
 - 本车仍保留 UVC、编码器、GPIO/PWM、电机差速控制、report 和逐飞上位机链路。
 - 移植边界在 `atg_reference/port` 和 `code/tracking/atg_reference_mainline.cpp`。
-- 旧本地 tracking 实现已经不参与构建，避免第二套中线真相源。
+- 旧本地 tracking 实现和上一条 RT1064/autop 代码树已从当前分支移除，避免第二套中线真相源。
 - 当前核心控制 API 消费 `control_input_t`，不再公开消费完整 `runtime_t`。
 - 关键 port 边界和 ATG 接入说明见 `atg_reference/PORTING.md`。
 

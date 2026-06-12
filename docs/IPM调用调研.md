@@ -1,6 +1,6 @@
 # IPM 调用调研
 
-这份文档记录当前 `port/atg2022-reference-control` 分支的真实 IPM 合同。旧 RT1064 路线里的 `camera_param.c`、`mapx/mapy` 查表、`autop_reference` IPM bridge 和运行时 `/root/ipm_matrix.txt` 都不是当前生产路径。
+这份文档记录当前 `port/atg2022-reference-control` 分支的真实 IPM 合同。旧 RT1064 路线里的 `camera_param.c`、`mapx/mapy` 查表、`autop_reference` IPM bridge 和运行时 `/root/ipm_matrix.txt` 都不是当前生产路径；`autop_reference/` 代码树也已经从当前分支删除。
 
 ## 当前结论
 
@@ -64,7 +64,7 @@ autop_reference/Project/CODE/camera_param.c
 mapx/mapy/invx/invy/map_inv()
 ```
 
-这条路线现在已经不是 ATG 分支的生产合同。ATG 算法本身直接调用 `Cal_rot_*` / `Cal_inv_rot_*`，如果继续把标定结果写进 `camera_param.c`，算法层和显示层会看到不同 IPM 来源，反而形成第二套真相源。
+这条路线现在已经不是 ATG 分支的生产合同，相关 `autop_reference/` 代码也不再保留在当前分支。ATG 算法本身直接调用 `Cal_rot_*` / `Cal_inv_rot_*`，如果继续把标定结果写进旧 `camera_param.c`，算法层和显示层会看到不同 IPM 来源，反而形成第二套真相源。
 
 ## 当前标定工具输出和应用
 

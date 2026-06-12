@@ -56,7 +56,7 @@ ATG ipts0/ipts1 (raw 追线)
 
 ## 4. 已退休的旧主线
 
-旧本地 tracking 实现（`find_seeds/trace_edges/boundary/element/cross/ring/zebra/mainline` 一族）和旧控制入口 `solve_runtime*` 已不参与构建。`code/tracking/autop_reference_mainline.cpp` 也不在构建里，仅作为上一条 RT1064 路线的残留文件存在。元素状态必须从 ATG 状态机自然推进，不能靠 CLI 或环境变量伪造。
+旧本地 tracking 实现（`find_seeds/trace_edges/boundary/element/cross/ring/zebra/mainline` 一族）、旧控制入口 `solve_runtime*`、上一条 RT1064/autop 桥接文件和 `autop_reference/` 代码树都已经从当前分支移除。元素状态必须从 ATG 状态机自然推进，不能靠 CLI 或环境变量伪造。
 
 ## 5. 当前有效验证入口
 

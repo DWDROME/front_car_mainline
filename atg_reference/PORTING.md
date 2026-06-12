@@ -33,11 +33,11 @@ peripheral, control, and upper-monitor layers.
 
 ## Current Migration Order
 
-1. Preserve `port/autop-direct-reference-control` as the pushed RT1064 baseline.
+1. Preserve the pushed RT1064/autop branch history as the old baseline.
 2. Build this branch as `port/atg2022-reference-control`.
 3. Copy ATG source into `atg_reference/`.
 4. Create a minimal ATG port layer that compiles host-side without TC264 drivers.
-5. Switch `code/tracking` from `autop_reference` to `atg_reference` only after the ATG step function can process a 160x120 gray frame.
+5. Keep only the ATG tracking bridge in `code/tracking`; the old `autop_reference/` tree and bridge are removed from this branch.
 6. Validate with `git diff --check`, `bash code/test.sh --host`, and targeted offline/analyze frames.
 
 ## Current Stage
