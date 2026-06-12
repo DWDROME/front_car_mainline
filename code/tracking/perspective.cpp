@@ -57,10 +57,8 @@ int perspective_lookup_ipm_to_raw(int ix, int iy, int *x, int *y)
 }
 
 // 投影一个 point_t 到 IPM；失败或越界时 dst 置为 (-1,-1)，ok 写 0。
-void perspective_point(const double matrix[9], const point_t *src, point_t *dst, int *ok)
+void perspective_point(const point_t *src, point_t *dst, int *ok)
 {
-    (void)matrix;
-
     double x = 0.0;
     double y = 0.0;
     int valid = 0;
@@ -88,10 +86,8 @@ void perspective_point(const double matrix[9], const point_t *src, point_t *dst,
 
 // 俯视预览采用反向采样，避免正向投影留下空洞。
 // 对每个 IPM 像素反向采样原图灰度；反算失败或越界处保持白色。
-void perspective_preview(const uint8_t gray[RAW_H][RAW_W], const double matrix[9], cv::Mat *preview)
+void perspective_preview(const uint8_t gray[RAW_H][RAW_W], cv::Mat *preview)
 {
-    (void)matrix;
-
     if(preview == nullptr)
     {
         return;

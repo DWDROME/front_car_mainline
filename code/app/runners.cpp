@@ -403,7 +403,7 @@ int analyze(runtime_t *rt, const analyze_paths_t *paths)
     }
 
     cv::Mat ipm;
-    perspective_preview(rt->gray, rt->matrix, &ipm);
+    perspective_preview(rt->gray, &ipm);
     if(!ipm.empty() && path_present(paths->ipm_path) && !cv::imwrite(paths->ipm_path, ipm))
     {
         std::fprintf(stderr, "WARN: write ipm failed: %s\n", paths->ipm_path);

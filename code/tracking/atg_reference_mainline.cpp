@@ -366,7 +366,6 @@ void tracking_reset(runtime_t *rt)
     rt->control_center_x = CONTROL_CENTER_X;
     rt->mid_position = MID_X;
     rt->width_base = ROAD_HALF_WIDTH * 2;
-    rt->has_matrix = 1;
     clear_track_result(rt);
     atg_reference_reset();
 }

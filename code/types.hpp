@@ -349,8 +349,6 @@ struct runtime_t
     int mid_position;
     // 搜索中心跟随的路宽基准(像素)：常态双边帧低通标定，单边帧据此外推起搜中心。
     int width_base;
-    double matrix[9];
-    int has_matrix;
 
     // 当前帧 seed/trace/元素/巡线/控制共享状态。
     seed_pair_t seeds;

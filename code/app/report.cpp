@@ -305,17 +305,12 @@ int report_seed_ipm_pair_diag(const runtime_t *rt)
     {
         return SEED_IPM_DIAG_NO_PAIR;
     }
-    if(!rt->has_matrix)
-    {
-        return SEED_IPM_DIAG_NO_MATRIX;
-    }
-
     point_t p0 = {-1, -1};
     point_t p1 = {-1, -1};
     int ok0 = 0;
     int ok1 = 0;
-    perspective_point(rt->matrix, &rt->seeds.left, &p0, &ok0);
-    perspective_point(rt->matrix, &rt->seeds.right, &p1, &ok1);
+    perspective_point(&rt->seeds.left, &p0, &ok0);
+    perspective_point(&rt->seeds.right, &p1, &ok1);
     if(!ok0 || !ok1)
     {
         return SEED_IPM_DIAG_MAP_FAILED;
@@ -404,7 +399,6 @@ void print_detail(const runtime_t *rt)
     const auto &rg = rt->ring;
     const auto &cz = rt->cross;
     const auto &zb = rt->zebra;
-    const int use_matrix = rt->has_matrix;
     const int seed_span = report_seed_pair_span(rt);
     const int ipm_reason = report_seed_ipm_pair_diag(rt);
 
@@ -426,10 +420,7 @@ void print_detail(const runtime_t *rt)
                 rt->mid_position,
                 tr.track_type);
     std::printf("CtlX: x=%d\n", rt->control_center_x);
-    std::printf("IPM: loaded=%d frame=%d reason=%d\n",
-                rt->has_matrix,
-                use_matrix,
-                ipm_reason);
+    std::printf("IPM: source=atg_rot reason=%d\n", ipm_reason);
     std::printf("Trace: left=%d right=%d raw=%d/%d gain=%d/%d pass=%d/%d idrej=%d\n",
                 tr0.step,
                 tr1.step,
@@ -773,7 +764,7 @@ int write_report(const runtime_t *rt, const char *report_path)
     out << "seed_width_prior_after=" << rt->track.width_base_after << "\n";
 
     const int ipm_reason = report_seed_ipm_pair_diag(rt);
-    out << "matrix_loaded=" << rt->has_matrix << "\n";
+    out << "ipm_source=atg_rot_inv_rot\n";
     out << "seed_ipm_pair_diag=" << ipm_reason << "\n";
 
     out << "ring_kind=" << rt->ring.kind << "\n";

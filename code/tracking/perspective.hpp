@@ -27,20 +27,18 @@ int perspective_lookup_raw_to_ipm(int x, int y, double *ix, double *iy);
 int perspective_lookup_ipm_to_raw(int ix, int iy, int *x, int *y);
 
 //----------------------------------------------------------------------------------------------------------------------
-//  @brief      投影一个 point_t 到 IPM 点
-//  @param      matrix  保留旧形参，当前静态查表不使用
+//  @brief      用 ATG rot/inv_rot 投影一个 point_t 到 IPM 点
 //  @param      src     输入 raw 点
 //  @param      dst     输出 IPM 点；失败时写为 (-1, -1)
 //  @param      ok      输出有效标志，允许为空
 //  @note       会检查 IPM 视野范围；越界点按失败处理。
 //----------------------------------------------------------------------------------------------------------------------
-void perspective_point(const double matrix[9], const point_t *src, point_t *dst, int *ok);
+void perspective_point(const point_t *src, point_t *dst, int *ok);
 
 //----------------------------------------------------------------------------------------------------------------------
-//  @brief      根据 raw 图和静态反查表生成 IPM 灰度预览图
+//  @brief      根据 raw 图和 ATG inv_rot 生成 IPM 灰度预览图
 //  @param      gray     输入 raw 灰度图
-//  @param      matrix   保留旧形参，当前静态查表不使用
 //  @param      preview  输出 IPM 预览图
 //  @note       采用 IPM -> raw 反向采样，避免正向投影留下空洞；仅用于显示和调试。
 //----------------------------------------------------------------------------------------------------------------------
-void perspective_preview(const uint8_t gray[RAW_H][RAW_W], const double matrix[9], cv::Mat *preview);
+void perspective_preview(const uint8_t gray[RAW_H][RAW_W], cv::Mat *preview);

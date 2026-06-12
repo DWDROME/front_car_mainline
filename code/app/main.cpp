@@ -52,8 +52,7 @@ int run_mainline(int argc, char **argv)
     parse_options(argc, argv, &opt);
 
     tracking_reset(&g_rt);
-    g_rt.has_matrix = 1;
-    std::printf("front_car_mainline: ipm=static table\n");
+    std::printf("front_car_mainline: ipm=atg rot/inv_rot\n");
 
     if(argc == 1)
     {
