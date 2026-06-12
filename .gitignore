@@ -5,6 +5,7 @@
 .codex/
 .cursor/
 .diag/
+*.diag.zip
 .gemini/
 .trellis/
 .github/agents/
