@@ -17,6 +17,10 @@
 
 #include <opencv2/imgcodecs.hpp>
 
+extern "C" {
+#include "headfile.h"
+}
+
 namespace
 {
 struct live_profile_t
@@ -50,11 +54,15 @@ control_input_t control_input_from_current_frame(const runtime_t *rt, int line_f
     }
 
     input.line_found = line_found ? 1 : 0;
-    input.guide_error = rt->track.guide_error;
+    input.guide_error = rt->vision.guide_error;
     input.element_active =
-        rt->ring.kind != RING_KIND_NONE ||
-        rt->cross.state != CROSS_STATE_NONE ? 1 : 0;
-    input.stop_line = rt->zebra.stop_line ? 1 : 0;
+        cross_type != CROSS_NONE ||
+        circle_type != CIRCLE_NONE ||
+        round_type != ROUND_NONE ||
+        yroad_type != YROAD_NONE ||
+        ramp_type != RAMP_NONE ? 1 : 0;
+    // ATG2022 当前接入链没有原生停车线状态；不要把旧 zebra 语义伪造成 stop_line。
+    input.stop_line = 0;
     return input;
 }
 
@@ -177,10 +185,7 @@ void profile_report_and_reset(live_profile_t *prof)
     prof->print_us = 0;
 }
 
-// 每帧识别前写入图像有效标记和控制中心。
-// mid_position/width_base 是 seed 搜索先验的跨帧状态，这里不再逐帧重置：
-// 与 live() 主循环一致(它也不调 init_frame)，让 replay 多帧能复现中心跟随；
-// 单图 analyze/offline 的初值由启动时 tracking_reset 提供，单帧行为不变。
+// 每帧识别前写入图像有效标记和本车控制参考中心。
 void init_frame(runtime_t *rt)
 {
     rt->gray_valid = 1;
@@ -228,17 +233,7 @@ int process_frame_quiet(runtime_t *rt, const char *image_path)
     return process_loaded_frame(rt, image_path, 0);
 }
 
-// 回放模式每帧单行摘要，主要看元素状态、strict double-L、远线、中线和 reject_reason。
-// 字段缩写：far=左/右远线found，far_num=左/右远线点数，far_l=左/右远 L 索引，far_src=新检出/复用旧索引；
-//   far_reuse=远 L 索引连续复用帧数，只用于诊断。
-//   pair=左/右 strict double-L 复核结果；ps=左/右 pair_state；pw=双 L 基准/张开宽度；
-//   pre=find_seeds后state/seed和trace过滤前步数；tg=trace过滤前纵向爬升量；tp=trace越过对侧seed时的爬升量；
-//   xst=帧首cross/base/cross_far/cross_near/ring_active/work_track/ref；
-//   xcrop=ring裁剪side/index + rptsc0/rptsc1裁剪前/后 + selected mid_ok；
-//   xrng=左环标志/当前贴边now点数/补边now点数/补边L/补边L索引/IN阶段补边结果；
-//   xlearn=seed 搜索先验学习 kind/search_center_before/search_center_after/width_before/width_after；
-//   xfar=近线步数/lost/recover/exit/far_ok/far_fail/far_trace/ipm/blur/resample；
-//   xmid=远线中线 side/fail/start/tail/cand/out；md=预瞄距离/前方门/最大距离。
+// 回放模式每帧单行摘要：只输出 ATG 原生状态和薄控制结果，不再翻译旧 runtime 字段。
 void print_replay_frame(int frame, const runtime_t *rt)
 {
     point_t m0 = {-1, -1};
@@ -246,124 +241,79 @@ void print_replay_frame(int frame, const runtime_t *rt)
     int ml_dist = -1;
     int max_dist = -1;
     int ml_forward = 0;
-    mid_points_for_report(rt->track.mid,
-                          rt->track.control_ref.y,
+    mid_points_for_report(rt->vision.mid,
+                          rt->vision.control_ref.y,
                           &m0,
                           &ml,
                           &ml_dist,
                           &max_dist,
                           &ml_forward);
 
-    std::printf("replay frame=%d line=%d ring=%d/%d r0=%d/%d cross=%d zebra=%d no_line=%d far=%d/%d "
-                "far_num=%d/%d far_l=%d/%d far_src=%d/%d far_reuse=%d/%d "
-                "l=%d/%d@%d/%d/%d@%d pair=%d/%d ps=%d/%d pw=%.1f/%.1f "
-                "pre=%d:(%d,%d)-(%d,%d)/%d/%d tg=%d/%d tp=%d/%d "
-                "xst=%d/%d/%d/%d/%d/%d@%d,%d "
-                "xcrop=%d/%d/%d/%d/%d/%d/%d "
-                "xrng=%d/%d/%d/%d/%d/%d "
-                "xlearn=%d/%d/%d/%d/%d "
-                "xfar=%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d "
-                "xmid=%d/%d/%d/%d/%d/%d "
-                "track=%d mid=%d md=%d/%d/%d guide=%.2f reject=%d idrej=%d\n",
+    std::printf("replay frame=%d line=%d track=%d cross=%d circle=%d round=%d yroad=%d ramp=%d road=%d speed=%d "
+                "near=%d/%d raw=%d/%d ipm=%d/%d center=%d/%d sel=%d/%d "
+                "l=%d@%d/%d@%d y=%d@%d/%d@%d far_l=%d@%d/%d@%d far_num=%d/%d "
+                "straight=%d/%d far_straight=%d/%d conf=%.1f/%.1f/%.1f/%.1f "
+                "dist=%d ramp_dist=%d m0=(%d,%d) ml=(%d,%d) md=%d/%d/%d "
+                "cxcy=%.1f,%.1f guide=%.2f atg_guide=%.1f/%.1f/%.1f duty=%d/%d\n",
                 frame,
                 track_line_found(rt),
-                rt->ring.kind,
-                rt->ring.state,
-                rt->track.action_ring_kind0,
-                rt->track.action_ring_state0,
-                rt->cross.state,
-                rt->zebra.detected,
-                rt->cross.not_have_line,
-                rt->cross.left_far_found,
-                rt->cross.right_far_found,
-                rt->cross.left_num,
-                rt->cross.right_num,
-                rt->cross.left_l,
-                rt->cross.right_l,
-                rt->cross.left_far_l_source,
-                rt->cross.right_far_l_source,
-                rt->cross.left_far_l_reuse_count,
-                rt->cross.right_far_l_reuse_count,
-                rt->track.left.l_found,
-                rt->track.left.l_ok,
-                rt->track.left.l_now_index,
-                rt->track.right.l_found,
-                rt->track.right.l_ok,
-                rt->track.right.l_now_index,
-                rt->track.left.l_pair_ok,
-                rt->track.right.l_pair_ok,
-                rt->track.left.l_pair_state,
-                rt->track.right.l_pair_state,
-                rt->track.left.l_pair_width0,
-                rt->track.left.l_pair_width1,
-                rt->track.seed_state_find,
-                rt->track.seed_left_find.x,
-                rt->track.seed_left_find.y,
-                rt->track.seed_right_find.x,
-                rt->track.seed_right_find.y,
-                rt->track.trace_left_raw_step,
-                rt->track.trace_right_raw_step,
-                rt->track.trace_left_raw_gain,
-                rt->track.trace_right_raw_gain,
-                rt->track.trace_left_pass_right_gain,
-                rt->track.trace_right_pass_left_gain,
-                rt->track.action_cross_state0,
-                rt->track.action_base_ready,
-                rt->track.mode_cross_far,
-                rt->track.mode_cross_near,
-                rt->track.mode_ring_active,
-                rt->track.mode_work_track_type,
-                rt->track.control_ref.x,
-                rt->track.control_ref.y,
-                rt->track.candidate_crop_side,
-                rt->track.candidate_crop_index,
-                rt->track.candidate_left_before_crop,
-                rt->track.candidate_right_before_crop,
-                rt->track.candidate_left_after_crop,
-                rt->track.candidate_right_after_crop,
-                rt->track.selected_mid_ok,
-                rt->track.ring_opp_left,
-                rt->track.ring_cur_step,
-                rt->track.ring_opp_step,
-                rt->track.ring_opp_l_ok,
-                rt->track.ring_opp_l_index,
-                rt->track.ring_opp_build_result,
-                rt->track.search_update_kind,
-                rt->track.search_mid_before,
-                rt->track.search_mid_after,
-                rt->track.width_base_before,
-                rt->track.width_base_after,
-                rt->cross.left_near_step,
-                rt->cross.right_near_step,
-                rt->cross.both_near_lost,
-                rt->cross.both_near_recover,
-                rt->cross.exit_ready,
-                rt->cross.left_far_ok,
-                rt->cross.right_far_ok,
-                rt->cross.left_far_fail,
-                rt->cross.right_far_fail,
-                rt->cross.left_far_trace,
-                rt->cross.right_far_trace,
-                rt->cross.left_far_ipm,
-                rt->cross.right_far_ipm,
-                rt->cross.left_far_blur,
-                rt->cross.right_far_blur,
-                rt->cross.left_far_resample,
-                rt->cross.right_far_resample,
-                rt->track.cross_mid_side,
-                rt->track.cross_mid_fail,
-                rt->track.cross_mid_start,
-                rt->track.cross_mid_tail,
-                rt->track.cross_mid_cand,
-                rt->track.cross_mid_out,
-                rt->track.track_type,
-                rt->track.mid.step,
+                track_type,
+                cross_type,
+                circle_type,
+                round_type,
+                yroad_type,
+                ramp_type,
+                road_type,
+                speed_type,
+                rpts0s_num,
+                rpts1s_num,
+                ipts0_num,
+                ipts1_num,
+                rpts0_num,
+                rpts1_num,
+                rptsc0_num,
+                rptsc1_num,
+                rpts_num,
+                rptsn_num,
+                Lpt0_found ? 1 : 0,
+                Lpt0_found ? Lpt0_rpts0s_id : -1,
+                Lpt1_found ? 1 : 0,
+                Lpt1_found ? Lpt1_rpts1s_id : -1,
+                Ypt0_found ? 1 : 0,
+                Ypt0_found ? Ypt0_rpts0s_id : -1,
+                Ypt1_found ? 1 : 0,
+                Ypt1_found ? Ypt1_rpts1s_id : -1,
+                far_Lpt0_found ? 1 : 0,
+                far_Lpt0_found ? far_Lpt0_rpts0s_id : -1,
+                far_Lpt1_found ? 1 : 0,
+                far_Lpt1_found ? far_Lpt1_rpts1s_id : -1,
+                far_rpts0s_num,
+                far_rpts1s_num,
+                is_straight0 ? 1 : 0,
+                is_straight1 ? 1 : 0,
+                is_straight_far_0 ? 1 : 0,
+                is_straight_far_1 ? 1 : 0,
+                conf1_max * 180.0f / 3.14159265358979323846f,
+                conf2_max * 180.0f / 3.14159265358979323846f,
+                conf3_max * 180.0f / 3.14159265358979323846f,
+                conf4_max * 180.0f / 3.14159265358979323846f,
+                total_distence,
+                Ramp_total_distence,
+                m0.x,
+                m0.y,
+                ml.x,
+                ml.y,
                 ml_dist,
                 ml_forward,
                 max_dist,
-                rt->track.guide_error,
-                rt->track.reject_reason,
-                rt->track.trace_identity_reject);
+                cx,
+                cy,
+                rt->vision.guide_error,
+                Guide,
+                Guide_up,
+                Guide_up_up,
+                rt->control.left_duty,
+                rt->control.right_duty);
 }
 
 //-------------------------------------------------------------------------------------------------------------------
@@ -482,8 +432,6 @@ int live(runtime_t *rt)
                                                 default_control_center_x(),
                                                 0,
                                                 RAW_W - 1);
-    rt->mid_position = MID_X;
-    rt->width_base = ROAD_HALF_WIDTH * 2;
     if(div < 1)
     {
         div = 1;

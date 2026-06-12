@@ -12,7 +12,7 @@
 | ATG 算法主线 | `atg_reference/port/reference_step.c` | `atg_reference/Project/USER/Cpu0_Main.c` | 继续按 ATG 每帧顺序组织，不回到旧 tracking 主线。 |
 | 基础视觉 | 当前旧 `code/tracking/imgproc.cpp` 已不作为主线 | `shy_Image.c`, `imgproc.c` | 由 ATG 接管起搜、追线、IPM、平滑、重采样、角点。 |
 | 元素识别 | 当前旧 cross/ring/zebra 已不作为主线 | `cross.c`, `Half_check.c`, `circle.c`, `round.c`, `yroad.c`, `Ramp.c`, `road.c` | 可作为 ATG 主线继续保留，但传感器依赖项要逐个确认。 |
-| 中间层输出 | `code/tracking/atg_reference_mainline.cpp` | ATG 全局 `rptsn`, `cross_type`, `circle_type` 等 | 后续改成薄 `atg_snapshot`，不要继续扩大 `runtime_t`。 |
+| 中间层输出 | `code/tracking/atg_reference_mainline.cpp` | ATG 全局 `rptsn`, `cross_type`, `circle_type` 等 | 已收敛成薄 `vision_state_t`：只给控制层 `line_found/guide_error/midline`，元素诊断直读 ATG 原生状态。 |
 | 控制层 | `code/core/control.cpp` | ATG `pure_angle`, `Guide` | 当前仍用 LS2K 差速控制；ATG 舵机输出不直接接入。 |
 | 上位机/报告 | `code/app/assistant.cpp`, `code/app/report.cpp` | ATG 全局点列和状态 | 后续直接读取 `atg_snapshot` 或 ATG 只读快照，减少旧字段映射。 |
 
@@ -38,8 +38,8 @@
 | 道路分类/速度策略 | 当前速度由 YAML 控制 | `road.c` | 可以作为诊断保留；不要直接改 LS2K 速度策略。 | `pure_angle/Guide` 与差速控制量纲不同。 |
 | ATG 舵机输出 | 当前无舵机控制链 | `pure_angle`, `Guide`, `Guide_up` | 不直接接入电机控制。 | 如要使用，只能重新定义差速控制接口，不可简单赋给 `guide_error`。 |
 | 差速控制 | `core/control.cpp` | 无直接 ATG 等价 | 保留当前 LS2K 控制，输入来自 ATG 中线误差。 | `guide_error` 量纲必须稳定，不能混入舵机 PWM 语义。 |
-| 上位机红/黄/绿线 | `assistant.cpp` 读 `runtime_t` | ATG `ipts/rpts/rptsn/far_rpts` | 后续改为读薄快照，减少旧 `track_result_t` 字段。 | 需要明确哪些点是 raw，哪些点是 IPM。 |
-| 报告日志 | `report.cpp` 读 `runtime_t` | ATG 全局状态 | 后续改成 ATG 诊断报告。 | 当前未提交的 `atg_*` 诊断补丁可以作为过渡，但不应继续扩大。 |
+| 上位机红/黄/绿线 | `assistant.cpp` 直读 ATG 全局，`runtime_t` 只提供灰度底图 | ATG `ipts/rpts/rptsn/far_rpts` | 已切到上半原图、下半 IPM；不再依赖旧 `track_result_t`。 | 需要实机看 IPM 直道是否平行竖直。 |
+| 报告日志 | `report.cpp` 直读 ATG 全局状态 | ATG 全局状态 | 已改成 `atg_*` 原生诊断键。 | 不再输出旧 `ring_kind/cross_state/zebra/trace` 翻译字段。 |
 
 ## 优先级建议
 
@@ -48,8 +48,8 @@
 | P0 | 校验 `rot/inv_rot` 是否同步新 IPM 标定 | IPM 错会直接导致直道弯、元素误判。 |
 | P0 | 输出 `ipts*_num`, `rpts*s_num`, `rptsn_num`, `is_straight*`, `conf*_max` | 这是判断“直道识别不了”的最小证据。 |
 | P0 | 明确 `sample_dist`, `pixel_per_meter`, `block_size`, `clip_value`, `begin_y` | 这些是当前 ATG 主线最关键的参数估计点。 |
-| P1 | 把 `runtime_t` 瘦成 `atg_snapshot` | 减少旧主线语义干扰，但不要和参数调试同时大改。 |
-| P1 | 重写上位机/报告读取接口 | 让显示和日志直接表达 ATG 点列和状态。 |
+| P1 | 把 `runtime_t` 瘦成 `atg_snapshot` | 已完成，减少旧主线语义干扰。 |
+| P1 | 重写上位机/报告读取接口 | 已完成，显示和日志直接表达 ATG 点列和状态。 |
 | P2 | 决定 Y 路、坡道、道路分类是否启用 | 它们属于 ATG 能力，但传感器和赛题需求需要确认。 |
 
 ## 不建议替代的部分

@@ -11,7 +11,7 @@ REMOTE_BIN="${REMOTE_BIN:-/root/front_car_mainline}"
 REMOTE_IMG="/tmp/front_car_current_capture.png"
 REMOTE_RPT="/tmp/front_car_current_capture_report.txt"
 REMOTE_LOG="/tmp/front_car_current_capture_analyze.log"
-REPORT_KEYS='^(line_found|track_type|track_reject_reason|ipm_source|seed_ipm_pair_diag|ring_kind|ring_state|cross_state|zebra_detected|zebra_stop_line|seed_row|seed_width|left_trace_step|right_trace_step|center_x|guide_error)='
+REPORT_KEYS='^(line_found|ipm_source|atg_track_type|atg_cross_type|atg_circle_type|atg_round_type|atg_yroad_type|atg_ramp_type|atg_rpts0s_num|atg_rpts1s_num|atg_rptsn_num|atg_lpt0_found|atg_lpt1_found|atg_is_straight0|atg_is_straight1|mid_step|control_ref|guide_error)='
 
 mkdir -p "${OUT}"
 

@@ -6,5 +6,5 @@
 void assistant_init();
 
 // 发送当前帧上位机数据。
-// 黄/绿线使用 raw original_pts；红线使用控制中线 rt->track.mid 反投影到 raw 后的点列。
+// 上位机线和角点直读 ATG 当前帧全局；runtime_t 只提供灰度底图。
 void assistant_tick(const runtime_t *rt, unsigned frame_id);

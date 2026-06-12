@@ -6,7 +6,7 @@ BUILD="${ROOT}/code/build-host"
 BIN="${BUILD}/front_car_mainline"
 OUT="${ROOT}/.diag/control_center_sensitivity"
 CENTERS="${SMARTCAR_CENTER_SWEEP:-60 80}"
-REPORT_KEYS='^(line_found|track_reject_reason|track_type|mid_position|control_center_x|left_seed|right_seed|seed_row|seed_width|left_trace_step|right_trace_step|center_x|guide_error)='
+REPORT_KEYS='^(line_found|atg_track_type|atg_rpts_num|atg_rptsn_num|mid_step|mid0|mid_look|control_ref|control_center_x|guide_error)='
 
 mkdir -p "${OUT}"
 

@@ -120,16 +120,16 @@ while (1) {
 
 | 步骤 | 当前代码 | 目标形态 | 说明 |
 | --- | --- | --- | --- |
-| 1 | `live(runtime_t *rt)` 里维护大 `rt` | 主循环维护少量显式变量 | 先把 `gray`、`encoder_total`、`feedback`、`control` 摆出来。 |
+| 1 | `live(runtime_t *rt)` 里维护大 `rt` | `runtime_t` 已收薄为 `gray/encoder_total/control_center_x/vision/control` | 保留函数签名，先消掉旧语义字段。 |
 | 2 | `tracking_process_frame(rt)` | `atg_reference_process_frame(gray, encoder_total)` | 视觉入口直接表达 ATG 主线，不再伪装成旧 tracking。 |
-| 3 | `atg_reference_mainline.cpp` 大量拷贝 ATG 状态到 `runtime_t` | 只导出控制必须的薄结果 | 例如 `line_found`、`guide_error`、`cross_type`、`circle_type`。 |
+| 3 | `atg_reference_mainline.cpp` 大量拷贝 ATG 状态到 `runtime_t` | 已改为只导出控制必须的薄结果 | `line_found`、`guide_error`、`vision.mid`；元素诊断由 report/assistant 直读 ATG。 |
 | 4 | `solve_control_input_with_feedback(control_input, ...)` | `solve_control_input_with_feedback(control_input, feedback, ...)` | 控制只读当前帧控制输入，不再依赖旧 `track_result_t`。 |
-| 5 | `runtime_t` 继续包含旧 seed/trace 字段 | 删除旧主线残留字段 | `seeds`、`left_trace`、`right_trace`、`mid_position`、`width_base` 后续不再需要。 |
+| 5 | `runtime_t` 继续包含旧 seed/trace 字段 | 已删除旧主线残留字段 | `seeds`、`left_trace`、`right_trace`、`cross/ring/zebra`、`track_result_t`、`mid_position`、`width_base` 都不再存在。 |
 
 本阶段先不处理：
 
 - 上位机红/黄/绿线显示。
-- report 字段重写。
+- report 字段重写。（已完成：输出 `atg_*` 原生键）
 - ATG 元素状态的可视化。
 - 复杂参数自动调节。
 

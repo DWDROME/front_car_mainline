@@ -10,7 +10,7 @@
 // 1. 安全入口：停车线、无有效线时清状态并禁止输出。
 // 2. 目标速度：普通巡线用 target_rps，十字/环岛内用 element_target_rps。
 // 3. 反馈预处理：编码器 count -> 左右轮 rps；IMU yaw-rate -> yaw_now。
-// 4. 视觉外环：guide_error -> target_yaw。
+// 4. 视觉外环：control_input_t.guide_error -> target_yaw。
 // 5. yaw-rate 内环：target_yaw + yaw_now -> yaw_cmd。
 // 6. 差速运动学：center_rps + yaw_cmd -> target_l / target_r。
 // 7. 轮速环：target_l/r + encoder rps -> left/right duty。
@@ -211,7 +211,7 @@ void solve(const control_input_t *input, const control_feedback_t *fb, control_s
 
     // 3. 视觉外环：guide_error -> target_yaw
     //
-    // 输入：rt->track.guide_error，中线预瞄误差。
+    // 输入：control_input_t.guide_error，中线预瞄误差。
     // 输出：target_yaw，视觉外环给出的目标 yaw-rate。
     // 控制类型：PD；outer_kp 管转向强度，outer_kd 管误差变化率。
     // 主要参数：
