@@ -42,5 +42,12 @@ app/main.cpp
 ```text
 atg_reference/PORTING.md
 docs/13_mainline_pipeline_map.md
+docs/ATG新路线重构方案.md
+docs/ATG库接入点评估.md
+docs/IPM重标定流程.md
+docs/IPM调用调研.md
+docs/控制参数笔记.md
 docs/09_acceptance_checklist.md
 ```
+
+`docs/archive/` 只保留旧路线背景，不作为当前调参和改算法依据。

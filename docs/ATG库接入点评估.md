@@ -29,10 +29,10 @@
 | 点列平滑 | 旧 `blur_points` 已不是主线 | `imgproc.c::blur_points()` | 保留 ATG 实现。 | `line_blur_kernel=7` 是否适合当前图像需用直道帧确认。 |
 | 等距重采样 | 旧 resample 已不是主线 | `imgproc.c::resample_points()` | 保留 ATG 实现。 | `sample_dist` 与 `pixel_per_meter` 的组合决定点距语义。 |
 | 角度/NMS | 旧 boundary 角点已不是主线 | `local_angle_points()`, `nms_angle()` | 保留 ATG 作为 L/Y/直道判断依据。 | `angle_dist/sample_dist` 决定角点窗口。 |
-| L/Y 点识别 | 旧 `boundary.cpp` 已不是主线 | `find_corners()` | 由 ATG 负责元素入口特征。 | Y 路是否启用要和赛题需求确认；误识别会影响元素状态。 |
+| L/Y 点识别 | 历史本地实现已归档 | `find_corners()` | 由 ATG 负责元素入口特征。 | Y 路是否启用要和赛题需求确认；误识别会影响元素状态。 |
 | 直道判断 | 旧 straight 判断已不是主线 | `is_straight0`, `is_straight1` | 作为 ATG 元素触发条件保留。 | 直道失败优先看 `rpts*s_num` 与 `conf*_max`。 |
-| 十字 | 旧 `cross.cpp` 已不是主线 | `cross.c`, `Half_check.c` | 保留 ATG 的十字/半十字逻辑。 | 远线扫描和 `far_Lpt*` 需要上位机显示验证。 |
-| 圆环/回环 | 旧 `ring.cpp` 已不是主线 | `circle.c`, `round.c`, `Patching_Line.c` | 保留 ATG 圆环/回环和补线拼接。 | 编码器距离、补线点列、阶段切换需要实车验证。 |
+| 十字 | 历史本地实现已归档 | `cross.c`, `Half_check.c` | 保留 ATG 的十字/半十字逻辑。 | 远线扫描和 `far_Lpt*` 需要上位机显示验证。 |
+| 圆环/回环 | 历史本地实现已归档 | `circle.c`, `round.c`, `Patching_Line.c` | 保留 ATG 圆环/回环和补线拼接。 | 编码器距离、补线点列、阶段切换需要实车验证。 |
 | Y 路 | 当前项目旧路线不强调 | `yroad.c` | 先保留为 ATG 算法能力，但需要决定是否在比赛中启用。 | 如果赛题不需要，建议后续加显式开关，避免误触发。 |
 | 坡道 | 当前 LS2K 没接 TFmini | `Ramp.c` | 代码可保留，但输入传感器未接前只能视为待适配。 | `TFmini_Plus_Dis/Strong` 当前默认值无法代表真实坡道。 |
 | 道路分类/速度策略 | 当前速度由 YAML 控制 | `road.c` | 可以作为诊断保留；不要直接改 LS2K 速度策略。 | `pure_angle/Guide` 与差速控制量纲不同。 |
