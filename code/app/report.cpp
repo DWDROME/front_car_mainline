@@ -522,12 +522,13 @@ void print_live(uint32_t frame_id, const runtime_t *rt, int div)
     {
         return;
     }
-    if(div > 1 && frame_id % static_cast<uint32_t>(div) != 0U)
+    const int force_log = read_env_flag("FRONT_CAR_FORCE_LIVE_LOG", 0);
+    const int element_log = cross_type != CROSS_NONE || circle_type != CIRCLE_NONE;
+    if(!force_log && !element_log && div > 1 && frame_id % static_cast<uint32_t>(div) != 0U)
     {
         return;
     }
 
-    const int force_log = read_env_flag("FRONT_CAR_FORCE_LIVE_LOG", 0);
     const live_state_signature_t sig = make_live_state_signature(rt);
     if(!force_log && !live_state_changed(sig))
     {
@@ -557,7 +558,8 @@ void print_live(uint32_t frame_id, const runtime_t *rt, int div)
                 "near=%d/%d raw=%d/%d sel=%d/%d far=%d/%d far_raw=%d/%d "
                 "l=%d@%d/%d@%d far_l=%d@%d/%d@%d straight=%d/%d far_straight=%d/%d "
                 "circle_cnt=%d/%d/%d/%d lost=%d/%d conf=%.1f/%.1f/%.1f/%.1f dist=%d "
-                "m0=(%d,%d) ml=(%d,%d) md=%d/%d/%d cxcy=%.1f,%.1f guide=%.2f yaw=%d cmd=%d actual=%d signed=%d rps=%d/%d:%d/%d duty=%d/%d\n",
+                "m0=(%d,%d) ml=(%d,%d) md=%d/%d/%d cxcy=%.1f,%.1f guide=%.2f "
+                "atg=%.1f/%.1f/%.1f pure=%.2f/%.2f yaw=%d cmd=%d actual=%d signed=%d rps=%d/%d:%d/%d duty=%d/%d\n",
                 frame_id,
                 track_line_found(rt),
                 track_type,
@@ -612,6 +614,11 @@ void print_live(uint32_t frame_id, const runtime_t *rt, int div)
                 cx,
                 cy,
                 rt->vision.guide_error,
+                Guide,
+                Guide_up,
+                Guide_up_up,
+                pure_angle,
+                pure_angle_up,
                 rt->control.target_yaw_rate_mrad_s,
                 rt->control.yaw_cmd_mrad_s,
                 rt->control.actual_yaw_rate_mrad_s,

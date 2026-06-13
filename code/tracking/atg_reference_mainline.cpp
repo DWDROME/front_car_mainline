@@ -61,10 +61,7 @@ void copy_atg_midline(runtime_t *rt)
     }
 }
 
-// 速度自适应预瞄：预瞄距离 = clamp(lookahead_time_s * 目标车速, 0.20m, 0.58m)。
-// 0.58m 是 ATG 原工程值(相机视野极限)，0.20m 防止低速预瞄过近导致噪声敏感。
-// 参考点用 ATG normalize 当帧算好的 (cx,cy)——车轮点在 IPM 域的真实投影；
-// 旧 CONTROL_CENTER_X/START_HIGH 是 raw 语义常量，当 IPM 坐标用存在系统偏置。
+// 普通巡线用本车标定过的短预瞄误差，保证直道居中不被 ATG 原生 Guide 的远点权重带偏。
 double atg_lookahead_error(const midline_t *mid)
 {
     if(mid == nullptr || mid->step <= 0)
@@ -73,7 +70,6 @@ double atg_lookahead_error(const midline_t *mid)
     }
 
     const int lookahead = atg_lookahead_dist_px();
-    // 预瞄窗口随预瞄距离缩放(±20%，至少 ±4px)，对窗口内点取平均抑制单点噪声。
     const int window = std::max(4, lookahead / 5);
     const double ref_x = static_cast<double>(cx);
     const double ref_y = static_cast<double>(cy);
@@ -210,8 +206,18 @@ int tracking_process_frame(runtime_t *rt)
         yroad_type != YROAD_NONE ||
         ramp_type != RAMP_NONE ||
         garage_type != GARAGE_NONE;
-    const double bias = element_active ? 0.0 :
-                        static_cast<double>(control_config().guide_error_bias_deg);
-    rt->vision.guide_error = atg_lookahead_error(&rt->vision.mid) - bias;
+    if(element_active)
+    {
+        // ATG's Guide is the reference element control quantity computed from
+        // pure_angle and aim_distance. Its sign is opposite to the verified
+        // differential outer loop convention (outer_sign=-1).
+        rt->vision.guide_error = -static_cast<double>(Guide);
+    }
+    else
+    {
+        rt->vision.guide_error =
+            atg_lookahead_error(&rt->vision.mid) -
+            static_cast<double>(control_config().guide_error_bias_deg);
+    }
     return track_line_found(rt);
 }

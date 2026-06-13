@@ -13,6 +13,7 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <cmath>
 #include <unistd.h>
 
 #include <opencv2/imgcodecs.hpp>
@@ -23,6 +24,9 @@ extern "C" {
 
 namespace
 {
+constexpr double kEncoderCountsPerRev = 1024.0 * 4.0;
+constexpr double kAtgEncoderCountsPerMeter = 5800.0;
+
 struct live_profile_t
 {
     int enabled;
@@ -53,6 +57,22 @@ int abs_i_local(int value)
 int sign_i_local(int value)
 {
     return value < 0 ? -1 : 1;
+}
+
+int64_t atg_distance_counts_from_encoder_delta(const control_feedback_t &fb)
+{
+    const int64_t wheel_delta = (static_cast<int64_t>(fb.left_speed_count) +
+                                 static_cast<int64_t>(fb.right_speed_count)) / 2;
+    if(wheel_delta == 0)
+    {
+        return 0;
+    }
+
+    const control_config_t &c = control_config();
+    const double wheel_m = static_cast<double>(wheel_delta) / kEncoderCountsPerRev *
+                           3.14159265358979323846 *
+                           static_cast<double>(c.encoder_gear_diameter_m);
+    return static_cast<int64_t>(std::llround(wheel_m * kAtgEncoderCountsPerMeter));
 }
 
 control_input_t control_input_from_current_frame(const runtime_t *rt, int line_found)
@@ -526,7 +546,7 @@ int live(runtime_t *rt)
         // [t1->t2] 读编码器/IMU 反馈，并把左右编码器均值累加到 ATG 里程输入。
         control_feedback_t fb = {};
         drive_output_read_feedback(&fb, control_period_ms);
-        rt->encoder_total += (int64_t)(fb.left_speed_count + fb.right_speed_count) / 2;
+        rt->encoder_total += atg_distance_counts_from_encoder_delta(fb);
         if(spin_angle_deg != 0 && spin_yaw_mrad_s != 0 && fb.actual_yaw_rate_valid)
         {
             const double dt_s = fb.period_ms > 0 ? static_cast<double>(fb.period_ms) / 1000.0 : 0.0;

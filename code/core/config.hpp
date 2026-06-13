@@ -35,6 +35,7 @@ struct control_config_t
     float straight_error_threshold = 12.0F;
     float straight_turn_scale      = 0.6F;
     float max_target_yaw_rate      = 1.5F;
+    int   element_reverse_brake_percent = 0;
 
     // yaw-rate 内环 PI，只修正 target_yaw，不直接改 guide_error。
     float yaw_kp                   = 1.0F;

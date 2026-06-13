@@ -329,7 +329,8 @@ void solve(const control_input_t *input, const control_feedback_t *fb, control_s
     const float diff_mps = yaw_cmd * c.wheel_track_m * 0.5F;
     float target_l = (center_mps - diff_mps) / circ;
     float target_r = (center_mps + diff_mps) / circ;
-    if(input->spin_mode)
+    const int element_reverse_brake = clip_i(c.element_reverse_brake_percent, 0, c.max_duty_percent);
+    if(input->spin_mode || (input->element_active && element_reverse_brake > 0))
     {
         target_l = clip_f(target_l, -45.0F, 45.0F);
         target_r = clip_f(target_r, -45.0F, 45.0F);
@@ -389,7 +390,7 @@ void solve(const control_input_t *input, const control_feedback_t *fb, control_s
             g_left_i = i1;
         }
         duty_l = clip_f(ff + kp * e + ki * g_left_i, 0.0F, static_cast<float>(c.max_duty_percent));
-        if(input->spin_mode && target_l < 0.0F)
+        if((input->spin_mode || (input->element_active && element_reverse_brake > 0)) && target_l < 0.0F)
         {
             duty_l = -duty_l;
         }
@@ -438,7 +439,7 @@ void solve(const control_input_t *input, const control_feedback_t *fb, control_s
             g_right_i = i1;
         }
         duty_r = clip_f(ff + kp * e + ki * g_right_i, 0.0F, static_cast<float>(c.max_duty_percent));
-        if(input->spin_mode && target_r < 0.0F)
+        if((input->spin_mode || (input->element_active && element_reverse_brake > 0)) && target_r < 0.0F)
         {
             duty_r = -duty_r;
         }
@@ -455,11 +456,12 @@ void solve(const control_input_t *input, const control_feedback_t *fb, control_s
     out->right_target_rps_milli = round_i32(target_r * 1000.0F);
     out->left_actual_rps_milli = round_i32(g_left_rps * 1000.0F);
     out->right_actual_rps_milli = round_i32(g_right_rps * 1000.0F);
-    out->signed_output = input->spin_mode ? 1 : 0;
-    if(input->spin_mode)
+    out->signed_output = (input->spin_mode || (input->element_active && element_reverse_brake > 0)) ? 1 : 0;
+    if(out->signed_output)
     {
-        out->left_duty = clip_i(round_i32(duty_l), -c.max_duty_percent, c.max_duty_percent);
-        out->right_duty = clip_i(round_i32(duty_r), -c.max_duty_percent, c.max_duty_percent);
+        const int reverse_limit = input->spin_mode ? c.max_duty_percent : element_reverse_brake;
+        out->left_duty = clip_i(round_i32(duty_l), -reverse_limit, c.max_duty_percent);
+        out->right_duty = clip_i(round_i32(duty_r), -reverse_limit, c.max_duty_percent);
     }
     else
     {
