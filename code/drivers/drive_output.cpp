@@ -45,9 +45,14 @@ int64_t monotonic_ms()
 
 // 百分比占空 -> PWM 原始 duty 值。先强制钳到 kHardwareDutyLimitPercent(35%) 硬件安全上限：
 // 这是独立于 yaml max_duty_percent 的最后一道闸，任何上层算出的占空都不能突破它。
+int abs_i(int value)
+{
+    return value < 0 ? -value : value;
+}
+
 uint16_t percent_to_duty(zf_driver_pwm &pwm, int percent)
 {
-    percent = clip_i(percent, 0, kHardwareDutyLimitPercent);
+    percent = clip_i(abs_i(percent), 0, kHardwareDutyLimitPercent);
     pwm_info info = {};
     pwm.get_dev_info(&info);
     return static_cast<uint16_t>(static_cast<uint32_t>(info.duty_max) *
@@ -59,6 +64,12 @@ void set_forward_direction()
 {
     g_motor_dir_1.set_level(kMotorForwardLevel);
     g_motor_dir_2.set_level(kMotorForwardLevel);
+}
+
+void set_signed_direction(zf_driver_gpio &dir, int percent)
+{
+    const int reverse_level = kMotorForwardLevel == 0 ? 1 : 0;
+    dir.set_level(percent >= 0 ? kMotorForwardLevel : reverse_level);
 }
 
 // 清零左右编码器计数，配合"每周期读增量再清零"的用法。
@@ -143,7 +154,15 @@ void drive_output_apply(const control_state_t *ctrl)
         return;
     }
 
-    set_forward_direction();
+    if(ctrl->signed_output)
+    {
+        set_signed_direction(g_motor_dir_2, ctrl->left_duty);
+        set_signed_direction(g_motor_dir_1, ctrl->right_duty);
+    }
+    else
+    {
+        set_forward_direction();
+    }
     // 硬件映射：左轮 -> PWM2，右轮 -> PWM1（与文件头硬件合同一致，勿写反）。
     g_motor_pwm_2.set_duty(percent_to_duty(g_motor_pwm_2, ctrl->left_duty));
     g_motor_pwm_1.set_duty(percent_to_duty(g_motor_pwm_1, ctrl->right_duty));

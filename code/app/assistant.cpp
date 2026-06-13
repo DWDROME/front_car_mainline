@@ -25,16 +25,17 @@ extern "C" {
 //   角点      = Lpt0/Lpt1 (rpts0s/rpts1s 上的 L 角，经 inv_rot 投回原图画十字)
 //   环岛补线  = Splicing_*/leftline/rightline 按大佬显示分支的状态条件叠加在上半图
 //               （环岛 IN/OUT 时 rpts 控制选线直接取 Splicing_*_center，补线就是控制输入）
-//   IPM 下半  = rpts0s/rpts1s (IPM 重采样边线，暗 80/220) + rptsn (控制中线，白 255) 直接叠加
+//   IPM 下半  = rpts0s/rpts1s/rptsn 既作为 boundary 发给上位机，也用灰度像素直接叠加
 // 失败帧合同：reference_step.c 每帧入口清 ipts*_num/rptsn_num，find_corners() 清 Lpt*_found，
 // 因此这里不会显示旧帧点列。本文件是纯显示旁路，不读 runtime_t 算法字段，只取 rt->gray 当底图。
 
 namespace
 {
-constexpr const char *k_default_ip = "192.168.0.101"; // 上位机默认 IP
+constexpr const char *k_default_ip = "192.168.0.100"; // 上位机默认 IP
 constexpr int k_default_port = 8086;                  // 上位机默认端口
 constexpr int k_default_div = 20;                     // 发送分频：每 div 帧发一次图传
 constexpr int k_default_reconnect_div = 30;           // 断线后每 reconnect_div 帧重连一次
+constexpr int k_default_connect_ms = 30;              // 单次 TCP 连接最多等待时间，避免卡住主循环
 constexpr int k_display_point_stride = 2;             // 只影响上位机显示线，控制/识别点列不受影响
 constexpr int k_point_limit = POINT_MAX;
 constexpr int k_assistant_boundary_capacity = SEEKFREE_ASSISTANT_CAMERA_MAX_BOUNDARY;
@@ -59,10 +60,14 @@ enum display_channel_t
     DISPLAY_CHANNEL_MID = 1,
     DISPLAY_CHANNEL_RIGHT = 2,
     DISPLAY_CHANNEL_SEED_ROW = 3,
-    DISPLAY_CHANNEL_COUNT = 4,
+    DISPLAY_CHANNEL_IPM_LEFT = 4,
+    DISPLAY_CHANNEL_IPM_MID = 5,
+    DISPLAY_CHANNEL_IPM_RIGHT = 6,
+    DISPLAY_CHANNEL_LPT = 7,
+    DISPLAY_CHANNEL_COUNT = 8,
 };
 
-constexpr int k_display_boundary_limit = DISPLAY_CHANNEL_COUNT; // 左边线 / 中线 / 右边线 / 种子行
+constexpr int k_display_boundary_limit = DISPLAY_CHANNEL_COUNT; // raw 左/中/右 / 种子行 / IPM 左/中/右 / L 点十字
 
 static_assert(k_display_boundary_limit <= k_assistant_boundary_capacity,
               "display boundary count exceeds SeekFree assistant protocol capacity");
@@ -81,6 +86,7 @@ struct assistant_t_impl
     int connected;
     const char *ip;
     int port;
+    int connect_ms;
     zf_driver_tcp_client tcp;
     // 显示边界 raw 坐标缓冲：通道语义见 display_channel_t。
     uint8_t display_x[k_display_boundary_limit][k_point_limit];
@@ -155,7 +161,9 @@ int assistant_enabled()
 // 建一次 TCP 连接并初始化逐飞 assistant 接口和相机信息；成功置 connected=1。
 int connect_once()
 {
-    if(g_asst.tcp.init(g_asst.ip, static_cast<uint32>(g_asst.port)) != 0)
+    if(g_asst.tcp.init_with_timeout(g_asst.ip,
+                                    static_cast<uint32>(g_asst.port),
+                                    static_cast<uint32>(g_asst.connect_ms)) != 0)
     {
         g_asst.connected = 0;
         return 0;
@@ -173,7 +181,7 @@ int append_display_pt(uint8_t *xs, uint8_t *ys, int *count, int x, int y)
         return 0;
     }
     xs[*count] = static_cast<uint8_t>(std::clamp(x, 0, RAW_W - 1));
-    ys[*count] = static_cast<uint8_t>(std::clamp(y, 0, RAW_H - 1));
+    ys[*count] = static_cast<uint8_t>(std::clamp(y, 0, k_send_image_h - 1));
     ++(*count);
     return 1;
 }
@@ -217,6 +225,94 @@ int copy_atg_inv_pts(const float src[][2], int num, uint8_t *xs, uint8_t *ys)
         }
         append_display_pt(xs, ys, &n, x, y);
     }
+    return n;
+}
+
+// 把 IPM 域点列拷成上位机 XY boundary，纵坐标偏移到下半图。
+int copy_atg_ipm_pts(const float src[][2], int num, uint8_t *xs, uint8_t *ys)
+{
+    if(src == nullptr || xs == nullptr || ys == nullptr || num <= 0)
+    {
+        return 0;
+    }
+
+    int n = 0;
+    for(int i = 0; i < num && n < k_point_limit; i += k_display_point_stride)
+    {
+        const int x = round_i(src[i][0]);
+        const int y = round_i(src[i][1]);
+        if(x < 0 || x >= IPM_W || y < 0 || y >= IPM_H)
+        {
+            continue;
+        }
+        append_display_pt(xs, ys, &n, x, RAW_H + y);
+    }
+    return n;
+}
+
+// 上半 raw 图叠加专用的 IPM->raw 反投：参考版显示语义，不做 IPM 渲染域入口检查。
+// ATG 的 IPM 点列不受 160x120 渲染域约束（pixel_per_meter=116 时 1m 外 y<0，宽度可到 187），
+// 远处 L 点/补线点 IPM 坐标出渲染域是正常的；只要反投回 raw 后在画面内就应该显示。
+// perspective_lookup_ipm_to_raw() 的域检查只适用于下半 IPM 渲染图，不要用它画上半图标记。
+int ipm_pt_to_raw_display(float ix, float iy, int *x, int *y)
+{
+    if(x == nullptr || y == nullptr)
+    {
+        return 0;
+    }
+
+    const float x0 = Cal_inv_rot_x(ix, iy);
+    const float y0 = Cal_inv_rot_y(ix, iy);
+    const int rx = round_i(x0);
+    const int ry = round_i(y0);
+    if(!raw_point_valid(rx, ry))
+    {
+        return 0;
+    }
+    *x = rx;
+    *y = ry;
+    return 1;
+}
+
+void append_lpt_cross(int found, const float pts[][2], int num, int id, uint8_t *xs, uint8_t *ys, int *count)
+{
+    if(!found || pts == nullptr || xs == nullptr || ys == nullptr || count == nullptr || id < 0 || id >= num)
+    {
+        return;
+    }
+
+    int x = 0;
+    int y = 0;
+    if(!ipm_pt_to_raw_display(pts[id][0], pts[id][1], &x, &y))
+    {
+        return;
+    }
+
+    for(int dy = -k_marker_radius; dy <= k_marker_radius; ++dy)
+    {
+        if(raw_point_valid(x, y + dy))
+        {
+            append_display_pt(xs, ys, count, x, y + dy);
+        }
+    }
+    for(int dx = -k_marker_radius; dx <= k_marker_radius; ++dx)
+    {
+        if(dx == 0)
+        {
+            continue;
+        }
+        if(raw_point_valid(x + dx, y))
+        {
+            append_display_pt(xs, ys, count, x + dx, y);
+        }
+    }
+}
+
+int copy_lpt_crosses(uint8_t *xs, uint8_t *ys)
+{
+    int n = 0;
+    append_lpt_cross(Lpt0_found ? 1 : 0, rpts0s, rpts0s_num, Lpt0_rpts0s_id, xs, ys, &n);
+    append_lpt_cross(Lpt1_found ? 1 : 0, rpts1s, rpts1s_num, Lpt1_rpts1s_id, xs, ys, &n);
     return n;
 }
 
@@ -389,7 +485,7 @@ void draw_atg_corner(uint8_t image[][RAW_W],
 
     int x = 0;
     int y = 0;
-    if(!perspective_lookup_ipm_to_raw(round_i(pts[id][0]), round_i(pts[id][1]), &x, &y))
+    if(!ipm_pt_to_raw_display(pts[id][0], pts[id][1], &x, &y))
     {
         return;
     }
@@ -397,7 +493,7 @@ void draw_atg_corner(uint8_t image[][RAW_W],
 }
 
 // 种子行：穿过 ATG 起搜行 begin_y 的整条水平线，用独立通道发送。
-// image_handle() 从 (W/2 - begin_x, begin_y) 和 (W/2 + begin_x, begin_y) 向两侧扫，
+// image_handle() 从 (W/2 - begin_x, begin_y) 和 (W/2 + begin_x, begin_y) 分别向左右两侧扫，
 // 这条线告诉上位机"第一步起搜发生在画面哪一行"。
 int seed_row_pts(uint8_t *xs, uint8_t *ys)
 {
@@ -479,7 +575,7 @@ void draw_atg_ipm_line(uint8_t image[][RAW_W], const float pts[][2], int num, ui
     {
         int x = 0;
         int y = 0;
-        if(perspective_lookup_ipm_to_raw(round_i(pts[i][0]), round_i(pts[i][1]), &x, &y))
+        if(ipm_pt_to_raw_display(pts[i][0], pts[i][1], &x, &y))
         {
             image[y][x] = value;
         }
@@ -587,6 +683,40 @@ int config_points(const runtime_t *rt)
     point_count[DISPLAY_CHANNEL_SEED_ROW] =
         seed_row_pts(g_asst.display_x[DISPLAY_CHANNEL_SEED_ROW],
                      g_asst.display_y[DISPLAY_CHANNEL_SEED_ROW]);
+    point_count[DISPLAY_CHANNEL_IPM_LEFT] =
+        copy_atg_ipm_pts(rpts0s,
+                         rpts0s_num,
+                         g_asst.display_x[DISPLAY_CHANNEL_IPM_LEFT],
+                         g_asst.display_y[DISPLAY_CHANNEL_IPM_LEFT]);
+    point_count[DISPLAY_CHANNEL_IPM_MID] =
+        copy_atg_ipm_pts(rptsn,
+                         rptsn_num,
+                         g_asst.display_x[DISPLAY_CHANNEL_IPM_MID],
+                         g_asst.display_y[DISPLAY_CHANNEL_IPM_MID]);
+    point_count[DISPLAY_CHANNEL_IPM_RIGHT] =
+        copy_atg_ipm_pts(rpts1s,
+                         rpts1s_num,
+                         g_asst.display_x[DISPLAY_CHANNEL_IPM_RIGHT],
+                         g_asst.display_y[DISPLAY_CHANNEL_IPM_RIGHT]);
+    point_count[DISPLAY_CHANNEL_LPT] =
+        copy_lpt_crosses(g_asst.display_x[DISPLAY_CHANNEL_LPT],
+                         g_asst.display_y[DISPLAY_CHANNEL_LPT]);
+
+    // 通道数每帧固定：空通道发一个右下角哨兵点，避免上位机因边界数量跳变而闪屏。
+    // 这是显示协议占位，不是算法数据；线丢失时该通道整条收缩到角落一个点，诊断语义保留。
+    for(int channel = 0; channel < k_display_boundary_limit; ++channel)
+    {
+        if(point_count[channel] <= 0)
+        {
+            int n = 0;
+            append_display_pt(g_asst.display_x[channel],
+                              g_asst.display_y[channel],
+                              &n,
+                              RAW_W - 1,
+                              k_send_image_h - 1);
+            point_count[channel] = n;
+        }
+    }
 
     display_boundary_t bd[k_display_boundary_limit] = {};
     int boundary_count = 0;
@@ -621,6 +751,7 @@ void assistant_init()
     g_asst.connected = 0;
     g_asst.ip = nullptr;
     g_asst.port = 0;
+    g_asst.connect_ms = 0;
     std::memset(g_asst.display_x, 0, sizeof(g_asst.display_x));
     std::memset(g_asst.display_y, 0, sizeof(g_asst.display_y));
     std::memset(g_asst.image, 0, sizeof(g_asst.image));
@@ -629,6 +760,7 @@ void assistant_init()
     g_asst.reconnect_div = read_env_int_clamped("SMARTCAR_ASSISTANT_RECONNECT_DIV", k_default_reconnect_div, 1, 10000);
     g_asst.ip = read_env_text("SMARTCAR_ASSISTANT_IP", k_default_ip);
     g_asst.port = read_env_int_clamped("SMARTCAR_ASSISTANT_PORT", k_default_port, 1, 65535);
+    g_asst.connect_ms = read_env_int_clamped("SMARTCAR_ASSISTANT_CONNECT_MS", k_default_connect_ms, 1, 5000);
     if(!g_asst.enabled)
     {
         return;

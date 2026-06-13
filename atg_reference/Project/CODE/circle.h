@@ -30,6 +30,8 @@ extern int round_cirlce_left_num,round_cirlce_right_num;
 
 void check_circle();
 
+void reset_circle_entry_votes();
+
 void run_circle();
 
 void draw_circle();

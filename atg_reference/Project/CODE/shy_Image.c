@@ -7,15 +7,15 @@
 float pix[2];
 float rot[3][3]={
         //透视变换矩阵，由 tools/ipm_generator 生成
-        {-1.72393454e+01f, 2.83721180e-01f, 5.18585273e+02f},
-        {-9.41266082e+00f, -4.72752829e+00f, 4.47100790e+02f},
-        {-1.15772088e-01f, 2.12944470e-03f, 1.00000000e+00f}
+        {8.43604883e+00f, -5.37764759e-01f, -7.47876302e+01f},
+        {4.68988099e+00f, 2.57614609e+00f, -1.58119175e+02f},
+        {5.59094370e-02f, -3.33610220e-03f, 1.00000000e+00f}
 };
 float inv_rot[3][3]={
         //逆透视变换矩阵，由 tools/ipm_generator 生成
-        {-6.74777278e-02f, 9.74904184e-03f, 3.06341516e+01f},
-        {-5.03137681e-01f, 5.08474772e-01f, 3.35803197e+01f},
-        {-6.74063356e-03f, 4.58980210e-05f, 1.00000000e+00f}
+        {8.44643427e-02f, 3.24584062e-02f, 1.14491844e+01f},
+        {-5.57843240e-01f, 5.20206919e-01f, 4.05349149e+01f},
+        {-6.58337590e-03f, -7.92677709e-05f, 1.00000000e+00f}
 };
 float pix1[2],pix2[2],pix3[2],pix4[2];
 float dw_max,dw_top;
@@ -26,6 +26,18 @@ int16 delta_x= 0;
 int16 right_bound_x,left_bound_x;
 int8  Image_thres=7;
 float conf1,conf2,conf1_max,conf2_max;//用于记录当前边线计算中的最大角点，方便调试阈值
+
+int atg_seed0_found, atg_seed1_found;
+int atg_seed0_x = -1, atg_seed0_y = -1, atg_seed1_x = -1, atg_seed1_y = -1;
+int atg_lpt0_best_i = -1, atg_lpt1_best_i = -1;
+int atg_lpt0_best_im1 = -1, atg_lpt0_best_ip1 = -1;
+int atg_lpt1_best_im1 = -1, atg_lpt1_best_ip1 = -1;
+int atg_lpt0_pass_nms, atg_lpt0_pass_low, atg_lpt0_pass_high, atg_lpt0_pass_near, atg_lpt0_pass_dir;
+int atg_lpt1_pass_nms, atg_lpt1_pass_low, atg_lpt1_pass_high, atg_lpt1_pass_near, atg_lpt1_pass_dir;
+int atg_lpt0_accept_i = -1, atg_lpt1_accept_i = -1;
+float atg_lpt0_best_conf, atg_lpt1_best_conf;
+float atg_lpt0_best_x, atg_lpt0_best_y, atg_lpt1_best_x, atg_lpt1_best_y;
+float atg_lpt0_best_inv_x, atg_lpt0_best_inv_y, atg_lpt1_best_inv_x, atg_lpt1_best_inv_y;
 
 void thres_hold(uint8 *img_data, uint8 *output_data, int width, int height, int thres)
 {
@@ -80,6 +92,31 @@ float rot_min(float a,float b,float c,float d)
     for(int i=0;i<4;i++)  if(temp[i]<=temp[4])   temp[4]=temp[i];
     return temp[4];
 
+}
+
+static int seed_dark_run_found(image_t *img, int x, int y, int dir, int run, int block, int clip_val)
+{
+    int dark_num = 0;
+    const int half = block / 2;
+    for(int i = 1; i <= run; i++)
+    {
+        const int sx = x + dir * i;
+        int local_thres = 0;
+        for(int dy = -half; dy <= half; dy++)
+        {
+            for(int dx = -half; dx <= half; dx++)
+            {
+                local_thres += AT_IMAGE(img, sx + dx, y + dy);
+            }
+        }
+        local_thres /= block * block;
+        local_thres -= clip_val;
+        if(AT_IMAGE(img, sx, y) < local_thres)
+        {
+            dark_num++;
+        }
+    }
+    return dark_num >= run;
 }
 
 void rot_img_process(void)
@@ -137,61 +174,59 @@ void image_handle(void)
     }
     if(x1_flag==1) break;
      */
+    const int seed_dark_run = 2;
+    const int seed_y_top = 85;
+    const int seed_y_min = block_size / 2;
+    const int seed_y_max = img_raw.height - block_size / 2 - 1;
+    const int seed_y_stop = seed_y_top > seed_y_min ? seed_y_top : seed_y_min;
+    const int left_min_x = block_size / 2 + seed_dark_run;
+    const int right_max_x = img_raw.width - block_size / 2 - seed_dark_run - 1;
+    atg_seed0_found = atg_seed1_found = 0;
+    atg_seed0_x = atg_seed0_y = atg_seed1_x = atg_seed1_y = -1;
     int x1= img_raw.width / 2 - begin_x, y1 = begin_y;
     ipts0_num = sizeof(ipts0) / sizeof(ipts0[0]);
-    int local_thres_left = 0,local_thres_left_num=0;
-    for (; x1 > block_size/2; x1--){
-        //从给定的起始点开始向左去找左线
-        for(int i=1;i<=4;i++){
-            //判断连续的四个点，防止噪点误判
-            for (int dy = -block_size/2; dy <= block_size/2; dy++) {
-                for (int dx = -block_size/2; dx <= block_size/2; dx++) {
-                    local_thres_left += AT_IMAGE(&img_raw, x1 - i + dx, y1 + dy);
-                }
+    int left_seed_found = 0;
+    for(y1 = clip(begin_y, seed_y_min, seed_y_max); y1 >= seed_y_stop && !left_seed_found; y1--)
+    {
+        // 从图像中线左侧 begin_x 处开始向左找左边线起点。
+        for(x1 = img_raw.width / 2 - begin_x; x1 >= left_min_x; x1--)
+        {
+            if(seed_dark_run_found(&img_raw, x1, y1, -1, seed_dark_run, block_size, clip_value))
+            {
+                left_bound_x = x1;                              //用于限制传统车库搜索函数的坐标范围
+                atg_seed0_found = 1;
+                atg_seed0_x = x1;
+                atg_seed0_y = y1;
+                left_seed_found = 1;
+                break;
             }
-            local_thres_left /= block_size * block_size;
-            local_thres_left -= clip_value;
-            if(AT_IMAGE(&img_raw, x1 - i, y1) < local_thres_left)local_thres_left_num++;
-
         }
-        if(local_thres_left_num>=4) {
-            local_thres_left_num = 0;
-            left_bound_x = x1;                              //用于限制传统车库搜索函数的坐标范围
-            break;
-        }
-        else local_thres_left_num = 0;
-
-
     }
-    if (AT_IMAGE(&img_raw, x1 -1, y1) < local_thres_left){
+    if (left_seed_found){
         findline_lefthand_adaptive(&img_raw, block_size, clip_value, x1, y1, ipts0, &ipts0_num);
     }
     else ipts0_num = 0;
     int x2 = img_raw.width / 2 + begin_x, y2 = begin_y;
     ipts1_num = sizeof(ipts1) / sizeof(ipts1[0]);
-    int local_thres_right = 0,local_thres_right_num=0;
+    int right_seed_found = 0;
 
-    for(; x2 < img_raw.width - block_size/2; x2++)
+    for(y2 = clip(begin_y, seed_y_min, seed_y_max); y2 >= seed_y_stop && !right_seed_found; y2--)
     {
-        for(int i=1;i<=4;i++){
-            for (int dy = -block_size/2; dy <= block_size/2; dy++) {
-                for (int dx = -block_size/2; dx <= block_size/2; dx++) {
-                    local_thres_right += AT_IMAGE(&img_raw, x2 + i + dx, y2 + dy);
-                }
+        // 从图像中线右侧 begin_x 处开始向右找右边线起点。
+        for(x2 = img_raw.width / 2 + begin_x; x2 <= right_max_x; x2++)
+        {
+            if(seed_dark_run_found(&img_raw, x2, y2, 1, seed_dark_run, block_size, clip_value))
+            {
+                right_bound_x = x2;                               //用于限制传统车库搜索函数的坐标范围
+                atg_seed1_found = 1;
+                atg_seed1_x = x2;
+                atg_seed1_y = y2;
+                right_seed_found = 1;
+                break;
             }
-            local_thres_right /= block_size * block_size;
-            local_thres_right -= clip_value;
-            if(AT_IMAGE(&img_raw, x2 + i, y2) < local_thres_right)local_thres_right_num++;
-
         }
-        if(local_thres_right_num>=4) {
-            local_thres_right_num = 0;
-            right_bound_x = x2;                               //用于限制传统车库搜索函数的坐标范围
-            break;
-        }
-        else local_thres_right_num = 0;
     }
-    if (AT_IMAGE(&img_raw, x2+1, y2) < local_thres_right){
+    if (right_seed_found){
         findline_righthand_adaptive(&img_raw, block_size, clip_value, x2, y2, ipts1, &ipts1_num);
     }
 
@@ -262,12 +297,36 @@ void find_corners() {
     is_straight0 = rpts0s_num > (1.5 / sample_dist);    //长直道判断初始化
     is_straight1 = rpts1s_num > (1.5 / sample_dist);    //长直道判断初始化
     conf1_max =conf2_max = 0;
+    atg_lpt0_best_i = atg_lpt1_best_i = -1;
+    atg_lpt0_best_im1 = atg_lpt0_best_ip1 = -1;
+    atg_lpt1_best_im1 = atg_lpt1_best_ip1 = -1;
+    atg_lpt0_pass_nms = atg_lpt0_pass_low = atg_lpt0_pass_high = atg_lpt0_pass_near = atg_lpt0_pass_dir = 0;
+    atg_lpt1_pass_nms = atg_lpt1_pass_low = atg_lpt1_pass_high = atg_lpt1_pass_near = atg_lpt1_pass_dir = 0;
+    atg_lpt0_accept_i = atg_lpt1_accept_i = -1;
+    atg_lpt0_best_conf = atg_lpt1_best_conf = -1000.0f;
+    atg_lpt0_best_x = atg_lpt0_best_y = atg_lpt1_best_x = atg_lpt1_best_y = -1.0f;
+    atg_lpt0_best_inv_x = atg_lpt0_best_inv_y = atg_lpt1_best_inv_x = atg_lpt1_best_inv_y = -1.0f;
     for (int i = 0; i < MIN(rpts0s_num,80); i++) {
         if (rpts0an[i] == 0) continue;
         int im1 = clip(i - (int) round(angle_dist / sample_dist), 0, rpts0s_num - 1);
         int ip1 = clip(i + (int) round(angle_dist / sample_dist), 0, rpts0s_num - 1);
         conf1 = 0;
         conf1  = fabs(rpts0a[i]) - (fabs(rpts0a[im1]) + fabs(rpts0a[ip1])) / 2;
+        if (atg_lpt0_best_i < 0 || conf1 > atg_lpt0_best_conf) {
+            atg_lpt0_best_i = i;
+            atg_lpt0_best_im1 = im1;
+            atg_lpt0_best_ip1 = ip1;
+            atg_lpt0_best_conf = conf1;
+            atg_lpt0_best_x = rpts0s[i][0];
+            atg_lpt0_best_y = rpts0s[i][1];
+            atg_lpt0_best_inv_x = Cal_inv_rot_x(rpts0s[i][0], rpts0s[i][1]);
+            atg_lpt0_best_inv_y = Cal_inv_rot_y(rpts0s[i][0], rpts0s[i][1]);
+            atg_lpt0_pass_nms = 1;
+            atg_lpt0_pass_low = conf1 > (round_type ? 50.0f : 60.0f) / 180.0f * PI;
+            atg_lpt0_pass_high = conf1 < 120.0f / 180.0f * PI;
+            atg_lpt0_pass_near = i < 45;
+            atg_lpt0_pass_dir = rpts0s[im1][0] > rpts0s[ip1][0] && rpts0s[im1][1] > rpts0s[ip1][1];
+        }
         //Y角点阈值
         if (Ypt0_found == false && 40. / 180. * PI < conf1 && conf1 < 66. / 180. * PI && i < 0.7 / sample_dist) {
             Ypt0_rpts0s_id = i;
@@ -280,6 +339,7 @@ void find_corners() {
                     &&(rpts0s[im1][0]>rpts0s[ip1][0]&&rpts0s[im1][1]>rpts0s[ip1][1])) {
                 Lpt0_rpts0s_id = i;
                 Lpt0_found = true;
+                atg_lpt0_accept_i = i;
             }
         }
         else{
@@ -289,6 +349,7 @@ void find_corners() {
             {
                 Lpt0_rpts0s_id = i;
                 Lpt0_found = true;
+                atg_lpt0_accept_i = i;
             }
         }
 
@@ -306,6 +367,21 @@ void find_corners() {
         int ip1 = clip(i + (int) round(angle_dist / sample_dist), 0, rpts1s_num - 1);
         conf2 =0;
         conf2 = fabs(rpts1a[i]) - (fabs(rpts1a[im1]) + fabs(rpts1a[ip1])) / 2;
+        if (atg_lpt1_best_i < 0 || conf2 > atg_lpt1_best_conf) {
+            atg_lpt1_best_i = i;
+            atg_lpt1_best_im1 = im1;
+            atg_lpt1_best_ip1 = ip1;
+            atg_lpt1_best_conf = conf2;
+            atg_lpt1_best_x = rpts1s[i][0];
+            atg_lpt1_best_y = rpts1s[i][1];
+            atg_lpt1_best_inv_x = Cal_inv_rot_x(rpts1s[i][0], rpts1s[i][1]);
+            atg_lpt1_best_inv_y = Cal_inv_rot_y(rpts1s[i][0], rpts1s[i][1]);
+            atg_lpt1_pass_nms = 1;
+            atg_lpt1_pass_low = conf2 > (round_type ? 50.0f : 60.0f) / 180.0f * PI;
+            atg_lpt1_pass_high = conf2 < 120.0f / 180.0f * PI;
+            atg_lpt1_pass_near = i < 45;
+            atg_lpt1_pass_dir = 1;
+        }
         if (Ypt1_found == false && 40. / 180. * PI < conf2 && conf2 < 66. / 180. * PI && i < 0.7 / sample_dist) {
             Ypt1_rpts1s_id = i;
             Ypt1_found = true;
@@ -314,12 +390,14 @@ void find_corners() {
             if (Lpt1_found == false && 50. / 180. * PI < conf2 && conf2 < 120. / 180. * PI&& i < 45 ) {
                 Lpt1_rpts1s_id = i;
                 Lpt1_found = true;
+                atg_lpt1_accept_i = i;
             }
         }
         else{
             if (Lpt1_found == false && 73. / 180. * PI < conf2 && conf2 < 120. / 180. * PI&& i < 45 ) {
                 Lpt1_rpts1s_id = i;
                 Lpt1_found = true;
+                atg_lpt1_accept_i = i;
             }
         }
         if (conf2 > 15. / 180. * PI && i < 1.5 / sample_dist) is_straight1 = false;
@@ -416,5 +494,3 @@ void lcd_Show_inv_Line(int num,float matrix[][2],float inv_matrix[][2],uint16 co
                 if(1<((inv_matrix[i][0]+y)/X_zoom)&&((inv_matrix[i][0]+y)/X_zoom)<101&&1<(inv_matrix[i][1]/Y_zoom)&&(inv_matrix[i][1]/Y_zoom)<64)
                     lcd_drawpoint((inv_matrix[i][0]+y)/X_zoom,inv_matrix[i][1]/Y_zoom,color);
 }
-
-

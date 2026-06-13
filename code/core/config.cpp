@@ -123,6 +123,8 @@ void set_field(const std::string &k, const std::string &v)
     F(max_yaw_rate_correction)
     F(rps_filter_alpha)
     I(yaw_rate_filter_window)
+    F(lookahead_time_s)
+    F(guide_error_bias_deg)
     I(max_duty_percent)
 #undef I
 #undef F

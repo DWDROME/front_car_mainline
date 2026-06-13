@@ -67,7 +67,7 @@ imu:
 
 assistant:
     enable = SMARTCAR_ASSISTANT && SMARTCAR_VIEWER
-    ip     = SMARTCAR_ASSISTANT_IP，默认 192.168.0.101
+    ip     = SMARTCAR_ASSISTANT_IP，默认 192.168.0.100
     port   = SMARTCAR_ASSISTANT_PORT，默认 8086
     div    = SMARTCAR_ASSISTANT_DIV，默认 20
 ```

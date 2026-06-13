@@ -13,6 +13,7 @@ void print_live(uint32_t frame_id, const runtime_t *rt, int div);
 // 取报告用中线起点、预瞄点、预瞄距离和完整前方预瞄门结果。
 void mid_points_for_report(const midline_t &mid,
                            int ref_y,
+                           int aim_distance,
                            point_t *m0,
                            point_t *ml,
                            int *ml_dist,

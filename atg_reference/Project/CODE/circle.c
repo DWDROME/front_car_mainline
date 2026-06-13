@@ -3,15 +3,15 @@
 #include "headfile.h"
 #define ENCODER_PER_METER   (5800)
 int is_large_circle,is_small_circle,circle_count;  //记录赛道有几个圆环及其大小，配合离线调参可以提前预判大小圆环从而进行加减速操作
-int circle_in_length=30,circle_in_distance=2000;   //入环时内侧边线长度，入环时编码器记录长度
+int circle_in_length=60,circle_in_distance=2000;   //入环时内侧边线长度，入环时编码器记录长度
 enum circle_type_e circle_type = CIRCLE_NONE;
 
 
 const char *circle_type_name[CIRCLE_NUM] = {
         "CIRCLE_NONE",
         "CIRCLE_LEFT_BEGIN", "CIRCLE_RIGHT_BEGIN",
-        "CIRCLE_LEFT_RUNNING", "CIRCLE_RIGHT_RUNNING",
         "CIRCLE_LEFT_IN", "CIRCLE_RIGHT_IN",
+        "CIRCLE_LEFT_RUNNING", "CIRCLE_RIGHT_RUNNING",
         "CIRCLE_LEFT_OUT", "CIRCLE_RIGHT_OUT",
         "CIRCLE_LEFT_END", "CIRCLE_RIGHT_END",
 };
@@ -22,20 +22,48 @@ int64_t circle_encoder;                                     // 编码器，用�
 int none_left_line = 0, none_right_line = 0;                //丢线标志位
 int have_left_line = 0, have_right_line = 0;                //重找到线的线标志位
 
+enum
+{
+    CIRCLE_ENTRY_CONFIRM_FRAMES = 2,
+    CIRCLE_IN_DISTANCE_CONFIRM = 4500,
+};
+
+static int circle_left_entry_votes;
+static int circle_right_entry_votes;
+
+void reset_circle_entry_votes()
+{
+    circle_left_entry_votes = 0;
+    circle_right_entry_votes = 0;
+}
+
 void check_circle() {
+    if (circle_type != CIRCLE_NONE) {
+        reset_circle_entry_votes();
+        return;
+    }
+
     // 非圆环模式下，单边L角点, 单边长直道，且当比较靠近近处时才开启判别，防止远端图像畸变产生的误判（凡是id<一个数的都是为了靠近时再识别，在远处识别会有误判）
-    if (circle_type == CIRCLE_NONE && Lpt0_found && !Lpt1_found && is_straight1&&Lpt0_rpts0s_id<25) {
+    const int left_entry = Lpt0_found && !Lpt1_found && is_straight1 && Lpt0_rpts0s_id < 25;
+    const int right_entry = !Lpt0_found && Lpt1_found && is_straight0 && Lpt1_rpts1s_id < 25;
+
+    circle_left_entry_votes = left_entry ? circle_left_entry_votes + 1 : 0;
+    circle_right_entry_votes = right_entry ? circle_right_entry_votes + 1 : 0;
+
+    if (circle_left_entry_votes >= CIRCLE_ENTRY_CONFIRM_FRAMES) {
         circle_type = CIRCLE_LEFT_BEGIN;
         none_left_line = 0;
         have_left_line = 0;
         Count_dis_Flag=0;
+        reset_circle_entry_votes();
     }
 
-    if (circle_type == CIRCLE_NONE && !Lpt0_found && Lpt1_found && is_straight0&&Lpt1_rpts1s_id<25) {
+    if (circle_right_entry_votes >= CIRCLE_ENTRY_CONFIRM_FRAMES) {
         circle_type = CIRCLE_RIGHT_BEGIN;
         none_right_line = 0;
         have_right_line = 0;
         Count_dis_Flag=0;
+        reset_circle_entry_votes();
     }
 }
 
@@ -68,17 +96,18 @@ void run_circle() {
             is_large_circle = 1;
             is_small_circle= 0;
         }
-    }
         else
             is_small_circle = 1;
 
-        if(rpts0s_num<35)Count_dis_Flag=1;
+        Count_dis_Flag=1;
         if(rpts1s_num < 0.2 / sample_dist)none_right_line++;         //右侧长直道丢失
-        if(rpts1s_num >25&&none_right_line>1){                       //右侧经历一个先丢线再有线的过程，表示车身已经进入圆环内了，跳转至CIRCLE_LEFT_RUNNING，清理还原标志位
+        if((rpts1s_num >25&&none_right_line>1) ||
+           (total_distence > CIRCLE_IN_DISTANCE_CONFIRM&&rpts0s_num < circle_in_length&&rpts1s_num >25)){ //低速下右线可能一直可见；需先在 IN 阶段行驶一段距离
             circle_type = CIRCLE_LEFT_RUNNING;
             Count_dis_Flag=0;
             none_right_line = 0;
         }
+    }
     //正常巡线，寻外圆右线
     else if (circle_type == CIRCLE_LEFT_RUNNING) {
         track_type = TRACK_RIGHT;
@@ -102,7 +131,7 @@ void run_circle() {
         track_type = TRACK_LEFT;
         Count_dis_Flag=1;
         if(rpts1s_num < 5)           none_right_line++;                                          //右侧经历拐点消失后丢线标志位启动
-        if(rpts1s_num>30&&!Lpt1_found&&none_right_line>1||total_distence>4500)                   //右侧重新出现长直道边线或者编码器累计一定的长度强制跳出
+        if((rpts1s_num>30&&!Lpt1_found&&none_right_line>1)||total_distence>4500)                  //右侧重新出现长直道边线或者编码器累计一定的长度强制跳出
         {
             circle_type = CIRCLE_LEFT_END;
             none_right_line= 0;
@@ -154,9 +183,10 @@ void run_circle() {
             is_small_circle = 0;
         }
         else             is_small_circle = 1;
-        if(rpts1s_num<35)Count_dis_Flag=1;
+        Count_dis_Flag=1;
         if(rpts0s_num < 5)none_left_line++;
-        if(rpts0s_num >25&&none_left_line>1){
+        if((rpts0s_num >25&&none_left_line>1) ||
+           (total_distence > CIRCLE_IN_DISTANCE_CONFIRM&&rpts1s_num < circle_in_length&&rpts0s_num >25)){
             circle_type = CIRCLE_RIGHT_RUNNING; Count_dis_Flag=0;
             begin_y=BEGIN_Y;
             none_left_line = 0;
@@ -212,4 +242,3 @@ void run_circle() {
         }
     }
 }
-

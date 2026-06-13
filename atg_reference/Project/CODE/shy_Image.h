@@ -27,6 +27,17 @@ extern int16 delta_y, delta_x;
 extern float dw_max,dw_top;
 extern int16 right_bound_x,left_bound_x;
 extern float conf1,conf2,conf1_max,conf2_max;
+extern int atg_seed0_found, atg_seed1_found;
+extern int atg_seed0_x, atg_seed0_y, atg_seed1_x, atg_seed1_y;
+extern int atg_lpt0_best_i, atg_lpt1_best_i;
+extern int atg_lpt0_best_im1, atg_lpt0_best_ip1;
+extern int atg_lpt1_best_im1, atg_lpt1_best_ip1;
+extern int atg_lpt0_pass_nms, atg_lpt0_pass_low, atg_lpt0_pass_high, atg_lpt0_pass_near, atg_lpt0_pass_dir;
+extern int atg_lpt1_pass_nms, atg_lpt1_pass_low, atg_lpt1_pass_high, atg_lpt1_pass_near, atg_lpt1_pass_dir;
+extern int atg_lpt0_accept_i, atg_lpt1_accept_i;
+extern float atg_lpt0_best_conf, atg_lpt1_best_conf;
+extern float atg_lpt0_best_x, atg_lpt0_best_y, atg_lpt1_best_x, atg_lpt1_best_y;
+extern float atg_lpt0_best_inv_x, atg_lpt0_best_inv_y, atg_lpt1_best_inv_x, atg_lpt1_best_inv_y;
 //void Porcess_Image(void);
 
 

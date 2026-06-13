@@ -296,8 +296,9 @@ void print_usage(const char *name)
     std::printf("  SMARTCAR_CONTROL_CENTER_X=86   # tracking control center fallback override\n");
     std::printf("  SMARTCAR_ASSISTANT=1           # seekfree assistant stream\n");
     std::printf("  SMARTCAR_VIEWER=0              # legacy alias for disabling assistant stream\n");
-    std::printf("  SMARTCAR_ASSISTANT_IP=192.168.0.101 # upper-monitor ip\n");
+    std::printf("  SMARTCAR_ASSISTANT_IP=192.168.0.100 # upper-monitor ip\n");
     std::printf("  SMARTCAR_ASSISTANT_PORT=8086   # upper-monitor port\n");
+    std::printf("  SMARTCAR_ASSISTANT_CONNECT_MS=30 # upper-monitor connect timeout\n");
     std::printf("  SMARTCAR_ASSISTANT_DIV=20      # upper-monitor send divider\n");
     std::printf("  SMARTCAR_ASSISTANT_RECONNECT_DIV=30 # reconnect every N frames if disconnected\n");
 }

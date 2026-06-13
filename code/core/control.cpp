@@ -92,6 +92,16 @@ float count_to_rps(int cnt, int ms)
     return static_cast<float>(cnt) / k_counts_per_rev * 1000.0F / static_cast<float>(ms);
 }
 
+float abs_f(float v)
+{
+    return v < 0.0F ? -v : v;
+}
+
+int sign_f(float v)
+{
+    return v < 0.0F ? -1 : 1;
+}
+
 // 对 IMU yaw-rate 做滑动平均；单位 rad/s。g_yaw_buf 是环形缓冲，g_yaw_pos 写满 window 后回绕。
 float yaw_avg(float yaw, int window)
 {
@@ -163,6 +173,10 @@ void solve(const control_input_t *input, const control_feedback_t *fb, control_s
     {
         center_rps = c.element_target_rps;
     }
+    if(input->spin_mode)
+    {
+        center_rps = 0.0F;
+    }
 
     // 1. 编码器反馈：count -> rps -> 低通
     //
@@ -221,20 +235,30 @@ void solve(const control_input_t *input, const control_feedback_t *fb, control_s
     //   straight_error_threshold / straight_turn_scale 抑制直道小摆动；
     //   max_target_yaw_rate 限制视觉外环最大目标角速度。
     // 调参风险：outer_kp 太大容易蛇形；outer_sign 反了会越修越偏；outer_kd 会放大视觉抖动。
-    const float err = static_cast<float>(input->guide_error);
-    float derr = 0.0F;
-    if(g_has_err && dt > 0.0F)
+    float target_yaw = 0.0F;
+    if(input->fixed_yaw_rate_valid)
     {
-        derr = (err - g_last_err) / dt;
+        target_yaw = static_cast<float>(input->fixed_yaw_rate_mrad_s) / 1000.0F;
+        g_last_err = 0.0F;
+        g_has_err = 0;
     }
-    g_last_err = err;
-    g_has_err = 1;
-
-    float target_yaw = c.outer_kp * err + c.outer_kd * derr;
-    target_yaw *= c.outer_sign;
-    if(std::fabs(err) < c.straight_error_threshold)
+    else
     {
-        target_yaw *= c.straight_turn_scale;
+        const float err = static_cast<float>(input->guide_error);
+        float derr = 0.0F;
+        if(g_has_err && dt > 0.0F)
+        {
+            derr = (err - g_last_err) / dt;
+        }
+        g_last_err = err;
+        g_has_err = 1;
+
+        target_yaw = c.outer_kp * err + c.outer_kd * derr;
+        target_yaw *= c.outer_sign;
+        if(!input->element_active && std::fabs(err) < c.straight_error_threshold)
+        {
+            target_yaw *= c.straight_turn_scale;
+        }
     }
     target_yaw = clip_f(target_yaw, -c.max_target_yaw_rate, c.max_target_yaw_rate);
 
@@ -305,10 +329,17 @@ void solve(const control_input_t *input, const control_feedback_t *fb, control_s
     const float diff_mps = yaw_cmd * c.wheel_track_m * 0.5F;
     float target_l = (center_mps - diff_mps) / circ;
     float target_r = (center_mps + diff_mps) / circ;
-    // 左右目标轮速钳到 [0, 45] rps：45 是电机/编码器能达到的合理转速上限，挡住差速算出的离谱目标；
-    // 不允许倒转故下限取 0。最终占空还会再受 max_duty_percent 限制。
-    target_l = clip_f(target_l, 0.0F, 45.0F);
-    target_r = clip_f(target_r, 0.0F, 45.0F);
+    if(input->spin_mode)
+    {
+        target_l = clip_f(target_l, -45.0F, 45.0F);
+        target_r = clip_f(target_r, -45.0F, 45.0F);
+    }
+    else
+    {
+        // 巡线模式不倒车，目标轮速钳到 [0, 45] rps。
+        target_l = clip_f(target_l, 0.0F, 45.0F);
+        target_r = clip_f(target_r, 0.0F, 45.0F);
+    }
 
     // 6. 左轮 FF+PI：target_l + left encoder rps -> duty_l
     //
@@ -329,7 +360,9 @@ void solve(const control_input_t *input, const control_feedback_t *fb, control_s
     }
 
     float duty_l = 0.0F;
-    if(target_l <= 0.0F)
+    const float abs_target_l = abs_f(target_l);
+    const float signed_actual_l = static_cast<float>(sign_f(target_l)) * g_left_rps;
+    if(abs_target_l <= 0.0F)
     {
         g_left_i = 0.0F;
     }
@@ -337,8 +370,8 @@ void solve(const control_input_t *input, const control_feedback_t *fb, control_s
     {
         const float kp = c.left_speed_kp;
         const float ki = c.left_speed_ki;
-        const float ff = c.left_speed_base_percent * target_l / ff_ref;
-        const float e = target_l - g_left_rps;
+        const float ff = c.left_speed_base_percent * abs_target_l / ff_ref;
+        const float e = abs_target_l - signed_actual_l;
         const float i1 = clip_f(g_left_i + e * dt, -k_speed_i_max, k_speed_i_max);
         const float u1 = ff + kp * e + ki * i1;
 
@@ -355,8 +388,11 @@ void solve(const control_input_t *input, const control_feedback_t *fb, control_s
         {
             g_left_i = i1;
         }
-        duty_l = ff + kp * e + ki * g_left_i;
-        duty_l = clip_f(duty_l, 0.0F, static_cast<float>(c.max_duty_percent));
+        duty_l = clip_f(ff + kp * e + ki * g_left_i, 0.0F, static_cast<float>(c.max_duty_percent));
+        if(input->spin_mode && target_l < 0.0F)
+        {
+            duty_l = -duty_l;
+        }
     }
 
     // 7. 右轮 FF+PI：target_r + right encoder rps -> duty_r
@@ -373,7 +409,9 @@ void solve(const control_input_t *input, const control_feedback_t *fb, control_s
     // 调参风险：右轮参数不要默认照抄左轮；左右机械差异会体现在 base_percent 和 PI 上。
     // 注意：右轮单独一段，不和左轮抽成通用函数，方便现场对比左右参数和日志。
     float duty_r = 0.0F;
-    if(target_r <= 0.0F)
+    const float abs_target_r = abs_f(target_r);
+    const float signed_actual_r = static_cast<float>(sign_f(target_r)) * g_right_rps;
+    if(abs_target_r <= 0.0F)
     {
         g_right_i = 0.0F;
     }
@@ -381,8 +419,8 @@ void solve(const control_input_t *input, const control_feedback_t *fb, control_s
     {
         const float kp = c.right_speed_kp;
         const float ki = c.right_speed_ki;
-        const float ff = c.right_speed_base_percent * target_r / ff_ref;
-        const float e = target_r - g_right_rps;
+        const float ff = c.right_speed_base_percent * abs_target_r / ff_ref;
+        const float e = abs_target_r - signed_actual_r;
         const float i1 = clip_f(g_right_i + e * dt, -k_speed_i_max, k_speed_i_max);
         const float u1 = ff + kp * e + ki * i1;
 
@@ -399,8 +437,11 @@ void solve(const control_input_t *input, const control_feedback_t *fb, control_s
         {
             g_right_i = i1;
         }
-        duty_r = ff + kp * e + ki * g_right_i;
-        duty_r = clip_f(duty_r, 0.0F, static_cast<float>(c.max_duty_percent));
+        duty_r = clip_f(ff + kp * e + ki * g_right_i, 0.0F, static_cast<float>(c.max_duty_percent));
+        if(input->spin_mode && target_r < 0.0F)
+        {
+            duty_r = -duty_r;
+        }
     }
 
     // 输出给 report / drive_output：
@@ -408,9 +449,23 @@ void solve(const control_input_t *input, const control_feedback_t *fb, control_s
     //   actual_yaw_rate_mrad_s 记录滤波后的陀螺反馈
     //   left_duty/right_duty   交给 drive_output.cpp 做 PWM 硬件映射
     out->target_yaw_rate_mrad_s = round_i32(target_yaw * 1000.0F);
+    out->yaw_cmd_mrad_s = round_i32(yaw_cmd * 1000.0F);
     out->actual_yaw_rate_mrad_s = round_i32(yaw_now * 1000.0F);
-    out->left_duty = clip_i(round_i32(duty_l), 0, c.max_duty_percent);
-    out->right_duty = clip_i(round_i32(duty_r), 0, c.max_duty_percent);
+    out->left_target_rps_milli = round_i32(target_l * 1000.0F);
+    out->right_target_rps_milli = round_i32(target_r * 1000.0F);
+    out->left_actual_rps_milli = round_i32(g_left_rps * 1000.0F);
+    out->right_actual_rps_milli = round_i32(g_right_rps * 1000.0F);
+    out->signed_output = input->spin_mode ? 1 : 0;
+    if(input->spin_mode)
+    {
+        out->left_duty = clip_i(round_i32(duty_l), -c.max_duty_percent, c.max_duty_percent);
+        out->right_duty = clip_i(round_i32(duty_r), -c.max_duty_percent, c.max_duty_percent);
+    }
+    else
+    {
+        out->left_duty = clip_i(round_i32(duty_l), 0, c.max_duty_percent);
+        out->right_duty = clip_i(round_i32(duty_r), 0, c.max_duty_percent);
+    }
 }
 
 } // namespace

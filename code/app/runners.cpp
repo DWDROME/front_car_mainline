@@ -45,6 +45,16 @@ struct camera_options_t
     int fps;
 };
 
+int abs_i_local(int value)
+{
+    return value < 0 ? -value : value;
+}
+
+int sign_i_local(int value)
+{
+    return value < 0 ? -1 : 1;
+}
+
 control_input_t control_input_from_current_frame(const runtime_t *rt, int line_found)
 {
     control_input_t input = {};
@@ -60,6 +70,37 @@ control_input_t control_input_from_current_frame(const runtime_t *rt, int line_f
         circle_type != CIRCLE_NONE ? 1 : 0;
     // ATG2022 当前接入链没有原生停车线状态；不要把旧 zebra 语义伪造成 stop_line。
     input.stop_line = 0;
+
+    if(read_env_flag("FRONT_CAR_FORCE_LINE", 0))
+    {
+        input.line_found = 1;
+        input.stop_line = 0;
+        input.element_active = 0;
+        input.guide_error = 0.0;
+    }
+
+    const int fixed_yaw_mrad_s = read_env_int("FRONT_CAR_FIXED_YAW_MRAD_S", 0);
+    if(fixed_yaw_mrad_s != 0)
+    {
+        input.line_found = 1;
+        input.stop_line = 0;
+        input.element_active = 0;
+        input.fixed_yaw_rate_valid = 1;
+        input.fixed_yaw_rate_mrad_s = fixed_yaw_mrad_s;
+        input.guide_error = 0.0;
+    }
+
+    const int spin_yaw_mrad_s = read_env_int("FRONT_CAR_SPIN_YAW_MRAD_S", 0);
+    if(spin_yaw_mrad_s != 0)
+    {
+        input.line_found = 1;
+        input.stop_line = 0;
+        input.element_active = 0;
+        input.fixed_yaw_rate_valid = 1;
+        input.fixed_yaw_rate_mrad_s = spin_yaw_mrad_s;
+        input.spin_mode = 1;
+        input.guide_error = 0.0;
+    }
     return input;
 }
 
@@ -238,8 +279,10 @@ void print_replay_frame(int frame, const runtime_t *rt)
     int ml_dist = -1;
     int max_dist = -1;
     int ml_forward = 0;
+    const int aim_distance = atg_lookahead_dist_px();
     mid_points_for_report(rt->vision.mid,
                           rt->vision.control_ref.y,
+                          aim_distance,
                           &m0,
                           &ml,
                           &ml_dist,
@@ -423,6 +466,9 @@ int live(runtime_t *rt)
     int div = read_env_int_clamped("FRONT_CAR_PRINT_DIV", default_live_print_divider(), 1, 10000);
     int drive_enabled = read_env_flag("FRONT_CAR_ENABLE_DRIVE", 0);
     int process_fps = read_env_int_clamped("FRONT_CAR_PROCESS_FPS", camera.fps, 1, 120);
+    int run_ms = read_env_int_clamped("FRONT_CAR_RUN_MS", 0, 0, 60000);
+    const int spin_yaw_mrad_s = read_env_int("FRONT_CAR_SPIN_YAW_MRAD_S", 0);
+    const int spin_angle_deg = read_env_int_clamped("FRONT_CAR_SPIN_ANGLE_DEG", 0, -360, 360);
     const int period_us = frame_period_us_from_fps(process_fps);
     int control_period_ms = live_control_period_ms();
     rt->control_center_x = read_env_int_clamped("SMARTCAR_CONTROL_CENTER_X",
@@ -451,9 +497,22 @@ int live(runtime_t *rt)
                 camera.fps,
                 process_fps,
                 drive_enabled ? "on" : "off");
+    if(spin_angle_deg != 0 && spin_yaw_mrad_s == 0)
+    {
+        std::printf("SpinAngleWarn: FRONT_CAR_SPIN_ANGLE_DEG requires FRONT_CAR_SPIN_YAW_MRAD_S\n");
+    }
     uint32_t frame_id = 0;
+    const uint64_t run_t0 = (run_ms > 0 || spin_angle_deg != 0) ? monotonic_us() : 0;
+    double spin_yaw_deg = 0.0;
+    const int spin_angle_sign = spin_angle_deg != 0 ? sign_i_local(spin_angle_deg) : 0;
+    const int spin_angle_abs = abs_i_local(spin_angle_deg);
     while(1)
     {
+        if(run_ms > 0 && monotonic_us() - run_t0 >= static_cast<uint64_t>(run_ms) * 1000ULL)
+        {
+            drive_output_stop();
+            break;
+        }
         // 实时主链按真实顺序展开；t0~t6 是 profile 各阶段计时点。
         const uint64_t t0 = (prof.enabled || period_us > 0) ? monotonic_us() : 0;
         // [t0->t1] 采集一帧 RAW_W x RAW_H 灰度
@@ -468,6 +527,22 @@ int live(runtime_t *rt)
         control_feedback_t fb = {};
         drive_output_read_feedback(&fb, control_period_ms);
         rt->encoder_total += (int64_t)(fb.left_speed_count + fb.right_speed_count) / 2;
+        if(spin_angle_deg != 0 && spin_yaw_mrad_s != 0 && fb.actual_yaw_rate_valid)
+        {
+            const double dt_s = fb.period_ms > 0 ? static_cast<double>(fb.period_ms) / 1000.0 : 0.0;
+            spin_yaw_deg += static_cast<double>(fb.actual_yaw_rate_mrad_s) / 1000.0 *
+                            dt_s * 180.0 / 3.14159265358979323846;
+            if(static_cast<double>(spin_angle_sign) * spin_yaw_deg >= static_cast<double>(spin_angle_abs))
+            {
+                drive_output_stop();
+                std::printf("SpinAngleResult: reached=1 target_deg=%d yaw_deg=%.2f elapsed_ms=%llu actual_yaw=%d\n",
+                            spin_angle_deg,
+                            spin_yaw_deg,
+                            static_cast<unsigned long long>((monotonic_us() - run_t0) / 1000ULL),
+                            fb.actual_yaw_rate_mrad_s);
+                break;
+            }
+        }
         const uint64_t t2 = prof.enabled ? monotonic_us() : 0;
 
         // [t2->t3] ATG 视觉识别：image_handle -> find_corners -> elements -> selected line。

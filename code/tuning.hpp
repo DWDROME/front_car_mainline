@@ -42,8 +42,11 @@ enum
     // 旧值 20 偏窄；2026-06 根据 IPM_DBG 实测路面宽约 52px，半宽取 26。
     ROAD_HALF_WIDTH = 26,
 
-    // 预瞄距离，按控制中线从参考点开始的累计弧长选取目标点算转向误差。
-    LOOKAHEAD_DIST = 35,
+    // 预瞄距离，按控制中线累计弧长选取目标点算转向误差。
+    // ATG 参考控制使用 aim_distance_far=0.58m，当前 pixel_per_meter=116，
+    // 折算约 67px。旧值 35px 太靠近被 ATG 归一化强行钉到 cx/cy 的近端锚点，
+    // 斜车身入弯时会把假横移当成真实中线趋势。
+    LOOKAHEAD_DIST = 67,
 
     // 八邻域搜线至少要走到这个步数，才认为边界有效。
     TRACE_MIN_STEP = 6,

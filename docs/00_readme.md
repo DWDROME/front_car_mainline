@@ -43,6 +43,7 @@ app/main.cpp
 atg_reference/PORTING.md
 docs/13_mainline_pipeline_map.md
 docs/ATG新路线重构方案.md
+docs/ATG环岛问题记录.md
 docs/ATG库接入点评估.md
 docs/IPM重标定流程.md
 docs/IPM调用调研.md

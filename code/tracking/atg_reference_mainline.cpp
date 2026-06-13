@@ -1,5 +1,7 @@
 #include "tracking/atg_reference_mainline.hpp"
 
+#include "core/config.hpp"
+
 #include "atg_reference_step.h"
 #include "clip.hpp"
 
@@ -59,11 +61,42 @@ void copy_atg_midline(runtime_t *rt)
     }
 }
 
-double atg_lookahead_error(const midline_t *mid, point_t ref)
+// 速度自适应预瞄：预瞄距离 = clamp(lookahead_time_s * 目标车速, 0.20m, 0.58m)。
+// 0.58m 是 ATG 原工程值(相机视野极限)，0.20m 防止低速预瞄过近导致噪声敏感。
+// 参考点用 ATG normalize 当帧算好的 (cx,cy)——车轮点在 IPM 域的真实投影；
+// 旧 CONTROL_CENTER_X/START_HIGH 是 raw 语义常量，当 IPM 坐标用存在系统偏置。
+double atg_lookahead_error(const midline_t *mid)
 {
     if(mid == nullptr || mid->step <= 0)
     {
         return 0.0;
+    }
+
+    const int lookahead = atg_lookahead_dist_px();
+    // 预瞄窗口随预瞄距离缩放(±20%，至少 ±4px)，对窗口内点取平均抑制单点噪声。
+    const int window = std::max(4, lookahead / 5);
+    const double ref_x = static_cast<double>(cx);
+    const double ref_y = static_cast<double>(cy);
+
+    double sum_x = 0.0;
+    double sum_y = 0.0;
+    int count = 0;
+    for(int i = 0; i < mid->step; ++i)
+    {
+        if(mid->dist[i] < lookahead - window ||
+           mid->dist[i] > lookahead + window)
+        {
+            continue;
+        }
+        sum_x += mid->pts[i].x;
+        sum_y += mid->pts[i].y;
+        count++;
+    }
+    if(count > 0)
+    {
+        const double dx = sum_x / static_cast<double>(count) - ref_x;
+        const double dy = ref_y - sum_y / static_cast<double>(count) + ROAD_HALF_WIDTH * 8.0 / 9.0;
+        return -std::atan2(dx, dy) * 180.0 / 3.14159265358979323846;
     }
 
     int best = 0;
@@ -74,7 +107,7 @@ double atg_lookahead_error(const midline_t *mid, point_t ref)
         {
             continue;
         }
-        const int err = std::abs(mid->dist[i] - LOOKAHEAD_DIST);
+        const int err = std::abs(mid->dist[i] - lookahead);
         if(err < best_err)
         {
             best_err = err;
@@ -82,11 +115,28 @@ double atg_lookahead_error(const midline_t *mid, point_t ref)
         }
     }
 
-    const double dx = static_cast<double>(mid->pts[best].x - ref.x);
-    const double dy = static_cast<double>(ref.y - mid->pts[best].y) + ROAD_HALF_WIDTH * 8.0 / 9.0;
+    const double dx = static_cast<double>(mid->pts[best].x) - ref_x;
+    const double dy = ref_y - static_cast<double>(mid->pts[best].y) + ROAD_HALF_WIDTH * 8.0 / 9.0;
     return -std::atan2(dx, dy) * 180.0 / 3.14159265358979323846;
 }
 } // namespace
+
+int atg_lookahead_dist_px()
+{
+    const control_config_t &c = control_config();
+    const double circ = 3.14159265358979323846 * static_cast<double>(c.encoder_gear_diameter_m);
+    const double v_mps = static_cast<double>(c.target_rps) * circ;
+    double dist_m = static_cast<double>(c.lookahead_time_s) * v_mps;
+    if(dist_m < 0.20)
+    {
+        dist_m = 0.20;
+    }
+    if(dist_m > 0.58)
+    {
+        dist_m = 0.58;
+    }
+    return static_cast<int>(std::lround(dist_m * static_cast<double>(pixel_per_meter)));
+}
 
 int track_line_found(const runtime_t *rt)
 {
@@ -153,6 +203,15 @@ int tracking_process_frame(runtime_t *rt)
     }
 
     copy_atg_midline(rt);
-    rt->vision.guide_error = atg_lookahead_error(&rt->vision.mid, rt->vision.control_ref);
+    const int element_active =
+        cross_type != CROSS_NONE ||
+        circle_type != CIRCLE_NONE ||
+        round_type != ROUND_NONE ||
+        yroad_type != YROAD_NONE ||
+        ramp_type != RAMP_NONE ||
+        garage_type != GARAGE_NONE;
+    const double bias = element_active ? 0.0 :
+                        static_cast<double>(control_config().guide_error_bias_deg);
+    rt->vision.guide_error = atg_lookahead_error(&rt->vision.mid) - bias;
     return track_line_found(rt);
 }

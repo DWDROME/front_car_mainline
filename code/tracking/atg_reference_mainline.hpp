@@ -6,4 +6,5 @@ void tracking_reset(runtime_t *rt);
 int tracking_process_frame(runtime_t *rt);
 int track_line_found(const runtime_t *rt);
 
+int atg_lookahead_dist_px();
 int midline_has_forward_lookahead(const midline_t *midline, int aim_distance, int ref_y);

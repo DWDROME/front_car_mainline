@@ -36,7 +36,13 @@ struct control_state_t
     int input_valid;
     int stop_request;
     int target_yaw_rate_mrad_s;
+    int yaw_cmd_mrad_s;
     int actual_yaw_rate_mrad_s;
+    int left_target_rps_milli;
+    int right_target_rps_milli;
+    int left_actual_rps_milli;
+    int right_actual_rps_milli;
+    int signed_output;
     int left_duty;
     int right_duty;
 };
@@ -47,6 +53,9 @@ struct control_input_t
     int line_found;
     int stop_line;
     int element_active;
+    int fixed_yaw_rate_valid;
+    int fixed_yaw_rate_mrad_s;
+    int spin_mode;
     double guide_error;
 };
 

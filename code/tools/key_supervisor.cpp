@@ -126,8 +126,9 @@ void start_mainline()
     const int n = std::snprintf(cmd,
                                 sizeof(cmd),
                                 "SMARTCAR_ASSISTANT=1 "
-                                "SMARTCAR_ASSISTANT_IP=192.168.0.101 "
+                                "SMARTCAR_ASSISTANT_IP=192.168.0.100 "
                                 "SMARTCAR_ASSISTANT_PORT=8086 "
+                                "SMARTCAR_ASSISTANT_CONNECT_MS=30 "
                                 "SMARTCAR_ASSISTANT_RECONNECT_DIV=30 "
                                 "SMARTCAR_ASSISTANT_DIV=12 "
                                 "FRONT_CAR_PROCESS_FPS=120 "

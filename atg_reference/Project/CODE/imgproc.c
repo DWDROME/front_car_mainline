@@ -176,7 +176,8 @@ const int dir_frontright[4][2] = {{1,  -1},
 void findline_lefthand_adaptive(image_t *img, int block_size, int clip_value, int x, int y, int pts[][2], int *num) {
     int half = block_size / 2;
     int step = 0, dir = 0, turn = 0;
-    while (step < *num && half < x && x < img->width - half - 1 && 0 < y && y < img->height - half - 1 && turn < 4) {
+    while (step < *num && half < x && x < img->width - half - 1 &&
+           half < y && y < img->height - half - 1 && turn < 4) {
         int local_thres = 0;
         for (int dy = -half; dy <= half; dy++) {
             for (int dx = -half; dx <= half; dx++) {
@@ -218,7 +219,8 @@ void findline_lefthand_adaptive(image_t *img, int block_size, int clip_value, in
 void findline_righthand_adaptive(image_t *img, int block_size, int clip_value, int x, int y, int pts[][2], int *num) {
     int half = block_size / 2;
     int step = 0, dir = 0, turn = 0;
-    while (step < *num && 0 < x && x < img->width -half- 1 && 0 < y && y < img->height - 1 && turn < 4) {
+    while (step < *num && half < x && x < img->width - half - 1 &&
+           half < y && y < img->height - half - 1 && turn < 4) {
         int local_thres = 0;
         for (int dy = -half; dy <= half; dy++) {
             for (int dx = -half; dx <= half; dx++) {
@@ -608,8 +610,10 @@ void blur_points(float pts_in[][2], int num, float pts_out[][2], int kernel){
 
 
 void resample_points(float pts_in[][2], int num1, float pts_out[][2], int *num2, float dist){
-    if (num1 < 0) {
-        *num2 = 0;
+    if (num1 <= 0 || pts_in == 0 || pts_out == 0 || num2 == 0 || *num2 <= 0) {
+        if (num2 != 0) {
+            *num2 = 0;
+        }
         return;
     }
     pts_out[0][0] = pts_in[0][0];

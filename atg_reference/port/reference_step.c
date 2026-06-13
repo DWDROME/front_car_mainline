@@ -1,5 +1,6 @@
 #include "atg_reference_step.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #include "headfile.h"
@@ -13,6 +14,31 @@
 extern int64_t g_atg_reference_encoder_total;
 
 static int64_t last_encoder_total;
+
+// 环岛状态停滞出口：ATG 原工程是舵机车，选线失败帧车仍按旧速度滚动，
+// 状态机靠"继续行驶"满足视觉出口或 total_distence 强制出口（circle.c 的 >4500）。
+// 本车 line_found=0 即停车，编码器不再增长，两类出口都永远无法触发，
+// 误入的环岛状态会把车锁死在原地。连续 ATG_CIRCLE_STALL_FRAMES 帧
+// "环岛状态活跃但无任何选线"时复位环岛状态，显式打日志；
+// 不伪造线、不复用旧帧，复位后若环岛证据真实存在会重新自然触发。
+enum
+{
+    ATG_CIRCLE_STALL_FRAMES = 30,
+};
+static int g_circle_stall_frames;
+
+// CIRCLE_*_BEGIN 误入撤销：真环 BEGIN 后短距离内必然出现入环口"丢线"事件
+// (none_left/right_line>0) 才能推进到 IN；直道伪 L 误入时该事件永不发生，
+// 状态会滞留并把 track_type 锁在对侧边线上(本次实测表现为稳定贴左直行)。
+// 进入 BEGIN 后累计行驶超过 ATG_CIRCLE_BEGIN_MAX_DIST_COUNTS(约0.8m)仍无丢线
+// 事件即判定证据消失，撤回 NONE 并显式打日志。用距离不用帧数，与车速解耦。
+// 本 port 的 total_distence 是 int16，元素内门限沿用 ATG counts 量级；
+// 0.8m 对应约 24000，低于 int16 饱和值，能在误入 BEGIN 时实际触发撤销。
+enum
+{
+    ATG_CIRCLE_BEGIN_MAX_DIST_COUNTS = 24000,
+};
+static int64_t g_circle_begin_dist;
 
 #ifndef ATG_ENABLE_CROSS
 #define ATG_ENABLE_CROSS 1
@@ -79,6 +105,7 @@ static void reset_element_state(void)
 {
     cross_type = CROSS_NONE;
     circle_type = CIRCLE_NONE;
+    reset_circle_entry_votes();
     round_type = ROUND_NONE;
     ramp_type = RAMP_NONE;
     yroad_type = YROAD_NONE;
@@ -101,6 +128,7 @@ static void reset_element_state(void)
     circle_count = 0;
     Count_dis_Flag = 0;
     total_distence = 0;
+    g_circle_begin_dist = 0;
     Ramp_total_distence = 0;
     Clean_Time_count = 0;
     Clean_Time_count_flag = 0;
@@ -122,7 +150,13 @@ static void update_distance_counters(int64_t encoder_total)
 
     if(Count_dis_Flag)
     {
-        total_distence = (int16)(total_distence + (int16)delta);
+        // 饱和而不回绕：误入元素状态长期滞留时 int16 累计会绕成负数，破坏所有距离门限。
+        int32 next = (int32)total_distence + (int32)delta;
+        if(next > 32767)
+        {
+            next = 32767;
+        }
+        total_distence = (int16)next;
     }
     else
     {
@@ -141,6 +175,15 @@ static void update_distance_counters(int64_t encoder_total)
     }
 
     last_encoder_total = encoder_total;
+
+    if(circle_type == CIRCLE_LEFT_BEGIN || circle_type == CIRCLE_RIGHT_BEGIN)
+    {
+        g_circle_begin_dist += delta;
+    }
+    else
+    {
+        g_circle_begin_dist = 0;
+    }
 }
 
 static void choose_track_type_from_near_lines(void)
@@ -265,6 +308,12 @@ static void run_atg_elements(void)
 
 static void build_circle_spliced_lines(void)
 {
+    // 补线中心是环岛 IN/OUT 的控制选线来源，必须按当前帧证据重建。
+    // 参考版不清零（舵机车失败帧沿用旧补线继续滚动），本项目纪律是不复用旧帧中线：
+    // 当帧远线证据不足就让选线显式为空，由上层停车，而不是拿旧帧补线继续打方向。
+    Splicing_leftline_center_num = 0;
+    Splicing_rightline_center_num = 0;
+
     if(circle_type == CIRCLE_RIGHT_IN)
     {
         if(far_Lpt1_found)
@@ -421,12 +470,14 @@ static void select_work_line(void)
        garage_type != GARAGE_FOUND_RIGHT)
     {
         build_circle_spliced_lines();
-        if(circle_type == CIRCLE_RIGHT_OUT || circle_type == CIRCLE_RIGHT_IN)
+        if((circle_type == CIRCLE_RIGHT_OUT || circle_type == CIRCLE_RIGHT_IN) &&
+           Splicing_leftline_center_num > 0)
         {
             rpts = Splicing_leftline_center;
             rpts_num = Splicing_leftline_center_num;
         }
-        else if(circle_type == CIRCLE_LEFT_OUT || circle_type == CIRCLE_LEFT_IN)
+        else if((circle_type == CIRCLE_LEFT_OUT || circle_type == CIRCLE_LEFT_IN) &&
+                Splicing_rightline_center_num > 0)
         {
             rpts = Splicing_rightline_center;
             rpts_num = Splicing_rightline_center_num;
@@ -559,9 +610,82 @@ void atg_reference_reset(void)
     reset_atg_params();
     g_atg_reference_encoder_total = 0;
     last_encoder_total = 0;
+    g_circle_stall_frames = 0;
     track_type = TRACK_RIGHT;
     reset_element_state();
     clear_frame_outputs();
+}
+
+// 复位集对照 circle.c CIRCLE_LEFT_END/RIGHT_END 自然退出时的还原变量。
+static void reset_circle_to_none(const char *reason)
+{
+    printf("ATGCircleReset: %s circle_type=%d -> NONE\n", reason, (int)circle_type);
+        circle_type = CIRCLE_NONE;
+        reset_circle_entry_votes();
+    road_type = ROAD_NORMAL;
+    begin_y = BEGIN_Y;
+    Count_dis_Flag = 0;
+    aim_distance = aim_distance_far;
+    is_large_circle = 0;
+    is_small_circle = 0;
+    if_lost_left_line = 0;
+    if_lost_right_line = 0;
+    none_left_line = 0;
+    none_right_line = 0;
+    have_left_line = 0;
+    have_right_line = 0;
+    if_clean_pid = 0;
+    g_circle_stall_frames = 0;
+    g_circle_begin_dist = 0;
+}
+
+static void revoke_idle_circle_begin(void)
+{
+    if(circle_type == CIRCLE_LEFT_BEGIN && none_left_line == 0 &&
+       g_circle_begin_dist > ATG_CIRCLE_BEGIN_MAX_DIST_COUNTS)
+    {
+        reset_circle_to_none("LEFT_BEGIN idle beyond 0.8m without lost-line evidence,");
+    }
+    else if(circle_type == CIRCLE_RIGHT_BEGIN && none_right_line == 0 &&
+            g_circle_begin_dist > ATG_CIRCLE_BEGIN_MAX_DIST_COUNTS)
+    {
+        reset_circle_to_none("RIGHT_BEGIN idle beyond 0.8m without lost-line evidence,");
+    }
+}
+
+static void exit_circle_after_stall(int line_ok)
+{
+    if(circle_type == CIRCLE_NONE || line_ok)
+    {
+        g_circle_stall_frames = 0;
+        return;
+    }
+
+    g_circle_stall_frames++;
+    if(g_circle_stall_frames < ATG_CIRCLE_STALL_FRAMES)
+    {
+        return;
+    }
+
+    printf("ATGCircleStall: circle_type=%d stalled %d frames without selected line, reset to NONE\n",
+           (int)circle_type,
+           g_circle_stall_frames);
+    circle_type = CIRCLE_NONE;
+    reset_circle_entry_votes();
+    road_type = ROAD_NORMAL;
+    begin_y = BEGIN_Y;
+    Count_dis_Flag = 0;
+    aim_distance = aim_distance_far;
+    is_large_circle = 0;
+    is_small_circle = 0;
+    if_lost_left_line = 0;
+    if_lost_right_line = 0;
+    none_left_line = 0;
+    none_right_line = 0;
+    have_left_line = 0;
+    have_right_line = 0;
+    if_clean_pid = 0;
+    g_circle_stall_frames = 0;
 }
 
 int atg_reference_process_frame(uint8_t gray[120][160], int64_t encoder_total)
@@ -580,9 +704,11 @@ int atg_reference_process_frame(uint8_t gray[120][160], int64_t encoder_total)
     choose_track_type_from_near_lines();
     run_atg_elements();
     update_distance_counters(encoder_total);
+    revoke_idle_circle_begin();
     select_work_line();
 
     const int ok = normalize_selected_line();
+    exit_circle_after_stall(ok);
     if(ok)
     {
         check_road();

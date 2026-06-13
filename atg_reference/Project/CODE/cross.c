@@ -241,8 +241,8 @@ void cross_farline_L()
 
     int cross_width = 4;
     far_y1 = 0, far_y2 = 0;
-    int y1 = inv_Lpt0_found[1];
-    far_x11 = inv_Lpt0_found[0];
+    int y1 = clip((int)inv_Lpt0_found[1], block_size/2 + 1, MT9V03X_H - block_size/2 - 1);
+    far_x11 = clip((int)inv_Lpt0_found[0], block_size/2, MT9V03X_W - block_size/2 - 1);
     bool white_found = false;
     far_ipts0_num = sizeof(far_ipts0) / sizeof(far_ipts0[0]);
 
@@ -256,6 +256,7 @@ void cross_farline_L()
 
 
     for (; y1 > block_size/2; y1--) {
+        local_thres_left_up = 0;
         for (int dy = -block_size/2; dy <= block_size/2; dy++) {
             for (int dx = -block_size/2; dx <= block_size/2; dx++) {
                 local_thres_left_up += AT_IMAGE(&img_raw, far_x11 + dx, y1 + dy);
@@ -273,7 +274,7 @@ void cross_farline_L()
     }//利用自适应二值化的方式向上寻找边线
 
     //从far_y1，far_x11位置开始寻找远端边线
-    if (AT_IMAGE(&img_raw, far_x11, far_y1 -1) < local_thres_left_up)
+    if (far_y1 > block_size/2 && AT_IMAGE(&img_raw, far_x11, far_y1 -1) < local_thres_left_up)
         findline_lefthand_adaptive(&img_raw, block_size, clip_value, far_x11, far_y1 , far_ipts0, &far_ipts0_num);
     else far_ipts0_num = 0;
 
@@ -378,12 +379,12 @@ void cross_farline_R()//左右同理
         }
  int cross_width = 4;
     far_y1 = 0, far_y2 = 0;
-    int y1 = inv_Lpt1_found[1];
-    far_x11 = inv_Lpt1_found[0];
+    int y1 = clip((int)inv_Lpt1_found[1], block_size/2 + 1, MT9V03X_H - block_size/2 - 1);
+    far_x11 = clip((int)inv_Lpt1_found[0], block_size/2, MT9V03X_W - block_size/2 - 1);
     bool white_found = false;
     far_ipts1_num = sizeof(far_ipts1) / sizeof(far_ipts1[0]);
 
-    int local_thres_right_up;
+    int local_thres_right_up = 0;
     for (; y1 > block_size/2; y1--) {
         //先黑后白，先找white
         if (AT_IMAGE(&img_raw, far_x11, y1-1) < OSTU_thres) {
@@ -393,6 +394,7 @@ void cross_farline_R()//左右同理
          for (; y1 > block_size/2; y1--) {
 
 
+             local_thres_right_up = 0;
              for (int dy = -block_size/2; dy <= block_size/2; dy++) {
                  for (int dx = -block_size/2; dx <= block_size/2; dx++) {
                      local_thres_right_up += AT_IMAGE(&img_raw, far_x11 + dx, y1 + dy);
@@ -408,7 +410,7 @@ void cross_farline_R()//左右同理
              }
          }
          //从找到角点位置开始寻找
-         if (AT_IMAGE(&img_raw, far_x11, far_y1 -1) < local_thres_right_up)
+         if (far_y1 > block_size/2 && AT_IMAGE(&img_raw, far_x11, far_y1 -1) < local_thres_right_up)
         findline_righthand_adaptive(&img_raw, block_size, clip_value, far_x11, far_y1 , far_ipts1, &far_ipts1_num);
          else far_ipts1_num = 0;
 

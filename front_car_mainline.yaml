@@ -18,14 +18,15 @@ control_period_ms: 10
 # target_rps: 普通巡线基础速度
 # element_target_rps: 十字/环岛内基础速度
 # speed_target_rps: 左右轮 FF 前馈缩放参考
-target_rps: 4.0
-element_target_rps: 3.0
+target_rps: 2.0
+element_target_rps: 1.5
 speed_target_rps: 4.0
 
 # 左右轮 FF + PI
 # base_percent 是基础占空前馈；kp 管当前轮速误差；ki 管长期轮速偏差
 left_speed_base_percent: 9.0
-right_speed_base_percent: 9.7
+# right_speed_base_percent: 9.7  # before 2026-06-13 straight-speed base sweep
+right_speed_base_percent: 11.0
 left_speed_kp: 1.25
 right_speed_kp: 1.25
 left_speed_ki: 0.35
@@ -39,22 +40,37 @@ encoder_gear_diameter_m: 0.018
 # IMU (yaw 主轴为 Y, 与 calib 标定一致)
 # 未验证 IMU 方向和比例前，imu_yaw_feedback_enabled 可先设为 0
 gyro_raw_to_rad_s: 0.001277562
-imu_yaw_feedback_enabled: 1
+# imu_yaw_feedback_enabled: 1  # 2026-06-13 暂关：日志 cmd 与 actual 持续反号，IMU 符号与差速约定相反，内环成正反馈；待 gyro 符号实测修正后再开
+imu_yaw_feedback_enabled: 0
 
 # 视觉外环 PD: guide_error_deg -> target_yaw_rate
 # outer_kd 默认可以为 0；图像误差抖动时不要轻易打开
-outer_kp: 0.03
+# outer_kp: 0.03  # before 2026-06-13 element turn authority split
+outer_kp: 0.06
 outer_kd: 0.0
-outer_sign: 1.0
-straight_error_threshold: 12.0
-straight_turn_scale: 0.6
-max_target_yaw_rate: 1.5
+# 2026-06-13 实车确认：outer_sign=-1.0 才是对的（+1.0 实跑反向）。
+# 推论：control.cpp 注释"yaw_cmd>0=右轮快=左转"与实际执行器方向相反，待实测核对后修注释。
+outer_sign: -1.0
+# straight_error_threshold: 12.0  # 2026-06-13 前值：死区过宽，贴边小偏差被衰减导致不回中
+straight_error_threshold: 6.0
+# straight_turn_scale: 0.85  # before 2026-06-13; outer_kp 翻倍后直道小误差保持同等转向量
+straight_turn_scale: 0.425
+# max_target_yaw_rate: 1.5  # before 2026-06-13 spin yaw-rate headroom test
+max_target_yaw_rate: 2.0
 
 # yaw rate 内环 PI: target -> correction
 # yaw_kp/yaw_ki 只修正 yaw-rate；max_yaw_rate_correction 限制 IMU 内环补偿量
 yaw_kp: 1.0
 yaw_ki: 0.0
-max_yaw_rate_correction: 0.12
+# max_yaw_rate_correction: 0.12  # before 2026-06-13 yaw-rate loop sweep
+max_yaw_rate_correction: 0.4
+
+# 视觉预瞄时间(s)：预瞄距离 = clamp(lookahead_time_s × 目标车速, 0.20m, 0.58m)
+# 速度由 target_rps × π × encoder_gear_diameter_m 换算；改 target_rps 时预瞄自动跟随
+# 当前低速(target_rps=2.0, 约0.11m/s)下会被 0.20m 下限兜住，提速后自动放远
+lookahead_time_s: 1.0
+# 视觉 guide 零点标定(deg)：2026-06-13 真直道、车身居中、驱动关闭实测 raw guide=+13.01
+guide_error_bias_deg: 13.0
 
 # 反馈滤波
 # rps_filter_alpha 应在 0~1；越大越跟手，越小越平滑

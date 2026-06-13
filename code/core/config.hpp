@@ -45,6 +45,12 @@ struct control_config_t
     float rps_filter_alpha         = 0.5F;
     int   yaw_rate_filter_window   = 7;
 
+    // 视觉预瞄时间(s)：预瞄距离 = clamp(lookahead_time_s * 目标车速, 0.20m, 0.58m)。
+    // 速度由 target_rps * pi * encoder_gear_diameter_m 换算；改速度时预瞄自动跟随，无需另调。
+    float lookahead_time_s         = 1.0F;
+    // 视觉 guide 零点标定(deg)。实车摆在赛道中心时 guide 应为 0。
+    float guide_error_bias_deg     = 0.0F;
+
     // 控制层 duty 输出上限；drive_output.cpp 里仍有 35% 硬件安全上限。
     int   max_duty_percent         = 35;
 };

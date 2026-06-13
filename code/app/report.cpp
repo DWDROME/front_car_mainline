@@ -22,7 +22,7 @@ constexpr const char *k_live_beep_path = "/dev/zf_gpio_beep";
 constexpr int k_live_beep_ms = 35;
 constexpr float k_rad_to_deg = 180.0f / 3.14159265358979323846f;
 
-using live_state_signature_t = std::array<int, 42>;
+using live_state_signature_t = std::array<int, 50>;
 
 template <typename... Values>
 live_state_signature_t live_state_signature(Values... values)
@@ -142,6 +142,37 @@ int flag(bool value)
     return value ? 1 : 0;
 }
 
+const char *circle_enum_name(int value)
+{
+    switch(value)
+    {
+    case CIRCLE_NONE:
+        return "CIRCLE_NONE";
+    case CIRCLE_LEFT_BEGIN:
+        return "CIRCLE_LEFT_BEGIN";
+    case CIRCLE_RIGHT_BEGIN:
+        return "CIRCLE_RIGHT_BEGIN";
+    case CIRCLE_LEFT_IN:
+        return "CIRCLE_LEFT_IN";
+    case CIRCLE_RIGHT_IN:
+        return "CIRCLE_RIGHT_IN";
+    case CIRCLE_LEFT_RUNNING:
+        return "CIRCLE_LEFT_RUNNING";
+    case CIRCLE_RIGHT_RUNNING:
+        return "CIRCLE_RIGHT_RUNNING";
+    case CIRCLE_LEFT_OUT:
+        return "CIRCLE_LEFT_OUT";
+    case CIRCLE_RIGHT_OUT:
+        return "CIRCLE_RIGHT_OUT";
+    case CIRCLE_LEFT_END:
+        return "CIRCLE_LEFT_END";
+    case CIRCLE_RIGHT_END:
+        return "CIRCLE_RIGHT_END";
+    default:
+        return "CIRCLE_UNKNOWN";
+    }
+}
+
 live_state_signature_t make_live_state_signature(const runtime_t *rt)
 {
     return live_state_signature(
@@ -179,6 +210,14 @@ live_state_signature_t make_live_state_signature(const runtime_t *rt)
         angle_bucket(conf2_max),
         angle_bucket(conf3_max),
         angle_bucket(conf4_max),
+        atg_seed0_found,
+        atg_seed1_found,
+        atg_seed0_y / 4,
+        atg_seed1_y / 4,
+        atg_lpt0_best_i / 2,
+        atg_lpt1_best_i / 2,
+        angle_bucket(atg_lpt0_best_conf),
+        angle_bucket(atg_lpt1_best_conf),
         positive_bucket(not_have_line),
         count_bucket(total_distence),
         count_bucket(Ramp_total_distence),
@@ -232,11 +271,12 @@ void print_atg_counts()
 
 void print_atg_elements()
 {
-    std::printf("ATGElem: track=%d cross=%d circle=%d round=%d yroad=%d ramp=%d road=%d speed=%d "
+    std::printf("ATGElem: track=%d cross=%d circle=%d(%s) round=%d yroad=%d ramp=%d road=%d speed=%d "
                 "not_have_line=%d dist=%d ramp_dist=%d\n",
                 track_type,
                 cross_type,
                 circle_type,
+                circle_enum_name(circle_type),
                 round_type,
                 yroad_type,
                 ramp_type,
@@ -273,6 +313,51 @@ void print_atg_corners()
                 conf4_max * k_rad_to_deg);
 }
 
+void print_atg_vision_diag()
+{
+    std::printf("ATGSeedDiag: seed=%d@%d,%d/%d@%d,%d begin=%d,%d block=%d clip=%d\n",
+                atg_seed0_found,
+                atg_seed0_x,
+                atg_seed0_y,
+                atg_seed1_found,
+                atg_seed1_x,
+                atg_seed1_y,
+                begin_x,
+                begin_y,
+                block_size,
+                clip_value);
+    std::printf("ATGLptDiag: best=%d(%.1f) imip=%d/%d pass=%d%d%d%d%d acc=%d ipm=%.1f,%.1f inv=%.1f,%.1f "
+                "| %d(%.1f) imip=%d/%d pass=%d%d%d%d%d acc=%d ipm=%.1f,%.1f inv=%.1f,%.1f\n",
+                atg_lpt0_best_i,
+                atg_lpt0_best_conf * k_rad_to_deg,
+                atg_lpt0_best_im1,
+                atg_lpt0_best_ip1,
+                atg_lpt0_pass_nms,
+                atg_lpt0_pass_low,
+                atg_lpt0_pass_high,
+                atg_lpt0_pass_near,
+                atg_lpt0_pass_dir,
+                atg_lpt0_accept_i,
+                atg_lpt0_best_x,
+                atg_lpt0_best_y,
+                atg_lpt0_best_inv_x,
+                atg_lpt0_best_inv_y,
+                atg_lpt1_best_i,
+                atg_lpt1_best_conf * k_rad_to_deg,
+                atg_lpt1_best_im1,
+                atg_lpt1_best_ip1,
+                atg_lpt1_pass_nms,
+                atg_lpt1_pass_low,
+                atg_lpt1_pass_high,
+                atg_lpt1_pass_near,
+                atg_lpt1_pass_dir,
+                atg_lpt1_accept_i,
+                atg_lpt1_best_x,
+                atg_lpt1_best_y,
+                atg_lpt1_best_inv_x,
+                atg_lpt1_best_inv_y);
+}
+
 void write_mid_report(std::ofstream &out, const runtime_t *rt)
 {
     point_t m0 = {-1, -1};
@@ -280,8 +365,10 @@ void write_mid_report(std::ofstream &out, const runtime_t *rt)
     int ml_dist = -1;
     int max_dist = -1;
     int ml_forward = 0;
+    const int aim_distance = atg_lookahead_dist_px();
     mid_points_for_report(rt->vision.mid,
                           rt->vision.control_ref.y,
+                          aim_distance,
                           &m0,
                           &ml,
                           &ml_dist,
@@ -303,6 +390,7 @@ void write_mid_report(std::ofstream &out, const runtime_t *rt)
 // 取中线起点和预瞄附近点，供单行日志和报告输出。
 void mid_points_for_report(const midline_t &mid,
                            int ref_y,
+                           int aim_distance,
                            point_t *m0,
                            point_t *ml,
                            int *ml_dist,
@@ -338,7 +426,7 @@ void mid_points_for_report(const midline_t &mid,
         {
             *max_dist = mid.dist[i];
         }
-        const int err = std::abs(mid.dist[i] - LOOKAHEAD_DIST);
+        const int err = std::abs(mid.dist[i] - aim_distance);
         if(err < best_err)
         {
             best_err = err;
@@ -347,7 +435,7 @@ void mid_points_for_report(const midline_t &mid,
     }
     *ml = mid.pts[best];
     *ml_dist = mid.dist[best];
-    *forward_ok = midline_has_forward_lookahead(&mid, LOOKAHEAD_DIST, ref_y);
+    *forward_ok = midline_has_forward_lookahead(&mid, aim_distance, ref_y);
 }
 
 void print_detail(const runtime_t *rt)
@@ -362,8 +450,10 @@ void print_detail(const runtime_t *rt)
     int ml_dist = -1;
     int max_dist = -1;
     int ml_forward = 0;
+    const int aim_distance = atg_lookahead_dist_px();
     mid_points_for_report(rt->vision.mid,
                           rt->vision.control_ref.y,
+                          aim_distance,
                           &m0,
                           &ml,
                           &ml_dist,
@@ -373,6 +463,7 @@ void print_detail(const runtime_t *rt)
     print_atg_elements();
     print_atg_counts();
     print_atg_corners();
+    print_atg_vision_diag();
     std::printf("ATGMid: line=%d step=%d ref=(%d,%d) m0=(%d,%d) ml=(%d,%d) md=%d/%d/%d "
                 "cxcy=%.1f,%.1f guide=%.2f atg_guide=%.1f/%.1f/%.1f\n",
                 track_line_found(rt),
@@ -403,17 +494,23 @@ void print_detail(const runtime_t *rt)
                 pixel_per_meter,
                 angle_dist,
                 ROAD_WIDTH,
-                aim_distance,
+                static_cast<double>(aim_distance),
                 aim_distance_far,
                 round_aim_distance,
                 aim_idx,
                 aim_idx_up,
                 aim_idx_up_up);
-    std::printf("Loop: valid=%d stop=%d target_yaw=%d actual_yaw=%d duty=%d/%d\n",
+    std::printf("Loop: valid=%d stop=%d signed=%d target_yaw=%d yaw_cmd=%d actual_yaw=%d target_rps=%d/%d actual_rps=%d/%d duty=%d/%d\n",
                 rt->control.input_valid,
                 rt->control.stop_request,
+                rt->control.signed_output,
                 rt->control.target_yaw_rate_mrad_s,
+                rt->control.yaw_cmd_mrad_s,
                 rt->control.actual_yaw_rate_mrad_s,
+                rt->control.left_target_rps_milli,
+                rt->control.right_target_rps_milli,
+                rt->control.left_actual_rps_milli,
+                rt->control.right_actual_rps_milli,
                 rt->control.left_duty,
                 rt->control.right_duty);
 }
@@ -430,12 +527,13 @@ void print_live(uint32_t frame_id, const runtime_t *rt, int div)
         return;
     }
 
+    const int force_log = read_env_flag("FRONT_CAR_FORCE_LIVE_LOG", 0);
     const live_state_signature_t sig = make_live_state_signature(rt);
-    if(!live_state_changed(sig))
+    if(!force_log && !live_state_changed(sig))
     {
         return;
     }
-    if(frame_id != 0U)
+    if(!force_log && frame_id != 0U)
     {
         live_beep_once();
     }
@@ -445,23 +543,27 @@ void print_live(uint32_t frame_id, const runtime_t *rt, int div)
     int ml_dist = -1;
     int max_dist = -1;
     int ml_forward = 0;
+    const int aim_distance = atg_lookahead_dist_px();
     mid_points_for_report(rt->vision.mid,
                           rt->vision.control_ref.y,
+                          aim_distance,
                           &m0,
                           &ml,
                           &ml_dist,
                           &max_dist,
                           &ml_forward);
 
-    std::printf("frame=%u line=%d track=%d cross=%d circle=%d round=%d yroad=%d ramp=%d road=%d speed=%d "
-                "near=%d/%d raw=%d/%d sel=%d/%d l=%d@%d/%d@%d far_l=%d@%d/%d@%d "
-                "straight=%d/%d conf=%.1f/%.1f/%.1f/%.1f dist=%d "
-                "m0=(%d,%d) ml=(%d,%d) md=%d/%d/%d guide=%.2f yaw=%d duty=%d/%d\n",
+    std::printf("frame=%u line=%d track=%d cross=%d circle=%d(%s) round=%d yroad=%d ramp=%d road=%d speed=%d "
+                "near=%d/%d raw=%d/%d sel=%d/%d far=%d/%d far_raw=%d/%d "
+                "l=%d@%d/%d@%d far_l=%d@%d/%d@%d straight=%d/%d far_straight=%d/%d "
+                "circle_cnt=%d/%d/%d/%d lost=%d/%d conf=%.1f/%.1f/%.1f/%.1f dist=%d "
+                "m0=(%d,%d) ml=(%d,%d) md=%d/%d/%d cxcy=%.1f,%.1f guide=%.2f yaw=%d cmd=%d actual=%d signed=%d rps=%d/%d:%d/%d duty=%d/%d\n",
                 frame_id,
                 track_line_found(rt),
                 track_type,
                 cross_type,
                 circle_type,
+                circle_enum_name(circle_type),
                 round_type,
                 yroad_type,
                 ramp_type,
@@ -473,6 +575,10 @@ void print_live(uint32_t frame_id, const runtime_t *rt, int div)
                 ipts1_num,
                 rpts_num,
                 rptsn_num,
+                far_rpts0s_num,
+                far_rpts1s_num,
+                far_ipts0_num,
+                far_ipts1_num,
                 flag(Lpt0_found),
                 Lpt0_found ? Lpt0_rpts0s_id : -1,
                 flag(Lpt1_found),
@@ -483,6 +589,14 @@ void print_live(uint32_t frame_id, const runtime_t *rt, int div)
                 far_Lpt1_found ? far_Lpt1_rpts1s_id : -1,
                 flag(is_straight0),
                 flag(is_straight1),
+                flag(is_straight_far_0),
+                flag(is_straight_far_1),
+                none_left_line,
+                none_right_line,
+                have_left_line,
+                have_right_line,
+                flag(if_lost_left_line),
+                flag(if_lost_right_line),
                 conf1_max * k_rad_to_deg,
                 conf2_max * k_rad_to_deg,
                 conf3_max * k_rad_to_deg,
@@ -495,10 +609,20 @@ void print_live(uint32_t frame_id, const runtime_t *rt, int div)
                 ml_dist,
                 ml_forward,
                 max_dist,
+                cx,
+                cy,
                 rt->vision.guide_error,
                 rt->control.target_yaw_rate_mrad_s,
+                rt->control.yaw_cmd_mrad_s,
+                rt->control.actual_yaw_rate_mrad_s,
+                rt->control.signed_output,
+                rt->control.left_target_rps_milli,
+                rt->control.right_target_rps_milli,
+                rt->control.left_actual_rps_milli,
+                rt->control.right_actual_rps_milli,
                 rt->control.left_duty,
                 rt->control.right_duty);
+    print_atg_vision_diag();
     std::fflush(stdout);
 }
 
@@ -564,6 +688,24 @@ int write_report(const runtime_t *rt, const char *report_path)
     out << "atg_conf2_max_deg=" << conf2_max * k_rad_to_deg << "\n";
     out << "atg_conf3_max_deg=" << conf3_max * k_rad_to_deg << "\n";
     out << "atg_conf4_max_deg=" << conf4_max * k_rad_to_deg << "\n";
+    out << "atg_seed0_found=" << atg_seed0_found << "\n";
+    out << "atg_seed1_found=" << atg_seed1_found << "\n";
+    out << "atg_seed0_xy=" << atg_seed0_x << "," << atg_seed0_y << "\n";
+    out << "atg_seed1_xy=" << atg_seed1_x << "," << atg_seed1_y << "\n";
+    out << "atg_lpt0_best=" << atg_lpt0_best_i << "," << atg_lpt0_best_conf * k_rad_to_deg << "\n";
+    out << "atg_lpt1_best=" << atg_lpt1_best_i << "," << atg_lpt1_best_conf * k_rad_to_deg << "\n";
+    out << "atg_lpt0_best_imip=" << atg_lpt0_best_im1 << "," << atg_lpt0_best_ip1 << "\n";
+    out << "atg_lpt1_best_imip=" << atg_lpt1_best_im1 << "," << atg_lpt1_best_ip1 << "\n";
+    out << "atg_lpt0_pass=" << atg_lpt0_pass_nms << "," << atg_lpt0_pass_low << "," << atg_lpt0_pass_high << ","
+        << atg_lpt0_pass_near << "," << atg_lpt0_pass_dir << "\n";
+    out << "atg_lpt1_pass=" << atg_lpt1_pass_nms << "," << atg_lpt1_pass_low << "," << atg_lpt1_pass_high << ","
+        << atg_lpt1_pass_near << "," << atg_lpt1_pass_dir << "\n";
+    out << "atg_lpt0_accept_i=" << atg_lpt0_accept_i << "\n";
+    out << "atg_lpt1_accept_i=" << atg_lpt1_accept_i << "\n";
+    out << "atg_lpt0_best_ipm=" << atg_lpt0_best_x << "," << atg_lpt0_best_y << "\n";
+    out << "atg_lpt1_best_ipm=" << atg_lpt1_best_x << "," << atg_lpt1_best_y << "\n";
+    out << "atg_lpt0_best_inv=" << atg_lpt0_best_inv_x << "," << atg_lpt0_best_inv_y << "\n";
+    out << "atg_lpt1_best_inv=" << atg_lpt1_best_inv_x << "," << atg_lpt1_best_inv_y << "\n";
 
     out << "atg_begin_x=" << begin_x << "\n";
     out << "atg_begin_y=" << begin_y << "\n";
@@ -590,7 +732,13 @@ int write_report(const runtime_t *rt, const char *report_path)
     out << "control_input_valid=" << rt->control.input_valid << "\n";
     out << "control_stop_request=" << rt->control.stop_request << "\n";
     out << "control_target_yaw_rate_mrad_s=" << rt->control.target_yaw_rate_mrad_s << "\n";
+    out << "control_yaw_cmd_mrad_s=" << rt->control.yaw_cmd_mrad_s << "\n";
     out << "control_actual_yaw_rate_mrad_s=" << rt->control.actual_yaw_rate_mrad_s << "\n";
+    out << "control_signed_output=" << rt->control.signed_output << "\n";
+    out << "control_left_target_rps_milli=" << rt->control.left_target_rps_milli << "\n";
+    out << "control_right_target_rps_milli=" << rt->control.right_target_rps_milli << "\n";
+    out << "control_left_actual_rps_milli=" << rt->control.left_actual_rps_milli << "\n";
+    out << "control_right_actual_rps_milli=" << rt->control.right_actual_rps_milli << "\n";
     out << "control_left_duty=" << rt->control.left_duty << "\n";
     out << "control_right_duty=" << rt->control.right_duty << "\n";
     return 1;
