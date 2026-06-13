@@ -86,8 +86,12 @@ control_input_t control_input_from_current_frame(const runtime_t *rt, int line_f
     input.line_found = line_found ? 1 : 0;
     input.guide_error = rt->vision.guide_error;
     input.element_active =
-        cross_type != CROSS_NONE ||
-        circle_type != CIRCLE_NONE ? 1 : 0;
+        (cross_type != CROSS_NONE ||
+         circle_type != CIRCLE_NONE ||
+         round_type != ROUND_NONE ||
+         yroad_type != YROAD_NONE ||
+         ramp_type != RAMP_NONE ||
+         garage_type != GARAGE_NONE) ? 1 : 0;
     // ATG2022 当前接入链没有原生停车线状态；不要把旧 zebra 语义伪造成 stop_line。
     input.stop_line = 0;
 
