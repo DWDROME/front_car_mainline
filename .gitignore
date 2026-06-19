@@ -25,3 +25,4 @@ build-host/
 front_car_mainline
 key_supervisor
 .spec-workflow/
+.reference/
