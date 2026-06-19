@@ -34,7 +34,7 @@ int16 thres_temp, thres_up;
 int16 block_size = 5;
 int16 clip_value = 8;
 int16 line_blur_kernel = 7;
-float sample_dist = 0.03f;
+float sample_dist = 0.02f;
 int16 pixel_per_meter = 116;
 float angle_dist = 0.2f;
 float far_rate = 0.5f;

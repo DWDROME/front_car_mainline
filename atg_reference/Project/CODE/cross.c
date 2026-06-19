@@ -577,7 +577,7 @@ void cross_farline() {
         int im1 = clip(i - (int) round(angle_dist / sample_dist), 0, far_rpts0s_num - 1);
         int ip1 = clip(i + (int) round(angle_dist / sample_dist), 0, far_rpts0s_num - 1);
         float conf = fabs(far_rpts0a[i]) - (fabs(far_rpts0a[im1]) + fabs(far_rpts0a[ip1])) / 2;
-        if (70. / 180. * PI < conf && conf < 110. / 180. * PI && i < 100) {
+        if (60. / 180. * PI < conf && conf < 140. / 180. * PI && i < 100) {
             far_Lpt0_rpts0s_id = i;
             far_Lpt0_found = true;
             break;
@@ -589,7 +589,7 @@ void cross_farline() {
         int ip1 = clip(i + (int) round(angle_dist / sample_dist), 0, far_rpts1s_num - 1);
         float conf = fabs(far_rpts1a[i]) - (fabs(far_rpts1a[im1]) + fabs(far_rpts1a[ip1])) / 2;
 
-        if (70. / 180. * PI < conf && conf < 140. / 180. * PI && i < 100) {
+        if (60. / 180. * PI < conf && conf < 140. / 180. * PI && i < 100) {
             far_Lpt1_rpts1s_id = i;
             far_Lpt1_found = true;
             break;
@@ -713,7 +713,7 @@ void cross_farline_half()
         int im1 = clip(i - (int) round(angle_dist / sample_dist), 0, far_rpts0s_num - 1);
         int ip1 = clip(i + (int) round(angle_dist / sample_dist), 0, far_rpts0s_num - 1);
         float conf = fabs(far_rpts0a[i]) - (fabs(far_rpts0a[im1]) + fabs(far_rpts0a[ip1])) / 2;
-        if (70. / 180. * PI < conf && conf < 110. / 180. * PI && i < 100) {
+        if (60. / 180. * PI < conf && conf < 140. / 180. * PI && i < 100) {
             far_Lpt0_rpts0s_id = i;
             far_Lpt0_found = true;
             break;
@@ -725,7 +725,7 @@ void cross_farline_half()
         int ip1 = clip(i + (int) round(angle_dist / sample_dist), 0, far_rpts1s_num - 1);
         float conf = fabs(far_rpts1a[i]) - (fabs(far_rpts1a[im1]) + fabs(far_rpts1a[ip1])) / 2;
 
-        if (70. / 180. * PI < conf && conf < 140. / 180. * PI && i < 100) {
+        if (60. / 180. * PI < conf && conf < 140. / 180. * PI && i < 100) {
             far_Lpt1_rpts1s_id = i;
             far_Lpt1_found = true;
             break;

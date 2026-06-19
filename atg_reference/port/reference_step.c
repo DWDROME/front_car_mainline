@@ -76,7 +76,7 @@ static void reset_atg_params(void)
     line_blur_kernel = 7;
     ROAD_WIDTH = 0.45f;
     pixel_per_meter = 116;
-    sample_dist = 0.03f;
+    sample_dist = 0.02f;
     angle_dist = 0.2f;
     aim_distance_far = 0.58f;
     aim_distance = aim_distance_far;

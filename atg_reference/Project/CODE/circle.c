@@ -81,8 +81,8 @@ void check_circle() {
     }
 
     // 非圆环模式下，单边L角点, 单边长直道，且当比较靠近近处时才开启判别，防止远端图像畸变产生的误判（凡是id<一个数的都是为了靠近时再识别，在远处识别会有误判）
-    const int left_entry = Lpt0_found && !Lpt1_found && is_straight1 && Lpt0_rpts0s_id < 25;
-    const int right_entry = !Lpt0_found && Lpt1_found && is_straight0 && Lpt1_rpts1s_id < 25;
+    const int left_entry = Lpt0_found && !Lpt1_found && is_straight1 && Lpt0_rpts0s_id < 35;
+    const int right_entry = !Lpt0_found && Lpt1_found && is_straight0 && Lpt1_rpts1s_id < 35;
 
     circle_left_entry_votes = left_entry ? circle_left_entry_votes + 1 : 0;
     circle_right_entry_votes = right_entry ? circle_right_entry_votes + 1 : 0;

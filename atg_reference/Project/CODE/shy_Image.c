@@ -294,8 +294,8 @@ void find_Left_line(uint8 *img_data, uint8 *output ,int block_size, int clip_val
 void find_corners() {
     // 识别Y,L拐点
     Ypt0_found = Ypt1_found = Lpt0_found = Lpt1_found = false;
-    is_straight0 = rpts0s_num > (1.5 / sample_dist);    //长直道判断初始化
-    is_straight1 = rpts1s_num > (1.5 / sample_dist);    //长直道判断初始化
+    is_straight0 = rpts0s_num > (1.0 / sample_dist);    //长直道判断初始化
+    is_straight1 = rpts1s_num > (1.0 / sample_dist);    //长直道判断初始化
     conf1_max =conf2_max = 0;
     atg_lpt0_best_i = atg_lpt1_best_i = -1;
     atg_lpt0_best_im1 = atg_lpt0_best_ip1 = -1;
@@ -323,7 +323,7 @@ void find_corners() {
             atg_lpt0_best_inv_y = Cal_inv_rot_y(rpts0s[i][0], rpts0s[i][1]);
             atg_lpt0_pass_nms = 1;
             atg_lpt0_pass_low = conf1 > (round_type ? 50.0f : 60.0f) / 180.0f * PI;
-            atg_lpt0_pass_high = conf1 < 120.0f / 180.0f * PI;
+            atg_lpt0_pass_high = conf1 < 140.0f / 180.0f * PI;
             atg_lpt0_pass_near = i < 45;
             atg_lpt0_pass_dir = rpts0s[im1][0] > rpts0s[ip1][0] && rpts0s[im1][1] > rpts0s[ip1][1];
         }
@@ -335,7 +335,7 @@ void find_corners() {
         //L角点阈值，判断的时候建议用id的值控制车在比较靠近元素时在判断，并对角点及前后两点，这三个点组成的拐点方向进行判定，防止误判，也可用这个方式判别角点的方向
         if(round_type){
             //回环阶段的单独阈值
-            if (Lpt0_found == false && 50. / 180. * PI < conf1 && conf1 < 120. / 180. * PI && i<45
+            if (Lpt0_found == false && 50. / 180. * PI < conf1 && conf1 < 140. / 180. * PI && i<45
                     &&(rpts0s[im1][0]>rpts0s[ip1][0]&&rpts0s[im1][1]>rpts0s[ip1][1])) {
                 Lpt0_rpts0s_id = i;
                 Lpt0_found = true;
@@ -344,7 +344,7 @@ void find_corners() {
         }
         else{
             //一般情况下的阈值
-            if (Lpt0_found == false && 73. / 180. * PI < conf1 && conf1 < 120. / 180. * PI && i<45
+            if (Lpt0_found == false && 60. / 180. * PI < conf1 && conf1 < 140. / 180. * PI && i<45
                     &&(rpts0s[im1][0]>rpts0s[ip1][0]&&rpts0s[im1][1]>rpts0s[ip1][1]))
             {
                 Lpt0_rpts0s_id = i;
@@ -355,7 +355,7 @@ void find_corners() {
 
 
         //长直道阈值
-        if (conf1 > 15. / 180. * PI && i < 1.5 / sample_dist) is_straight0 = false;
+        if (conf1 > 20. / 180. * PI && i < 1.0 / sample_dist) is_straight0 = false;
         if (Ypt0_found == true && Lpt0_found == true && is_straight0 == false) break;
         if(conf1>conf1_max)conf1_max = conf1;
     }
@@ -378,7 +378,7 @@ void find_corners() {
             atg_lpt1_best_inv_y = Cal_inv_rot_y(rpts1s[i][0], rpts1s[i][1]);
             atg_lpt1_pass_nms = 1;
             atg_lpt1_pass_low = conf2 > (round_type ? 50.0f : 60.0f) / 180.0f * PI;
-            atg_lpt1_pass_high = conf2 < 120.0f / 180.0f * PI;
+            atg_lpt1_pass_high = conf2 < 140.0f / 180.0f * PI;
             atg_lpt1_pass_near = i < 45;
             atg_lpt1_pass_dir = 1;
         }
@@ -387,20 +387,20 @@ void find_corners() {
             Ypt1_found = true;
         }
         if(round_type){
-            if (Lpt1_found == false && 50. / 180. * PI < conf2 && conf2 < 120. / 180. * PI&& i < 45 ) {
+            if (Lpt1_found == false && 50. / 180. * PI < conf2 && conf2 < 140. / 180. * PI&& i < 45 ) {
                 Lpt1_rpts1s_id = i;
                 Lpt1_found = true;
                 atg_lpt1_accept_i = i;
             }
         }
         else{
-            if (Lpt1_found == false && 73. / 180. * PI < conf2 && conf2 < 120. / 180. * PI&& i < 45 ) {
+            if (Lpt1_found == false && 60. / 180. * PI < conf2 && conf2 < 140. / 180. * PI&& i < 45 ) {
                 Lpt1_rpts1s_id = i;
                 Lpt1_found = true;
                 atg_lpt1_accept_i = i;
             }
         }
-        if (conf2 > 15. / 180. * PI && i < 1.5 / sample_dist) is_straight1 = false;
+        if (conf2 > 20. / 180. * PI && i < 1.0 / sample_dist) is_straight1 = false;
         if (Ypt1_found == true && Lpt1_found == true && is_straight1 == false) break;
         if(conf2>conf2_max)conf2_max = conf2;
     }
