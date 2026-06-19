@@ -177,7 +177,7 @@ void findline_lefthand_adaptive(image_t *img, int block_size, int clip_value, in
     int half = block_size / 2;
     int step = 0, dir = 0, turn = 0;
     while (step < *num && half < x && x < img->width - half - 1 &&
-           half < y && y < img->height - half - 1 && turn < 4) {
+           half < y && y < img->height - half - 1 && turn < 6) {
         int local_thres = 0;
         for (int dy = -half; dy <= half; dy++) {
             for (int dx = -half; dx <= half; dx++) {
@@ -220,7 +220,7 @@ void findline_righthand_adaptive(image_t *img, int block_size, int clip_value, i
     int half = block_size / 2;
     int step = 0, dir = 0, turn = 0;
     while (step < *num && half < x && x < img->width - half - 1 &&
-           half < y && y < img->height - half - 1 && turn < 4) {
+           half < y && y < img->height - half - 1 && turn < 6) {
         int local_thres = 0;
         for (int dy = -half; dy <= half; dy++) {
             for (int dx = -half; dx <= half; dx++) {
