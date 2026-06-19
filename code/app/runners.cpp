@@ -3,6 +3,7 @@
 #include "app/options.hpp"
 #include "app/report.hpp"
 #include "app/assistant.hpp"
+#include "clip.hpp"
 #include "core/config.hpp"
 #include "core/control.hpp"
 #include "drivers/device.hpp"
@@ -27,6 +28,11 @@ namespace
 {
 constexpr double kEncoderCountsPerRev = 1024.0 * 4.0;
 constexpr double kAtgEncoderCountsPerMeter = 5800.0;
+constexpr int kCrossHalfRelayDefaultMs = 500;
+constexpr int kCrossHalfRelayMaxMs = 3000;
+// 半十字无线 relay 只放在 runner/control 边界；ATG tracking 仍然报告本帧无线。
+int g_cross_half_relay_frames;
+int g_cross_half_relay_timeout_reported;
 
 struct live_profile_t
 {
@@ -76,6 +82,72 @@ int64_t atg_distance_counts_from_encoder_delta(const control_feedback_t &fb)
     return static_cast<int64_t>(std::llround(wheel_m * kAtgEncoderCountsPerMeter));
 }
 
+int cross_half_relay_limit_frames(int period_ms)
+{
+    const int relay_ms = read_env_int_clamped("FRONT_CAR_CROSS_HALF_RELAY_MS",
+                                             kCrossHalfRelayDefaultMs,
+                                             0,
+                                             kCrossHalfRelayMaxMs);
+    if(relay_ms <= 0)
+    {
+        return 0;
+    }
+    return (relay_ms + period_ms - 1) / period_ms;
+}
+
+void apply_cross_half_relay(control_input_t *input, int line_found)
+{
+    if(input == nullptr)
+    {
+        return;
+    }
+    if(cross_type != CROSS_HALF || line_found)
+    {
+        g_cross_half_relay_frames = 0;
+        g_cross_half_relay_timeout_reported = 0;
+        return;
+    }
+
+    // ATG 参考车远线短暂丢失时仍会靠惯性往前滚；本差速车无线会立刻停车。
+    // 这里只把这个物理前提翻译成一个有时间上限的直行 relay：
+    // 不生成线、不复用旧 guide，窗口结束仍无线就恢复停车。
+    const int period_ms = clip_i(control_config().control_period_ms, 1, 100);
+    const int limit_frames = cross_half_relay_limit_frames(period_ms);
+    if(limit_frames <= 0)
+    {
+        return;
+    }
+
+    if(g_cross_half_relay_frames == 0 && !g_cross_half_relay_timeout_reported)
+    {
+        std::printf("ATGCrossHalfRelay: start limit_frames=%d period_ms=%d\n",
+                    limit_frames,
+                    period_ms);
+    }
+
+    if(g_cross_half_relay_frames >= limit_frames)
+    {
+        if(!g_cross_half_relay_timeout_reported)
+        {
+            std::printf("ATGCrossHalfRelay: timeout frames=%d cross_type=%d, stop on no-line\n",
+                        g_cross_half_relay_frames,
+                        (int)cross_type);
+            g_cross_half_relay_timeout_reported = 1;
+        }
+        return;
+    }
+
+    // 真正的“短时低速直行”就是下面几行；前面的计数/上限只防止无限盲走。
+    g_cross_half_relay_frames++;
+    input->line_found = 1;
+    input->stop_line = 0;
+    input->element_active = 1;
+    input->fixed_yaw_rate_valid = 0;
+    input->fixed_yaw_rate_mrad_s = 0;
+    input->spin_mode = 0;
+    input->guide_error = 0.0;
+}
+
 control_input_t control_input_from_current_frame(const runtime_t *rt, int line_found)
 {
     control_input_t input = {};
@@ -95,6 +167,8 @@ control_input_t control_input_from_current_frame(const runtime_t *rt, int line_f
          garage_type != GARAGE_NONE) ? 1 : 0;
     // ATG2022 当前接入链没有原生停车线状态；不要把旧 zebra 语义伪造成 stop_line。
     input.stop_line = 0;
+
+    apply_cross_half_relay(&input, line_found);
 
     if(read_env_flag("FRONT_CAR_FORCE_LINE", 0))
     {
