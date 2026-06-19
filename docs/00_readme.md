@@ -16,6 +16,7 @@ docs/ATG环岛问题记录.md           # 环岛问题排查记录
 docs/ATG库接入点评估.md           # ATG 各模块接入评估
 docs/IPM重标定流程.md             # IPM 标定 SOP
 docs/IPM调用调研.md               # IPM 代码路径和合同
+docs/14_偏移诊断与修正记录.md     # 修正点汇总 + 实车偏移检查脚本
 docs/09_acceptance_checklist.md   # 验收单
 ```
 
