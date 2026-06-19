@@ -3,7 +3,7 @@
 #include "headfile.h"
 #define ENCODER_PER_METER   (5800)
 int is_large_circle,is_small_circle,circle_count;  //记录赛道有几个圆环及其大小，配合离线调参可以提前预判大小圆环从而进行加减速操作
-int circle_in_length=30,circle_in_distance=2000;   //入环时内侧边线长度，入环时编码器记录长度
+int circle_in_length=60,circle_in_distance=2000;   //入环时内侧边线长度，入环时编码器记录长度
 enum circle_type_e circle_type = CIRCLE_NONE;
 
 
@@ -25,6 +25,7 @@ int have_left_line = 0, have_right_line = 0;                //重找到线的线
 enum
 {
     CIRCLE_ENTRY_CONFIRM_FRAMES = 2,
+    CIRCLE_IN_DISTANCE_CONFIRM = 2000,
 };
 
 static int circle_left_entry_votes;
@@ -102,7 +103,8 @@ void run_circle() {
 
         if(rpts0s_num<35)Count_dis_Flag=1;
         if(rpts1s_num < 0.2 / sample_dist)none_right_line++;         //右侧长直道丢失
-        if(rpts1s_num >25&&none_right_line>1){                       //右侧经历一个先丢线再有线的过程，表示车身已经进入圆环内了，跳转至CIRCLE_LEFT_RUNNING，清理还原标志位
+        if((rpts1s_num >25&&none_right_line>1) ||
+           (total_distence>CIRCLE_IN_DISTANCE_CONFIRM&&rpts0s_num<circle_in_length&&rpts1s_num>25)){ //低速下右线可能一直可见；需先在 IN 阶段行驶一段距离
             circle_type = CIRCLE_LEFT_RUNNING;
             Count_dis_Flag=0;
             none_right_line = 0;
@@ -187,7 +189,8 @@ void run_circle() {
         else             is_small_circle = 1;
         if(rpts1s_num<35)Count_dis_Flag=1;
         if(rpts0s_num < 5)none_left_line++;
-        if(rpts0s_num >25&&none_left_line>1){
+        if((rpts0s_num >25&&none_left_line>1) ||
+           (total_distence>CIRCLE_IN_DISTANCE_CONFIRM&&rpts1s_num<circle_in_length&&rpts0s_num>25)){
             circle_type = CIRCLE_RIGHT_RUNNING; Count_dis_Flag=0;
             begin_y=BEGIN_Y;
             none_left_line = 0;
@@ -213,7 +216,7 @@ void run_circle() {
             none_left_line++;
             Count_dis_Flag=1;
         }
-        if(rpts0s_num>30&&!Lpt0_found&&none_left_line>=1)
+        if((rpts0s_num>30&&!Lpt0_found&&none_left_line>=1)||total_distence>4500)
         {
             circle_type = CIRCLE_RIGHT_END;
             none_left_line= 0;

@@ -79,6 +79,7 @@ void run_cross()
     float Lpt0y = rpts0s[Lpt0_rpts0s_id][1];
     float Lpt1y = rpts1s[Lpt1_rpts1s_id][1];
     //检测到十字，先按照近线走
+    // 十字截断
     if (cross_type == CROSS_BEGIN) {
         if (Lpt0_found) {
             rptsc0_num = rpts0s_num = Lpt0_rpts0s_id;
@@ -87,7 +88,8 @@ void run_cross()
             rptsc1_num = rpts1s_num = Lpt1_rpts1s_id;
         }
 
-        aim_distance = AIM_DISTENCE;
+        //aim_distance = AIM_DISTENCE;
+        aim_distance = 0.4; // 参考的
         //近角点过少，进入远线控制
         if ((Xfound && (Lpt0_rpts0s_id < 0.1 / sample_dist || Lpt1_rpts1s_id < 0.1 / sample_dist))/* || (rpts1_num <30 && rpts0_num<30)*/) {
             cross_type = CROSS_IN;

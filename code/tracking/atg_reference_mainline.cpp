@@ -199,25 +199,12 @@ int tracking_process_frame(runtime_t *rt)
     }
 
     copy_atg_midline(rt);
-    const int element_active =
-        cross_type != CROSS_NONE ||
-        circle_type != CIRCLE_NONE ||
-        round_type != ROUND_NONE ||
-        yroad_type != YROAD_NONE ||
-        ramp_type != RAMP_NONE ||
-        garage_type != GARAGE_NONE;
-    if(element_active)
-    {
-        // ATG's Guide is the reference element control quantity computed from
-        // pure_angle and aim_distance. Its sign is opposite to the verified
-        // differential outer loop convention (outer_sign=-1).
-        rt->vision.guide_error = -static_cast<double>(Guide);
-    }
-    else
-    {
-        rt->vision.guide_error =
-            atg_lookahead_error(&rt->vision.mid) -
-            static_cast<double>(control_config().guide_error_bias_deg);
-    }
+    // ATG pure_angle feeds a steering-servo PID in the reference car. This
+    // differential car publishes a heading-style error from the selected
+    // current-frame rptsn line; element_active is consumed later as speed/brake
+    // context, not as a reason to change the guide_error unit.
+    rt->vision.guide_error =
+        atg_lookahead_error(&rt->vision.mid) -
+        static_cast<double>(control_config().guide_error_bias_deg);
     return track_line_found(rt);
 }
