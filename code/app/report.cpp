@@ -13,6 +13,7 @@
 #include <unistd.h>
 
 extern "C" {
+#include "atg_reference_step.h"
 #include "headfile.h"
 }
 
@@ -173,6 +174,29 @@ const char *circle_enum_name(int value)
     }
 }
 
+const char *cross_enum_name(int value)
+{
+    switch(value)
+    {
+    case CROSS_NONE:
+        return "CROSS_NONE";
+    case CROSS_BEGIN:
+        return "CROSS_BEGIN";
+    case CROSS_IN:
+        return "CROSS_IN";
+    case CROSS_HALF:
+        return "CROSS_HALF";
+    case CROSS_HALF_BEGIN:
+        return "CROSS_HALF_BEGIN";
+    case CROSS_HALF_RIGHT:
+        return "CROSS_HALF_RIGHT";
+    case CROSS_HALF_LEFT:
+        return "CROSS_HALF_LEFT";
+    default:
+        return "CROSS_UNKNOWN";
+    }
+}
+
 live_state_signature_t make_live_state_signature(const runtime_t *rt)
 {
     return live_state_signature(
@@ -311,6 +335,276 @@ void print_atg_corners()
                 conf2_max * k_rad_to_deg,
                 conf3_max * k_rad_to_deg,
                 conf4_max * k_rad_to_deg);
+}
+
+struct line_error_diag_t
+{
+    int ok;
+    int begin;
+    int idx;
+    int x;
+    int y;
+    int dist;
+    int max_dist;
+    double err_deg;
+    double dx;
+};
+
+struct raw_ref_diag_t
+{
+    double x;
+    double y;
+};
+
+raw_ref_diag_t raw_ref_to_ipm(double raw_x)
+{
+    const double raw_y = static_cast<double>(MT9V03X_H) * 0.98;
+    raw_ref_diag_t out = {};
+    float ipm_x = 0.0F;
+    float ipm_y = 0.0F;
+    atg_reference_raw_ref_to_ipm(static_cast<float>(raw_x),
+                                 static_cast<float>(raw_y),
+                                 &ipm_x,
+                                 &ipm_y);
+    out.x = static_cast<double>(ipm_x);
+    out.y = static_cast<double>(ipm_y);
+    return out;
+}
+
+line_error_diag_t line_error_diag(const float pts[][2], int num, int aim_distance)
+{
+    line_error_diag_t out = {};
+    out.begin = -1;
+    out.idx = -1;
+    out.x = -1;
+    out.y = -1;
+    out.dist = -1;
+    out.max_dist = -1;
+    if(pts == nullptr || num <= 0)
+    {
+        return out;
+    }
+
+    double best_start = 1.0e30;
+    int begin = -1;
+    for(int i = 0; i < num; ++i)
+    {
+        const double dx = static_cast<double>(pts[i][0]) - static_cast<double>(cx);
+        const double dy = static_cast<double>(pts[i][1]) - static_cast<double>(cy);
+        const double d = dx * dx + dy * dy;
+        if(d < best_start)
+        {
+            best_start = d;
+            begin = i;
+        }
+    }
+    if(begin < 0 || num - begin < 2)
+    {
+        return out;
+    }
+
+    int best = begin;
+    int best_err = 1 << 30;
+    int dist = 0;
+    double last_x = static_cast<double>(cx);
+    double last_y = static_cast<double>(cy);
+    for(int i = begin; i < num; ++i)
+    {
+        const double x = static_cast<double>(pts[i][0]);
+        const double y = static_cast<double>(pts[i][1]);
+        if(i != begin)
+        {
+            dist += static_cast<int>(std::lround(std::hypot(x - last_x, y - last_y)));
+        }
+        if(dist > out.max_dist)
+        {
+            out.max_dist = dist;
+        }
+        const int err = std::abs(dist - aim_distance);
+        if(err < best_err)
+        {
+            best_err = err;
+            best = i;
+            out.dist = dist;
+        }
+        last_x = x;
+        last_y = y;
+    }
+
+    const double x = static_cast<double>(pts[best][0]);
+    const double y = static_cast<double>(pts[best][1]);
+    const double dx = x - static_cast<double>(cx);
+    const double dy = static_cast<double>(cy) - y + 0.2 * static_cast<double>(pixel_per_meter);
+    out.ok = 1;
+    out.begin = begin;
+    out.idx = best;
+    out.x = static_cast<int>(std::lround(x));
+    out.y = static_cast<int>(std::lround(y));
+    out.dx = dx;
+    out.err_deg = -std::atan2(dx, dy) * 180.0 / 3.14159265358979323846;
+    return out;
+}
+
+void print_line_error_diag()
+{
+    const int aim_distance = atg_lookahead_dist_px();
+    const line_error_diag_t left = line_error_diag(rptsc0, rptsc0_num, aim_distance);
+    const line_error_diag_t right = line_error_diag(rptsc1, rptsc1_num, aim_distance);
+    const line_error_diag_t selected = line_error_diag(rptsn, rptsn_num, aim_distance);
+    const line_error_diag_t edge_left = line_error_diag(rpts0s, rpts0s_num, aim_distance);
+    const line_error_diag_t edge_right = line_error_diag(rpts1s, rpts1s_num, aim_distance);
+    int edge_mid_ok = 0;
+    double edge_mid_x = -1.0;
+    double edge_mid_y = -1.0;
+    double edge_mid_dx = 0.0;
+    double edge_mid_err = 0.0;
+    double edge_width = 0.0;
+    if(edge_left.ok && edge_right.ok)
+    {
+        edge_mid_ok = 1;
+        edge_mid_x = (static_cast<double>(edge_left.x) + static_cast<double>(edge_right.x)) * 0.5;
+        edge_mid_y = (static_cast<double>(edge_left.y) + static_cast<double>(edge_right.y)) * 0.5;
+        edge_mid_dx = edge_mid_x - static_cast<double>(cx);
+        const double edge_mid_dy =
+            static_cast<double>(cy) - edge_mid_y + 0.2 * static_cast<double>(pixel_per_meter);
+        edge_mid_err = -std::atan2(edge_mid_dx, edge_mid_dy) * 180.0 / 3.14159265358979323846;
+        edge_width = std::hypot(static_cast<double>(edge_right.x - edge_left.x),
+                                static_cast<double>(edge_right.y - edge_left.y));
+    }
+
+    std::printf("LineErr: aim=%d cxcy=%.1f,%.1f "
+                "left=%d:%.2f@%d,%d dx=%.1f idx=%d/%d dist=%d/%d "
+                "right=%d:%.2f@%d,%d dx=%.1f idx=%d/%d dist=%d/%d "
+                "sel=%d:%.2f@%d,%d dx=%.1f idx=%d/%d dist=%d/%d "
+                "edge=%d:%.2f@%.1f,%.1f dx=%.1f width=%.1f l=%d,%d r=%d,%d\n",
+                aim_distance,
+                cx,
+                cy,
+                left.ok,
+                left.err_deg,
+                left.x,
+                left.y,
+                left.dx,
+                left.begin,
+                left.idx,
+                left.dist,
+                left.max_dist,
+                right.ok,
+                right.err_deg,
+                right.x,
+                right.y,
+                right.dx,
+                right.begin,
+                right.idx,
+                right.dist,
+                right.max_dist,
+                selected.ok,
+                selected.err_deg,
+                selected.x,
+                selected.y,
+                selected.dx,
+                selected.begin,
+                selected.idx,
+                selected.dist,
+                selected.max_dist,
+                edge_mid_ok,
+                edge_mid_err,
+                edge_mid_x,
+                edge_mid_y,
+                edge_mid_dx,
+                edge_width,
+                edge_left.x,
+                edge_left.y,
+                edge_right.x,
+                edge_right.y);
+    if(edge_mid_ok)
+    {
+        int best_raw_x = -1;
+        double best_abs_err = 1.0e30;
+        double best_err = 0.0;
+        raw_ref_diag_t best_ref = {};
+        char scan[512];
+        int used = 0;
+        scan[0] = '\0';
+        for(int raw_x = 0; raw_x <= 140; raw_x += 5)
+        {
+            const raw_ref_diag_t ref = raw_ref_to_ipm(static_cast<double>(raw_x));
+            const double dx = edge_mid_x - ref.x;
+            const double dy = ref.y - edge_mid_y + 0.2 * static_cast<double>(pixel_per_meter);
+            const double err = -std::atan2(dx, dy) * 180.0 / 3.14159265358979323846;
+            const double abs_err = std::fabs(err);
+            if(abs_err < best_abs_err)
+            {
+                best_abs_err = abs_err;
+                best_err = err;
+                best_raw_x = raw_x;
+                best_ref = ref;
+            }
+            if(raw_x % 10 == 0)
+            {
+                const int n = std::snprintf(scan + used,
+                                            sizeof(scan) - static_cast<size_t>(used),
+                                            "%s%d:%.1f",
+                                            used == 0 ? "" : ",",
+                                            raw_x,
+                                            err);
+                if(n > 0)
+                {
+                    used += n;
+                    if(used >= static_cast<int>(sizeof(scan)))
+                    {
+                        used = static_cast<int>(sizeof(scan)) - 1;
+                    }
+                }
+            }
+        }
+        std::printf("CxScan: raw_ref=%.1f edge=%.1f,%.1f best_raw_x=%d best_err=%.2f best_cxcy=%.1f,%.1f scan=%s\n",
+                    atg_reference_vehicle_raw_ref_x(),
+                    edge_mid_x,
+                    edge_mid_y,
+                    best_raw_x,
+                    best_err,
+                    best_ref.x,
+                    best_ref.y,
+                    scan);
+    }
+}
+
+void print_cross_diag()
+{
+    const int half_left = cross_type == CROSS_HALF && Lpt0_found_flag;
+    const int half_right = cross_type == CROSS_HALF && Lpt1_found_flag;
+    std::printf("CrossDiag: type=%s track=%d half_lr=%d/%d "
+                "nearL=%d@%d/%d@%d nearNum=%d/%d centerNum=%d/%d "
+                "farL=%d@%d/%d@%d farNum=%d/%d farRaw=%d/%d "
+                "lost=%d/%d not_have=%d final=%d/%d flags=%d/%d\n",
+                cross_enum_name(cross_type),
+                track_type,
+                half_left,
+                half_right,
+                flag(Lpt0_found),
+                Lpt0_found ? Lpt0_rpts0s_id : -1,
+                flag(Lpt1_found),
+                Lpt1_found ? Lpt1_rpts1s_id : -1,
+                rpts0s_num,
+                rpts1s_num,
+                rptsc0_num,
+                rptsc1_num,
+                flag(far_Lpt0_found),
+                far_Lpt0_found ? far_Lpt0_rpts0s_id : -1,
+                flag(far_Lpt1_found),
+                far_Lpt1_found ? far_Lpt1_rpts1s_id : -1,
+                far_rpts0s_num,
+                far_rpts1s_num,
+                far_ipts0_num,
+                far_ipts1_num,
+                if_lost_left_line,
+                if_lost_right_line,
+                not_have_line,
+                rpts_num,
+                rptsn_num,
+                Lpt0_found_flag,
+                Lpt1_found_flag);
 }
 
 void print_atg_vision_diag()
@@ -629,6 +923,8 @@ void print_live(uint32_t frame_id, const runtime_t *rt, int div)
                 rt->control.right_actual_rps_milli,
                 rt->control.left_duty,
                 rt->control.right_duty);
+    print_cross_diag();
+    print_line_error_diag();
     print_atg_vision_diag();
     std::fflush(stdout);
 }

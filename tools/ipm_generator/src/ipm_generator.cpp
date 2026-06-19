@@ -59,6 +59,8 @@ struct TableData {
 struct PickState {
     cv::Mat image;
     std::vector<cv::Point2f> points;
+    cv::Point cursor{-1, -1};
+    bool has_cursor = false;
 };
 
 struct TunedTarget {
@@ -234,14 +236,119 @@ void draw_selection(cv::Mat &view, const std::vector<cv::Point2f> &points)
 
 void mouse_callback(int event, int x, int y, int, void *userdata)
 {
+    auto *state = static_cast<PickState *>(userdata);
+    if(event == cv::EVENT_MOUSEMOVE) {
+        state->cursor = cv::Point(x, y);
+        state->has_cursor = true;
+        return;
+    }
     if(event != cv::EVENT_LBUTTONDOWN) {
         return;
     }
-
-    auto *state = static_cast<PickState *>(userdata);
     if(state->points.size() < 4) {
         state->points.emplace_back(static_cast<float>(x), static_cast<float>(y));
     }
+}
+
+// 底层参考层：图像竖直中线(辅助左右对称) + 鼠标十字准线 + 坐标。
+void draw_guides(cv::Mat &view, const PickState &state)
+{
+    cv::line(view, cv::Point(kInputWidth / 2, 0), cv::Point(kInputWidth / 2, kInputHeight - 1),
+             cv::Scalar(110, 110, 110), 1, cv::LINE_AA);
+
+    if(!state.has_cursor) {
+        return;
+    }
+    const cv::Point c = state.cursor;
+    if(c.x < 0 || c.x >= kInputWidth || c.y < 0 || c.y >= kInputHeight) {
+        return;
+    }
+    cv::line(view, cv::Point(0, c.y), cv::Point(kInputWidth - 1, c.y),
+             cv::Scalar(0, 180, 255), 1, cv::LINE_AA);
+    cv::line(view, cv::Point(c.x, 0), cv::Point(c.x, kInputHeight - 1),
+             cv::Scalar(0, 180, 255), 1, cv::LINE_AA);
+}
+
+// 局部放大镜：鼠标周围区域放大到鼠标对侧角，中心红十字对应当前精确像素。
+// 只在还没标满 4 点时显示(标点过程辅助)。
+void draw_magnifier(cv::Mat &view, const PickState &state)
+{
+    if(state.points.size() >= 4 || !state.has_cursor) {
+        return;
+    }
+    const cv::Point c = state.cursor;
+    if(c.x < 0 || c.x >= kInputWidth || c.y < 0 || c.y >= kInputHeight) {
+        return;
+    }
+
+    const int src_half = 18;
+    const int zoom = 6;
+    const int x0 = std::clamp(c.x - src_half, 0, kInputWidth - 1);
+    const int y0 = std::clamp(c.y - src_half, 0, kInputHeight - 1);
+    const int x1 = std::clamp(c.x + src_half, 0, kInputWidth - 1);
+    const int y1 = std::clamp(c.y + src_half, 0, kInputHeight - 1);
+    if(x1 - x0 < 4 || y1 - y0 < 4) {
+        return;
+    }
+
+    cv::Mat patch = state.image(cv::Rect(x0, y0, x1 - x0, y1 - y0)).clone();
+    cv::Mat mag;
+    cv::resize(patch, mag, cv::Size((x1 - x0) * zoom, (y1 - y0) * zoom), 0, 0, cv::INTER_NEAREST);
+    const int mcx = (c.x - x0) * zoom;
+    const int mcy = (c.y - y0) * zoom;
+    cv::line(mag, cv::Point(mcx - 9, mcy), cv::Point(mcx + 9, mcy), cv::Scalar(0, 0, 255), 1);
+    cv::line(mag, cv::Point(mcx, mcy - 9), cv::Point(mcx, mcy + 9), cv::Scalar(0, 0, 255), 1);
+
+    // 放大镜放鼠标对侧角，避免遮挡正在标的区域。
+    int px = (c.x < kInputWidth / 2) ? (kInputWidth - mag.cols - 10) : 10;
+    int py = (c.y < kInputHeight / 2) ? (kInputHeight - mag.rows - 10) : 84;
+    px = std::clamp(px, 0, kInputWidth - mag.cols);
+    py = std::clamp(py, 0, kInputHeight - mag.rows);
+    mag.copyTo(view(cv::Rect(px, py, mag.cols, mag.rows)));
+    cv::rectangle(view, cv::Rect(px, py, mag.cols, mag.rows), cv::Scalar(0, 180, 255), 1);
+
+    std::ostringstream oss;
+    oss << "(" << c.x << "," << c.y << ")";
+    cv::putText(view, oss.str(), cv::Point(px, std::max(12, py - 4)),
+                cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 180, 255), 1, cv::LINE_AA);
+}
+
+// 4 点齐后的即时验收：用标的四点把当前图 warp 成矩形预览。
+// 标得好则赛道左右边线会贴合两条红色竖直参考线；歪/弯说明四点要微调。
+// 这是纯标点质量预览(输入图域)，不依赖运行时 raw/IPM 坐标，不写任何文件。
+void draw_preview(cv::Mat &view, const PickState &state)
+{
+    if(state.points.size() != 4) {
+        return;
+    }
+
+    const int pw = 180;
+    const int ph = 240;
+    const float lx = pw * 0.32f;
+    const float rx = pw * 0.68f;
+    const std::vector<cv::Point2f> src = {state.points[0], state.points[1],
+                                          state.points[2], state.points[3]};
+    const std::vector<cv::Point2f> dst = {
+        cv::Point2f(lx, ph * 0.95f),  // LB
+        cv::Point2f(rx, ph * 0.95f),  // RB
+        cv::Point2f(lx, ph * 0.05f),  // LT
+        cv::Point2f(rx, ph * 0.05f),  // RT
+    };
+
+    cv::Mat homography = cv::getPerspectiveTransform(src, dst);
+    cv::Mat preview;
+    cv::warpPerspective(state.image, preview, homography, cv::Size(pw, ph));
+    cv::line(preview, cv::Point(static_cast<int>(lx), 0), cv::Point(static_cast<int>(lx), ph - 1),
+             cv::Scalar(0, 0, 255), 1, cv::LINE_AA);
+    cv::line(preview, cv::Point(static_cast<int>(rx), 0), cv::Point(static_cast<int>(rx), ph - 1),
+             cv::Scalar(0, 0, 255), 1, cv::LINE_AA);
+
+    const int px = std::clamp(kInputWidth - pw - 10, 0, kInputWidth - pw);
+    const int py = std::clamp(kInputHeight - ph - 10, 0, kInputHeight - ph);
+    preview.copyTo(view(cv::Rect(px, py, pw, ph)));
+    cv::rectangle(view, cv::Rect(px, py, pw, ph), cv::Scalar(0, 0, 255), 1);
+    cv::putText(view, "preview: road edges hug red lines = good", cv::Point(px, std::max(12, py - 4)),
+                cv::FONT_HERSHEY_SIMPLEX, 0.42, cv::Scalar(0, 0, 255), 1, cv::LINE_AA);
 }
 
 std::vector<cv::Point2f> pick_points_interactive(const cv::Mat &gray)
@@ -259,7 +366,10 @@ std::vector<cv::Point2f> pick_points_interactive(const cv::Mat &gray)
 
     for(;;) {
         cv::Mat view = state.image.clone();
+        draw_guides(view, state);
         draw_selection(view, state.points);
+        draw_magnifier(view, state);
+        draw_preview(view, state);
         cv::putText(view, "Order: LB -> RB -> LT -> RT", cv::Point(14, 26),
                     cv::FONT_HERSHEY_SIMPLEX, 0.65, cv::Scalar(0, 255, 255), 2, cv::LINE_AA);
         cv::putText(view, "u undo | r reset | enter accept | esc abort", cv::Point(14, 52),
