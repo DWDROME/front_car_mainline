@@ -19,6 +19,7 @@
 #include <opencv2/imgcodecs.hpp>
 
 extern "C" {
+#include "atg_reference_step.h"
 #include "headfile.h"
 }
 
@@ -499,6 +500,11 @@ int live(runtime_t *rt)
                                                 default_control_center_x(),
                                                 0,
                                                 RAW_W - 1);
+    atg_reference_set_vehicle_raw_ref_x(
+        static_cast<float>(read_env_int_clamped("FRONT_CAR_VEHICLE_RAW_REF_X",
+                                                static_cast<int>(std::lround(control_config().vehicle_raw_ref_x)),
+                                                0,
+                                                MT9V03X_W - 1)));
     if(div < 1)
     {
         div = 1;

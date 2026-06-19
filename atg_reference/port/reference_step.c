@@ -14,6 +14,7 @@
 extern int64_t g_atg_reference_encoder_total;
 
 static int64_t last_encoder_total;
+static float g_vehicle_raw_ref_x = MT9V03X_W / 2.0f;
 
 // 环岛状态停滞出口：ATG 原工程是舵机车，选线失败帧车仍按旧速度滚动，
 // 状态机靠"继续行驶"满足视觉出口或 total_distence 强制出口（circle.c 的 >4500）。
@@ -528,11 +529,7 @@ static int normalize_selected_line(void)
     }
 
     const float h_zoom = 0.98f;
-    const float half_width = MT9V03X_W / 2.0f;
-    cx = (rot[1][0] * MT9V03X_H * h_zoom + rot[1][1] * half_width + rot[1][2]) /
-         (rot[2][0] * MT9V03X_H * h_zoom + rot[2][1] * half_width + rot[2][2]);
-    cy = (rot[0][0] * MT9V03X_H * h_zoom + rot[0][1] * half_width + rot[0][2]) /
-         (rot[2][0] * MT9V03X_H * h_zoom + rot[2][1] * half_width + rot[2][2]);
+    atg_reference_raw_ref_to_ipm(g_vehicle_raw_ref_x, MT9V03X_H * h_zoom, &cx, &cy);
 
     float min_dist = 10000.0f;
     int begin_id = 0;
@@ -719,4 +716,47 @@ int atg_reference_process_frame(uint8_t gray[120][160], int64_t encoder_total)
 int atg_reference_track_line_found(void)
 {
     return rptsn_num > 0;
+}
+
+void atg_reference_set_vehicle_raw_ref_x(float raw_x)
+{
+    if(raw_x < 0.0f)
+    {
+        raw_x = 0.0f;
+    }
+    if(raw_x > (float)(MT9V03X_W - 1))
+    {
+        raw_x = (float)(MT9V03X_W - 1);
+    }
+    g_vehicle_raw_ref_x = raw_x;
+}
+
+float atg_reference_vehicle_raw_ref_x(void)
+{
+    return g_vehicle_raw_ref_x;
+}
+
+void atg_reference_raw_ref_to_ipm(float raw_x, float raw_y, float *ipm_x, float *ipm_y)
+{
+    const float den = rot[2][0] * raw_y + rot[2][1] * raw_x + rot[2][2];
+    if(den == 0.0f)
+    {
+        if(ipm_x != NULL)
+        {
+            *ipm_x = 0.0f;
+        }
+        if(ipm_y != NULL)
+        {
+            *ipm_y = 0.0f;
+        }
+        return;
+    }
+    if(ipm_x != NULL)
+    {
+        *ipm_x = (rot[1][0] * raw_y + rot[1][1] * raw_x + rot[1][2]) / den;
+    }
+    if(ipm_y != NULL)
+    {
+        *ipm_y = (rot[0][0] * raw_y + rot[0][1] * raw_x + rot[0][2]) / den;
+    }
 }

@@ -125,6 +125,7 @@ void set_field(const std::string &k, const std::string &v)
     F(rps_filter_alpha)
     I(yaw_rate_filter_window)
     F(lookahead_time_s)
+    F(vehicle_raw_ref_x)
     F(guide_error_bias_deg)
     I(max_duty_percent)
 #undef I

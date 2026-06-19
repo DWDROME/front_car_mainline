@@ -49,6 +49,8 @@ struct control_config_t
     // 视觉预瞄时间(s)：预瞄距离 = clamp(lookahead_time_s * 目标车速, 0.20m, 0.58m)。
     // 速度由 target_rps * pi * encoder_gear_diameter_m 换算；改速度时预瞄自动跟随，无需另调。
     float lookahead_time_s         = 1.0F;
+    // 车体参考点在原始图像底部的 x 坐标；经 IPM 投影后作为 cx/cy。
+    float vehicle_raw_ref_x        = 80.0F;
     // 视觉 guide 零点标定(deg)。实车摆在赛道中心时 guide 应为 0。
     float guide_error_bias_deg     = 0.0F;
 

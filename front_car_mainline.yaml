@@ -71,8 +71,10 @@ max_yaw_rate_correction: 0.20
 # 速度由 target_rps × π × encoder_gear_diameter_m 换算；改 target_rps 时预瞄自动跟随
 # 当前低速会被 0.20m 下限兜住，提速后自动放远
 lookahead_time_s: 1.0
-# 视觉 guide 零点标定(deg)：普通巡线使用短预瞄误差，2026-06-13 真直道、车身居中、驱动关闭实测 raw guide=+13.01
-guide_error_bias_deg: 13.0
+# 车体参考点 raw x：重标定 IPM 后回到图像中心；若 CxScan 仍有固定残差，再重新评估相机/IPM
+vehicle_raw_ref_x: 80.0
+# 视觉 guide 零点标定(deg)：几何参考点已用 vehicle_raw_ref_x 对齐，先保持 0，不用角度 bias 掩盖 IPM/车体投影问题
+guide_error_bias_deg: 0.0
 
 # 反馈滤波
 # rps_filter_alpha 应在 0~1；越大越跟手，越小越平滑
