@@ -37,9 +37,10 @@ app/main.cpp
 
 ## 阅读顺序
 
-优先看当前事实：
+先建立全局认知，再看当前事实：
 
 ```text
+docs/01_全局地图.md          # 三层身份 + 舵机/差速冲突 + 一帧数据流，新手先读
 atg_reference/PORTING.md
 docs/13_mainline_pipeline_map.md
 docs/ATG新路线重构方案.md
