@@ -262,6 +262,16 @@ void solve(const control_input_t *input, const control_feedback_t *fb, control_s
     }
     target_yaw = clip_f(target_yaw, -c.max_target_yaw_rate, c.max_target_yaw_rate);
 
+    // 弯道按转向幅度连续降速：直道(|target_yaw|≈0)≈满速，弯越急越慢，预瞄可提前刹。
+    // 仅普通巡线生效：element_active 时 center_rps 已是元素速度；fixed_yaw_rate_valid 时
+    // target_yaw 是指定值(含 spin)，都不缩。curve_speed_slowdown=0 时行为与原版一致。
+    if(!input->element_active && !input->fixed_yaw_rate_valid &&
+       c.curve_speed_slowdown > 0.0F && c.max_target_yaw_rate > 0.0F)
+    {
+        const float curve_ratio = clip_f(abs_f(target_yaw) / c.max_target_yaw_rate, 0.0F, 1.0F);
+        center_rps *= 1.0F - c.curve_speed_slowdown * curve_ratio;
+    }
+
     // 4. yaw-rate 内环修正：target_yaw -> yaw_cmd
     //
     // 输入：target_yaw 和 yaw_now。

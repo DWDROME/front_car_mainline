@@ -11,6 +11,9 @@ struct control_config_t
     float target_rps               = 4.0F;
     float element_target_rps       = 3.0F;
     float speed_target_rps         = 4.0F;
+    // 弯道按转向连续降速：满转向(|target_yaw|≥max_target_yaw_rate)时 center_rps×(1-该值)。
+    // 0=关闭(直道弯道同速)；仅普通巡线生效，元素内/固定yaw 不受影响。
+    float curve_speed_slowdown     = 0.0F;
 
     // 左右轮 FF+PI 参数。base 是前馈占空，kp/ki 是轮速闭环。
     float left_speed_base_percent  = 9.0F;
