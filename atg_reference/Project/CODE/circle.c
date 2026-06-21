@@ -26,7 +26,9 @@ enum
 {
     CIRCLE_ENTRY_CONFIRM_FRAMES = 2,
     CIRCLE_IN_DISTANCE_CONFIRM = 2000,
-    // 参考陀螺积分圆环：阈值单位是 0.1 度，视觉条件仍保留为 OR。
+    // RUNNING 是环内最长段。该值只是陀螺失效时的距离兜底，16000 / 5800 about 2.76m，需上车标定。
+    CIRCLE_RUNNING_FORCE_OUT_COUNTS = 16000,
+    // 参考陀螺积分圆环：阈值单位是 0.1 度，进 IN 后单次清零，后续累计比较。
     CIRCLE_HEADING_ENTER_DEG10 = 600,
     CIRCLE_HEADING_START_OUT_DEG10 = 2000,
     CIRCLE_HEADING_FORCE_OUT_DEG10 = 2500,
@@ -107,147 +109,205 @@ void check_circle() {
 void run_circle() {
     int64_t current_encoder = 1;
 
-    // 左环开始，寻外直道右线
+    // ===================== 左环 =====================
     if (circle_type == CIRCLE_LEFT_BEGIN) {
         track_type = TRACK_RIGHT;
-        //先丢左线后有线
-        if (rpts0s_num  <2&&!Lpt0_found) { Count_dis_Flag=1;none_left_line++; have_left_line = 0;}  //丢线标志位开启，开始记录编码器距离
-        if (rpts0s_num >30&&none_left_line )  have_left_line ++;                                    //经历了一个先丢先再有线的过程，再次出现边线标志位标志位开启
-        if ((rpts0s_num  <  circle_in_length &&total_distence>circle_in_distance&&have_left_line) ||
-            (rpts0s_num < circle_in_length && have_left_line && circle_heading_abs_ge(CIRCLE_HEADING_ENTER_DEG10))) {
-            //当搜到内环&&内环边线长度小于某个长度（小于的意思是虽然之前我可能搜到了内环，过早切换到内环会非常切内，单轮出界
-            //但是这时我仍可以巡外侧长直道行进，但边线长度会随着车往前跑而逐渐变短，当短到一定地步时入环时机合适）&&编码累积了一定的行进距离
-            //这些条件可多可少，最好根据自身车速和摄像头视野灵活修改
-                circle_type = CIRCLE_LEFT_IN;if_lost_right_line =0;
-                none_left_line = 0;
-                none_right_line = 0;
-                have_left_line = 0;
-                have_right_line = 0;
-                if_clean_pid = 1;//变积分PID开启标志位
-                Count_dis_Flag=0;
-                //还原一些边线标志位，并跳转到CIRCLE_LEFT_IN状态
+
+        // 入环口必然出现的内侧(左)线丢失事件：保留，它是进 IN 的真证据来源。
+        if (rpts0s_num < 2 && !Lpt0_found) {
+            Count_dis_Flag = 1;
+            none_left_line++;
+            have_left_line = 0;
+        }
+
+        /*
+         * legacy visual reappear gate:
+         * if (rpts0s_num > 30 && none_left_line) have_left_line++;
+         * if ((rpts0s_num < circle_in_length && total_distence > circle_in_distance && have_left_line) ||
+         *     (rpts0s_num < circle_in_length && have_left_line && circle_heading_abs_ge(CIRCLE_HEADING_ENTER_DEG10)))
+         *
+         * 偏置进环时内侧线可能追不到"重现 -> 再变短"，会卡在 BEGIN。
+         * 现在只要求已发生丢线事件，再由距离或陀螺确认进入固定动作 IN。
+         */
+        if (none_left_line > 0 &&
+            (total_distence > circle_in_distance ||
+             circle_heading_abs_ge(CIRCLE_HEADING_ENTER_DEG10))) {
+            circle_type = CIRCLE_LEFT_IN;
+            reset_circle_heading();
+            if_lost_right_line = 0;
+            none_left_line = 0;
+            none_right_line = 0;
+            have_left_line = 0;
+            have_right_line = 0;
+            if_clean_pid = 1;
+            Count_dis_Flag = 0;
         }
     }
-    //入环，寻内圆左线
     else if (circle_type == CIRCLE_LEFT_IN) {
-        cross_farline_L();                                           //开启搜索远线
+        cross_farline_L();                     // 固定补线不依赖远线，但保留远线搜索供其他标志位刷新。
         track_type = TRACK_LEFT;
-        if(rpts0s_num>70){                                           //通过内环判断大小圆环，用于速度决策
-            is_large_circle = 1;
-            is_small_circle= 0;
-        }
-        else
-            is_small_circle = 1;
+        Count_dis_Flag = 1;
 
-        if(rpts0s_num<35)Count_dis_Flag=1;
-        if(rpts1s_num < 0.2 / sample_dist)none_right_line++;         //右侧长直道丢失
-        if((rpts1s_num >25&&none_right_line>1) ||
-           (total_distence>CIRCLE_IN_DISTANCE_CONFIRM&&rpts0s_num<circle_in_length&&rpts1s_num>25) ||
-           (rpts0s_num<circle_in_length&&rpts1s_num>25&&circle_heading_abs_ge(CIRCLE_HEADING_ENTER_DEG10))){ //低速下右线可能一直可见；需先在 IN 阶段行驶一段距离
+        if (rpts0s_num > 70) {
+            is_large_circle = 1;
+            is_small_circle = 0;
+        }
+        else {
+            is_small_circle = 1;
+        }
+
+        /*
+         * legacy visual reappear gate:
+         * if (rpts1s_num < 0.2 / sample_dist) none_right_line++;
+         * if ((rpts1s_num > 25 && none_right_line > 1) ||
+         *     (total_distence > CIRCLE_IN_DISTANCE_CONFIRM && rpts0s_num < circle_in_length && rpts1s_num > 25) ||
+         *     (rpts0s_num < circle_in_length && rpts1s_num > 25 && circle_heading_abs_ge(CIRCLE_HEADING_ENTER_DEG10)))
+         */
+        if (circle_heading_abs_ge(CIRCLE_HEADING_ENTER_DEG10) ||
+            total_distence > CIRCLE_IN_DISTANCE_CONFIRM) {
             circle_type = CIRCLE_LEFT_RUNNING;
-            Count_dis_Flag=0;
+            Count_dis_Flag = 0;
             none_right_line = 0;
         }
     }
-    //正常巡线，寻外圆右线
     else if (circle_type == CIRCLE_LEFT_RUNNING) {
         track_type = TRACK_RIGHT;
-        if (Lpt1_found) {
-            //接近出环时,拐点截断处理
-            rpts1s_num = Lpt1_rpts1s_id-2;
-            rptsc1_num = Lpt1_rpts1s_id-2;
-        }
-        //满足拐点足够靠近近点时切换到内环循迹
-        if ((Lpt1_found&&((Lpt1_rpts1s_id < 0.7/ sample_dist))) ||
-            circle_heading_abs_ge(CIRCLE_HEADING_START_OUT_DEG10)) {
+        Count_dis_Flag = 1;
+
+        /*
+         * legacy Lpt out trigger and truncation:
+         * if (Lpt1_found) {
+         *     rpts1s_num = Lpt1_rpts1s_id - 2;
+         *     rptsc1_num = Lpt1_rpts1s_id - 2;
+         * }
+         * if (Lpt1_found && Lpt1_rpts1s_id < 0.7 / sample_dist) ...
+         *
+         * RUNNING -> OUT 现在只用累计陀螺正常触发；距离只作陀螺失效兜底。
+         */
+        if (circle_heading_abs_ge(CIRCLE_HEADING_START_OUT_DEG10) ||
+            total_distence > CIRCLE_RUNNING_FORCE_OUT_COUNTS) {
             circle_type = CIRCLE_LEFT_OUT;
-            Count_dis_Flag=0;
-            if_lost_right_line =0;
+            Count_dis_Flag = 0;
+            if_lost_right_line = 0;
             if_clean_pid = 1;
         }
     }
-    //出环，寻内圆
     else if (circle_type == CIRCLE_LEFT_OUT) {
-        //小圆容易看不到内侧的环，因此使用cross_farline_R去找赛道对侧的长直道，即可进行补线操作
         cross_farline_R();
         track_type = TRACK_LEFT;
-        Count_dis_Flag=1;
-        if(rpts1s_num < 5)           none_right_line++;                                          //右侧经历拐点消失后丢线标志位启动
-        if((rpts1s_num>30&&!Lpt1_found&&none_right_line>1)||total_distence>4500 ||
-           circle_heading_abs_ge(CIRCLE_HEADING_FORCE_OUT_DEG10))                  //右侧重新出现长直道边线或者编码器累计一定的长度强制跳出
-        {
+        Count_dis_Flag = 1;
+
+        /*
+         * legacy visual reappear gate:
+         * if (rpts1s_num < 5) none_right_line++;
+         * if (rpts1s_num > 30 && !Lpt1_found && none_right_line > 1) ...
+         */
+        if (total_distence > 4500 ||
+            circle_heading_abs_ge(CIRCLE_HEADING_FORCE_OUT_DEG10)) {
             circle_type = CIRCLE_LEFT_END;
-            none_right_line= 0;
-            Count_dis_Flag=0;
+            none_right_line = 0;
+            Count_dis_Flag = 0;
         }
     }
-        //走过圆环，寻右线
     else if (circle_type == CIRCLE_LEFT_END) {
         track_type = TRACK_RIGHT;
-        broadcast_flag=1;
-        Count_dis_Flag=1;
-        if (total_distence>=7500 || circle_heading_abs_ge(CIRCLE_HEADING_FINISH_DEG10)) {//此时的条件非常简单，寻外环长直道记录一定的长度防止再次触发圆环标志位，清理还原标志位
-        circle_type = CIRCLE_NONE;
-        road_type = ROAD_NORMAL;
-        begin_y=BEGIN_Y;
-        Count_dis_Flag=0;
-        aim_distance = AIM_DISTENCE;
-        is_large_circle = is_small_circle = 0;
-        if_lost_right_line =0;
-        if_lost_left_line = 0;
-        circle_count++;
-        none_right_line = 0;
-        have_right_line = 0;
-        none_left_line = 0;
-        have_left_line = 0;
+        broadcast_flag = 1;
+        Count_dis_Flag = 1;
+
+        if (total_distence >= 7500 ||
+            circle_heading_abs_ge(CIRCLE_HEADING_FINISH_DEG10)) {
+            circle_type = CIRCLE_NONE;
+            road_type = ROAD_NORMAL;
+            begin_y = BEGIN_Y;
+            Count_dis_Flag = 0;
+            aim_distance = AIM_DISTENCE;
+            is_large_circle = is_small_circle = 0;
+            if_lost_right_line = 0;
+            if_lost_left_line = 0;
+            circle_count++;
+            none_right_line = 0;
+            have_right_line = 0;
+            none_left_line = 0;
+            have_left_line = 0;
         }
     }
-        //右圆环同理
+
+    // ===================== 右环 =====================
     else if (circle_type == CIRCLE_RIGHT_BEGIN) {
         track_type = TRACK_LEFT;
-        if (rpts1s_num < 10&&!Lpt1_found) { Count_dis_Flag=1;none_right_line++; have_right_line = 0;}
-        if (rpts1s_num>30&&none_right_line)have_right_line++;
-        if ((rpts1s_num  < circle_in_length &&total_distence>circle_in_distance&&have_right_line) ||
-            (rpts1s_num < circle_in_length && have_right_line && circle_heading_abs_ge(CIRCLE_HEADING_ENTER_DEG10)))//(0.2 / sample_dist )<rpts1s_num&&rpts1s_num < (0.4 / sample_dist )&&
-        {
+
+        // 内侧(右)线丢失事件：保留，右环沿用原来的 <10 阈值。
+        if (rpts1s_num < 10 && !Lpt1_found) {
+            Count_dis_Flag = 1;
+            none_right_line++;
+            have_right_line = 0;
+        }
+
+        /*
+         * legacy visual reappear gate:
+         * if (rpts1s_num > 30 && none_right_line) have_right_line++;
+         * if ((rpts1s_num < circle_in_length && total_distence > circle_in_distance && have_right_line) ||
+         *     (rpts1s_num < circle_in_length && have_right_line && circle_heading_abs_ge(CIRCLE_HEADING_ENTER_DEG10)))
+         */
+        if (none_right_line > 0 &&
+            (total_distence > circle_in_distance ||
+             circle_heading_abs_ge(CIRCLE_HEADING_ENTER_DEG10))) {
             circle_type = CIRCLE_RIGHT_IN;
+            reset_circle_heading();
             if_lost_left_line = 0;
             none_right_line = 0;
             none_left_line = 0;
             have_right_line = 0;
             have_left_line = 0;
             circle_encoder = current_encoder;
-            Count_dis_Flag=0;
+            Count_dis_Flag = 0;
             if_clean_pid = 1;
         }
     }
     else if (circle_type == CIRCLE_RIGHT_IN) {
         cross_farline_R();
         track_type = TRACK_RIGHT;
-        if(rpts1s_num>70){
+        Count_dis_Flag = 1;
+
+        if (rpts1s_num > 70) {
             is_large_circle = 1;
             is_small_circle = 0;
         }
-        else             is_small_circle = 1;
-        if(rpts1s_num<35)Count_dis_Flag=1;
-        if(rpts0s_num < 5)none_left_line++;
-        if((rpts0s_num >25&&none_left_line>1) ||
-           (total_distence>CIRCLE_IN_DISTANCE_CONFIRM&&rpts1s_num<circle_in_length&&rpts0s_num>25) ||
-           (rpts1s_num<circle_in_length&&rpts0s_num>25&&circle_heading_abs_ge(CIRCLE_HEADING_ENTER_DEG10))){
-            circle_type = CIRCLE_RIGHT_RUNNING; Count_dis_Flag=0;
-            begin_y=BEGIN_Y;
+        else {
+            is_small_circle = 1;
+        }
+
+        /*
+         * legacy visual reappear gate:
+         * if (rpts0s_num < 5) none_left_line++;
+         * if ((rpts0s_num > 25 && none_left_line > 1) ||
+         *     (total_distence > CIRCLE_IN_DISTANCE_CONFIRM && rpts1s_num < circle_in_length && rpts0s_num > 25) ||
+         *     (rpts1s_num < circle_in_length && rpts0s_num > 25 && circle_heading_abs_ge(CIRCLE_HEADING_ENTER_DEG10)))
+         */
+        if (circle_heading_abs_ge(CIRCLE_HEADING_ENTER_DEG10) ||
+            total_distence > CIRCLE_IN_DISTANCE_CONFIRM) {
+            circle_type = CIRCLE_RIGHT_RUNNING;
+            Count_dis_Flag = 0;
+            begin_y = BEGIN_Y;
             none_left_line = 0;
         }
     }
     else if (circle_type == CIRCLE_RIGHT_RUNNING) {
         track_type = TRACK_LEFT;
-        if (Lpt0_found) {
-            rpts0s_num = Lpt0_rpts0s_id-2;
-            rptsc0_num = Lpt0_rpts0s_id-2;
-        }
-        if ((Lpt0_found && ((Lpt0_rpts0s_id < 0.7 / sample_dist))) ||
-            circle_heading_abs_ge(CIRCLE_HEADING_START_OUT_DEG10)) {//||rpts1s_num>=5
+        Count_dis_Flag = 1;
+
+        /*
+         * legacy Lpt out trigger and truncation:
+         * if (Lpt0_found) {
+         *     rpts0s_num = Lpt0_rpts0s_id - 2;
+         *     rptsc0_num = Lpt0_rpts0s_id - 2;
+         * }
+         * if (Lpt0_found && Lpt0_rpts0s_id < 0.7 / sample_dist) ...
+         */
+        if (circle_heading_abs_ge(CIRCLE_HEADING_START_OUT_DEG10) ||
+            total_distence > CIRCLE_RUNNING_FORCE_OUT_COUNTS) {
             circle_type = CIRCLE_RIGHT_OUT;
+            Count_dis_Flag = 0;
             if_lost_left_line = 0;
             if_clean_pid = 1;
         }
@@ -255,33 +315,38 @@ void run_circle() {
     else if (circle_type == CIRCLE_RIGHT_OUT) {
         cross_farline_L();
         track_type = TRACK_RIGHT;
-        broadcast_flag=1;
-        if(rpts0s_num < 5){
-            none_left_line++;
-            Count_dis_Flag=1;
-        }
-        if((rpts0s_num>30&&!Lpt0_found&&none_left_line>=1)||total_distence>4500 ||
-           circle_heading_abs_ge(CIRCLE_HEADING_FORCE_OUT_DEG10))
-        {
+        broadcast_flag = 1;
+        Count_dis_Flag = 1;
+
+        /*
+         * legacy visual reappear gate:
+         * if (rpts0s_num < 5) none_left_line++;
+         * if (rpts0s_num > 30 && !Lpt0_found && none_left_line >= 1) ...
+         */
+        if (total_distence > 4500 ||
+            circle_heading_abs_ge(CIRCLE_HEADING_FORCE_OUT_DEG10)) {
             circle_type = CIRCLE_RIGHT_END;
-            none_left_line= 0;
-            Count_dis_Flag=0;
+            none_left_line = 0;
+            Count_dis_Flag = 0;
         }
     }
     else if (circle_type == CIRCLE_RIGHT_END) {
         track_type = TRACK_LEFT;
-        Count_dis_Flag=1;
-        if (rpts1s_num < 0.2 / sample_dist) { none_right_line++;Count_dis_Flag=1; }
-        if (total_distence>=4000 || circle_heading_abs_ge(CIRCLE_HEADING_FINISH_DEG10)) {
-            circle_type = CIRCLE_NONE;
-            circle_type= CIRCLE_NONE;
-            road_type = ROAD_NORMAL;
+        Count_dis_Flag = 1;
 
-            begin_y=BEGIN_Y;
-            Count_dis_Flag=0;
+        /*
+         * legacy unused line-loss count:
+         * if (rpts1s_num < 0.2 / sample_dist) { none_right_line++; Count_dis_Flag = 1; }
+         */
+        if (total_distence >= 4000 ||
+            circle_heading_abs_ge(CIRCLE_HEADING_FINISH_DEG10)) {
+            circle_type = CIRCLE_NONE;
+            road_type = ROAD_NORMAL;
+            begin_y = BEGIN_Y;
+            Count_dis_Flag = 0;
             aim_distance = AIM_DISTENCE;
             is_large_circle = is_small_circle = 0;
-            if_lost_right_line =0;
+            if_lost_right_line = 0;
             if_lost_left_line = 0;
             circle_count++;
             none_right_line = 0;
