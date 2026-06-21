@@ -392,8 +392,9 @@ void print_replay_frame(int frame, const runtime_t *rt)
                 "near=%d/%d raw=%d/%d ipm=%d/%d center=%d/%d sel=%d/%d "
                 "l=%d@%d/%d@%d y=%d@%d/%d@%d far_l=%d@%d/%d@%d far_num=%d/%d "
                 "straight=%d/%d far_straight=%d/%d conf=%.1f/%.1f/%.1f/%.1f "
-                "dist=%d ramp_dist=%d m0=(%d,%d) ml=(%d,%d) md=%d/%d/%d "
-                "cxcy=%.1f,%.1f guide=%.2f atg_guide=%.1f/%.1f/%.1f duty=%d/%d\n",
+                "dist=%d begin=%lld/%lld ramp_dist=%d m0=(%d,%d) ml=(%d,%d) md=%d/%d/%d "
+                "cxcy=%.1f,%.1f guide=%.2f atg_guide=%.1f/%.1f/%.1f "
+                "duty=%d/%d pwm=PWM2:%d/PWM1:%d motor=2:%d/1:%d\n",
                 frame,
                 track_line_found(rt),
                 track_type,
@@ -437,6 +438,8 @@ void print_replay_frame(int frame, const runtime_t *rt)
                 conf3_max * 180.0f / 3.14159265358979323846f,
                 conf4_max * 180.0f / 3.14159265358979323846f,
                 total_distence,
+                (long long)atg_reference_circle_begin_dist(),
+                (long long)atg_reference_circle_begin_last_dist(),
                 Ramp_total_distence,
                 m0.x,
                 m0.y,
@@ -451,6 +454,10 @@ void print_replay_frame(int frame, const runtime_t *rt)
                 Guide,
                 Guide_up,
                 Guide_up_up,
+                rt->control.left_duty,
+                rt->control.right_duty,
+                rt->control.left_duty,
+                rt->control.right_duty,
                 rt->control.left_duty,
                 rt->control.right_duty);
 }

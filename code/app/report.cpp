@@ -412,7 +412,7 @@ void print_atg_counts()
 void print_atg_elements()
 {
     std::printf("ATGElem: track=%d cross=%d circle=%d(%s) round=%d yroad=%d ramp=%d road=%d speed=%d "
-                "not_have_line=%d dist=%d ramp_dist=%d\n",
+                "not_have_line=%d dist=%d begin_dist=%lld begin_last=%lld ramp_dist=%d\n",
                 track_type,
                 cross_type,
                 circle_type,
@@ -424,6 +424,8 @@ void print_atg_elements()
                 speed_type,
                 not_have_line,
                 total_distence,
+                (long long)atg_reference_circle_begin_dist(),
+                (long long)atg_reference_circle_begin_last_dist(),
                 Ramp_total_distence);
 }
 
@@ -988,7 +990,8 @@ void print_detail(const runtime_t *rt)
                 aim_idx,
                 aim_idx_up,
                 aim_idx_up_up);
-    std::printf("Loop: valid=%d stop=%d signed=%d target_yaw=%d yaw_cmd=%d actual_yaw=%d target_rps=%d/%d actual_rps=%d/%d duty=%d/%d\n",
+    std::printf("Loop: valid=%d stop=%d signed=%d target_yaw=%d yaw_cmd=%d actual_yaw=%d target_rps=%d/%d actual_rps=%d/%d "
+                "duty=%d/%d pwm=PWM2:%d/PWM1:%d motor=2:%d/1:%d\n",
                 rt->control.input_valid,
                 rt->control.stop_request,
                 rt->control.signed_output,
@@ -999,6 +1002,10 @@ void print_detail(const runtime_t *rt)
                 rt->control.right_target_rps_milli,
                 rt->control.left_actual_rps_milli,
                 rt->control.right_actual_rps_milli,
+                rt->control.left_duty,
+                rt->control.right_duty,
+                rt->control.left_duty,
+                rt->control.right_duty,
                 rt->control.left_duty,
                 rt->control.right_duty);
 }
@@ -1045,9 +1052,10 @@ void print_live(uint32_t frame_id, const runtime_t *rt, int div)
     std::printf("frame=%u line=%d track=%d cross=%d circle=%d(%s) round=%d yroad=%d ramp=%d road=%d speed=%d "
                 "near=%d/%d raw=%d/%d sel=%d/%d far=%d/%d far_raw=%d/%d "
                 "l=%d@%d/%d@%d far_l=%d@%d/%d@%d straight=%d/%d far_straight=%d/%d "
-                "circle_cnt=%d/%d/%d/%d lost=%d/%d conf=%.1f/%.1f/%.1f/%.1f dist=%d "
+                "circle_cnt=%d/%d/%d/%d lost=%d/%d conf=%.1f/%.1f/%.1f/%.1f dist=%d begin=%lld/%lld "
                 "m0=(%d,%d) ml=(%d,%d) md=%d/%d/%d cxcy=%.1f,%.1f guide=%.2f "
-                "atg=%.1f/%.1f/%.1f pure=%.2f/%.2f yaw=%d cmd=%d actual=%d signed=%d rps=%d/%d:%d/%d duty=%d/%d\n",
+                "atg=%.1f/%.1f/%.1f pure=%.2f/%.2f yaw=%d cmd=%d actual=%d signed=%d rps=%d/%d:%d/%d "
+                "duty=%d/%d pwm=PWM2:%d/PWM1:%d motor=2:%d/1:%d\n",
                 frame_id,
                 track_line_found(rt),
                 track_type,
@@ -1092,6 +1100,8 @@ void print_live(uint32_t frame_id, const runtime_t *rt, int div)
                 conf3_max * k_rad_to_deg,
                 conf4_max * k_rad_to_deg,
                 total_distence,
+                (long long)atg_reference_circle_begin_dist(),
+                (long long)atg_reference_circle_begin_last_dist(),
                 m0.x,
                 m0.y,
                 ml.x,
@@ -1115,6 +1125,10 @@ void print_live(uint32_t frame_id, const runtime_t *rt, int div)
                 rt->control.right_target_rps_milli,
                 rt->control.left_actual_rps_milli,
                 rt->control.right_actual_rps_milli,
+                rt->control.left_duty,
+                rt->control.right_duty,
+                rt->control.left_duty,
+                rt->control.right_duty,
                 rt->control.left_duty,
                 rt->control.right_duty);
     if(force_log || element_log)
@@ -1152,6 +1166,8 @@ int write_report(const runtime_t *rt, const char *report_path)
     out << "atg_speed_type=" << speed_type << "\n";
     out << "atg_not_have_line=" << not_have_line << "\n";
     out << "atg_total_distence=" << total_distence << "\n";
+    out << "atg_circle_begin_dist=" << atg_reference_circle_begin_dist() << "\n";
+    out << "atg_circle_begin_last_dist=" << atg_reference_circle_begin_last_dist() << "\n";
     out << "atg_ramp_total_distence=" << Ramp_total_distence << "\n";
 
     out << "atg_ipts0_num=" << ipts0_num << "\n";
@@ -1242,5 +1258,10 @@ int write_report(const runtime_t *rt, const char *report_path)
     out << "control_right_actual_rps_milli=" << rt->control.right_actual_rps_milli << "\n";
     out << "control_left_duty=" << rt->control.left_duty << "\n";
     out << "control_right_duty=" << rt->control.right_duty << "\n";
+    out << "control_duty_mapping=left_duty->PWM2/motor2,right_duty->PWM1/motor1\n";
+    out << "control_pwm2_duty=" << rt->control.left_duty << "\n";
+    out << "control_pwm1_duty=" << rt->control.right_duty << "\n";
+    out << "control_motor2_duty=" << rt->control.left_duty << "\n";
+    out << "control_motor1_duty=" << rt->control.right_duty << "\n";
     return 1;
 }

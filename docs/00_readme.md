@@ -1,58 +1,44 @@
-# Front_Car Mainline
+# Front_Car Mainline Docs
 
-这套工程是独立的差速车主线，基于 ATG2022 舵机算法移植到龙芯 LS2K0300。
+这套工程是基于 ATG2022 舵机车算法移植到龙芯 LS2K0300 的差速车主线。
 
 当前分支：`port/atg2022-reference-control`
 
-## 阅读顺序
+## 先读这四篇
 
-```text
-docs/01_全局地图.md              # 新手先读：三层身份 + 舵机/差速冲突 + 数据流
-atg_reference/PORTING.md         # 移植边界：什么搬了什么没搬、每条改动的理由
-docs/13_mainline_pipeline_map.md # 逐帧管道、各层合同、字段名
-docs/控制参数笔记.md              # 控制参数位置、加载顺序、每帧调用关系
-docs/ATG新路线重构方案.md         # 后续收敛方向讨论
-docs/ATG环岛问题记录.md           # 环岛问题排查记录
-docs/ATG库接入点评估.md           # ATG 各模块接入评估
-docs/IPM重标定流程.md             # IPM 标定 SOP
-docs/IPM调用调研.md               # IPM 代码路径和合同
-docs/14_偏移诊断与修正记录.md     # 修正点汇总 + 实车偏移检查脚本
-docs/09_acceptance_checklist.md   # 验收单
-```
+| 顺序 | 文档 | 用途 |
+| --- | --- | --- |
+| 1 | [01_全局地图.md](01_全局地图.md) | 建立心智模型：ATG 舵机车大脑如何接到 LS2K 差速车手脚。 |
+| 2 | [02_当前主链与参考版对比.md](02_当前主链与参考版对比.md) | 当前一帧主链、运行合同、当前代码和 ATG2022 参考版的边界。 |
+| 3 | [03_调参与验证手册.md](03_调参与验证手册.md) | 控制参数、IPM 标定、偏移检查、最小验证命令。 |
+| 4 | [04_当前问题.md](04_当前问题.md) | 仍未解决或待实车验证的问题，只看这里跟进现状。 |
 
-`docs/archive/` 是历史路线背景，不作为当前调参依据。
+`00_readme.md` 是入口，不承载细节。顶层长期文档只保留入口型材料；原始调研和已解决问题都在 `archive/`。
 
-## 当前入口
+## 当前有效结论
+
+- 当前运行合同以本分支代码为准，不以旧本地 tracking 主线、Unity CD 旧参考或历史调研草稿为准。
+- ATG2022 参考版是算法来源和对照对象；当前车是差速车，不能直接照搬参考版舵机 `pure_angle -> servo_pid` 控制链。
+- 当前 profile 只激活十字、半十字和圆环；回环、Y 路、坡道、车库源码保留但不进入状态机。
+- 当前没有停车线检测，`stop_line` 恒为 0，这是能力缺口，不是调参现象。
+
+## 当前入口命令
 
 ```bash
-bash "scripts/test.sh" --host
-bash "scripts/straight_baseline_audit.sh" ".diag/front_car_capture_live_current.png"
+bash code/test.sh --host
+bash code/test.sh
+bash scripts/straight_baseline_audit.sh .diag/front_car_capture_live_current.png
 ```
 
-## 一帧主链
+IPM 重标定入口见 [03_调参与验证手册.md](03_调参与验证手册.md)。
 
-```text
-app/main.cpp
--> live / analyze / replay
--> device_capture_gray / device_load_gray
--> drive_output_read_feedback(&fb)        # live: 读编码器
--> tracking_process_frame(rt)
-   -> atg_reference_process_frame(gray, encoder_total)
-      -> ATG image_handle / find_corners / elements / selected rptsn
-   -> copy_atg_midline() + atg_lookahead_error()
--> control_input_t(line_found, guide_error, element_active, stop_line)
--> solve_control_input / solve_control_input_with_feedback
--> drive_output_apply
-```
+## 归档规则
 
-## 当前状态速览
+[archive/](archive/) 只作证据追溯，不作为当前调参入口：
 
-| 项目 | 状态 |
-|------|------|
-| 主入口 | `app/main.cpp` |
-| tracking 算法 | ATG2022（`atg_reference/Project/CODE`） |
-| 外设 | UVC、编码器、GPIO/PWM、差速电机、report、上位机 |
-| 移植边界 | `atg_reference/port` + `code/tracking/atg_reference_mainline.cpp` |
-| 旧 tracking 实现 | 已移除，避免第二套中线真相源 |
-| 控制 API | `control_input_t`（非完整 `runtime_t`） |
-| 移植说明 | `atg_reference/PORTING.md` |
+- `archive/resolved/`：已解决或不再作为当前问题跟进的记录。
+- `archive/source-notes/`：被 `02/03/04` 吸收后的原始调研、推导、SOP、验收清单。
+- `archive/old-mainline/`：已删除的旧本地 tracking 主线资料。
+- `archive/aegis-old-runtime/`：已删除的旧 runtime/control 改造资料。
+
+[reference/](reference/) 是原始参考材料，不是当前运行入口。

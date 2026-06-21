@@ -19,7 +19,7 @@ control_period_ms: 10
 # element_target_rps: 十字/环岛内基础速度
 # speed_target_rps: 左右轮 FF 前馈缩放参考
 target_rps: 5.0
-element_target_rps: 4.0
+element_target_rps: 3.8
 speed_target_rps: 4.0
 # curve_speed_slowdown: 弯道按转向连续降速，满转向时 center_rps×(1-该值)；0=关闭，上车从 0 往上调
 curve_speed_slowdown: 0.0

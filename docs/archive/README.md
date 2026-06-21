@@ -1,19 +1,43 @@
 # Archive
 
-这里放旧路线资料，只作为历史背景，不代表当前 `port/atg2022-reference-control` 分支的运行合同。
+这里放历史路线、已解决问题和被新入口吸收后的原始材料。它们只用于证据追溯，不代表当前 `port/atg2022-reference-control` 分支的运行合同。
 
 当前事实请优先看：
 
 ```text
 docs/00_readme.md
-docs/13_mainline_pipeline_map.md
-atg_reference/PORTING.md
-docs/IPM调用调研.md
-docs/IPM重标定流程.md
+docs/01_全局地图.md
+docs/02_当前主链与参考版对比.md
+docs/03_调参与验证手册.md
+docs/04_当前问题.md
 ```
 
 ## 目录
 
-- `old-mainline/`：旧本地 tracking 主线资料，涉及 `find_seeds`、`trace_edges`、`boundary.cpp`、`mainline.cpp`、`ring.cpp`、`cross.cpp` 等已删除路线。
-- `aegis-old-runtime/`：旧 runtime/control 改造计划，涉及 `solve_runtime*` 等已删除控制入口。
+| 目录 | 用途 | 当前调参时是否作为入口 |
+| --- | --- | --- |
+| `resolved/` | 已解决或不再作为当前问题跟进的记录。 | 否 |
+| `source-notes/` | 被 `02/03/04` 吸收后的原始调研、推导、SOP、验收清单。 | 否，除非要追证据来源 |
+| `old-mainline/` | 已删除的旧本地 tracking 主线资料。 | 否 |
+| `aegis-old-runtime/` | 已删除的旧 runtime/control 改造资料。 | 否 |
 
+## 已解决问题
+
+- `resolved/ATG角点斜车身问题交接.md`：P0 显示问题已修复；剩余斜车身鲁棒性不再作为顶层入口。
+- `resolved/ATG环岛问题记录.md`：括号错误、停滞出口、补线清零、单 L 误入等已处理或被当前问题文档吸收。
+
+## 原始材料
+
+`source-notes/` 中的文档保留原始推理、长表格和历史细节。当前使用方式：
+
+- 先读顶层 `02/03/04`。
+- 只有需要追溯某条结论来源时，再打开 `source-notes/` 对应原文。
+- 不要把原文中的早期参数、旧路径或已修复判断直接当成当前事实。
+
+## 当前活跃问题
+
+请只看：
+
+```text
+docs/04_当前问题.md
+```

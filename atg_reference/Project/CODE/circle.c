@@ -1,4 +1,5 @@
 #include "circle.h"
+#include "atg_reference_step.h"
 #include "motor.h"
 #include "headfile.h"
 #include <stdio.h>
@@ -37,15 +38,17 @@ enum
     CIRCLE_HEADING_START_OUT_DEG10 = 2000,
     CIRCLE_HEADING_FORCE_OUT_DEG10 = 2500,
     CIRCLE_HEADING_FINISH_DEG10 = 3550,
+    CIRCLE_REENTRY_SUPPRESS_FRAMES = 150,
 };
 static const float CIRCLE_GYRO_DEADZONE_RAD_S = 0.065f;
 static const float CIRCLE_RAD_TO_DEG10 = 1800.0f / 3.14159265358979f;
 
 static int circle_left_entry_votes;
 static int circle_right_entry_votes;
+static int circle_entry_suppress_frames;
 static float circle_heading_rad;
 
-static int circle_cal_log_enabled(void)
+int circle_cal_log_enabled(void)
 {
     const char *val = getenv("FRONT_CAR_CIRCLE_CAL_LOG");
     static int warned_invalid;
@@ -78,18 +81,73 @@ static void print_circle_transition(enum circle_type_e from,
     {
         return;
     }
-    printf("ATGCircleCal: from=%s to=%s reason=%s heading_deg10=%d dist=%d\n",
+    printf("ATGCircleCal: from=%s to=%s reason=%s heading_deg10=%d dist=%d begin_dist=%lld begin_last=%lld\n",
            circle_type_name[from],
            circle_type_name[to],
            reason,
            circle_heading_deg10(),
-           total_distence);
+           total_distence,
+           (long long)atg_reference_circle_begin_dist(),
+           (long long)atg_reference_circle_begin_last_dist());
+}
+
+static void print_left_out_farline_evidence(void)
+{
+    if(!circle_cal_log_enabled())
+    {
+        return;
+    }
+    printf("ATGCircleOutEvidence: stage=after_cross_farline_R circle=%s "
+           "Lpt1=%d/%d rpts1s=%d rptsc1=%d lost_right=%d seed_raw=%.1f,%.1f "
+           "far_ipts1=%d far_rpts1s=%d far_Lpt1=%d/%d far_seed_raw=%.1f,%.1f "
+           "dist=%d heading_deg10=%d\n",
+           circle_type_name[circle_type],
+           Lpt1_found ? 1 : 0,
+           Lpt1_found ? Lpt1_rpts1s_id : -1,
+           rpts1s_num,
+           rptsc1_num,
+           if_lost_right_line,
+           inv_Lpt1_found[0],
+           inv_Lpt1_found[1],
+           far_ipts1_num,
+           far_rpts1s_num,
+           far_Lpt1_found ? 1 : 0,
+           far_Lpt1_found ? far_Lpt1_rpts1s_id : -1,
+           inv_far_Lpt1_found[0],
+           inv_far_Lpt1_found[1],
+           total_distence,
+           circle_heading_deg10());
 }
 
 void reset_circle_entry_votes()
 {
     circle_left_entry_votes = 0;
     circle_right_entry_votes = 0;
+}
+
+void suppress_circle_entry_frames(int frames)
+{
+    if(frames > circle_entry_suppress_frames)
+    {
+        circle_entry_suppress_frames = frames;
+    }
+    reset_circle_entry_votes();
+}
+
+void suppress_circle_reentry_after_exit(void)
+{
+    suppress_circle_entry_frames(CIRCLE_REENTRY_SUPPRESS_FRAMES);
+}
+
+static int circle_entry_suppressed(void)
+{
+    if(circle_entry_suppress_frames <= 0)
+    {
+        return 0;
+    }
+    circle_entry_suppress_frames--;
+    reset_circle_entry_votes();
+    return 1;
 }
 
 void reset_circle_begin_flags()
@@ -132,6 +190,10 @@ static int circle_heading_abs_ge(int tenth_deg)
 void check_circle() {
     if (circle_type != CIRCLE_NONE) {
         reset_circle_entry_votes();
+        return;
+    }
+
+    if (circle_entry_suppressed()) {
         return;
     }
 
@@ -226,12 +288,14 @@ void run_circle() {
         if (circle_heading_abs_ge(CIRCLE_HEADING_ENTER_DEG10)) {
             print_circle_transition(circle_type, CIRCLE_LEFT_RUNNING, "gyro");
             circle_type = CIRCLE_LEFT_RUNNING;
+            track_type = TRACK_RIGHT;
             Count_dis_Flag = 0;
             none_right_line = 0;
         }
         else if (total_distence > CIRCLE_IN_DISTANCE_CONFIRM) {
             print_circle_transition(circle_type, CIRCLE_LEFT_RUNNING, "distance");
             circle_type = CIRCLE_LEFT_RUNNING;
+            track_type = TRACK_RIGHT;
             Count_dis_Flag = 0;
             none_right_line = 0;
         }
@@ -267,6 +331,7 @@ void run_circle() {
     }
     else if (circle_type == CIRCLE_LEFT_OUT) {
         cross_farline_R();
+        print_left_out_farline_evidence();
         track_type = TRACK_LEFT;
         Count_dis_Flag = 1;
 
@@ -308,6 +373,7 @@ void run_circle() {
             have_right_line = 0;
             none_left_line = 0;
             have_left_line = 0;
+            suppress_circle_reentry_after_exit();
         }
         else if (total_distence >= 7500) {
             print_circle_transition(circle_type, CIRCLE_NONE, "distance");
@@ -324,6 +390,7 @@ void run_circle() {
             have_right_line = 0;
             none_left_line = 0;
             have_left_line = 0;
+            suppress_circle_reentry_after_exit();
         }
     }
 
@@ -390,6 +457,7 @@ void run_circle() {
         if (circle_heading_abs_ge(CIRCLE_HEADING_ENTER_DEG10)) {
             print_circle_transition(circle_type, CIRCLE_RIGHT_RUNNING, "gyro");
             circle_type = CIRCLE_RIGHT_RUNNING;
+            track_type = TRACK_LEFT;
             Count_dis_Flag = 0;
             begin_y = BEGIN_Y;
             none_left_line = 0;
@@ -397,6 +465,7 @@ void run_circle() {
         else if (total_distence > CIRCLE_IN_DISTANCE_CONFIRM) {
             print_circle_transition(circle_type, CIRCLE_RIGHT_RUNNING, "distance");
             circle_type = CIRCLE_RIGHT_RUNNING;
+            track_type = TRACK_LEFT;
             Count_dis_Flag = 0;
             begin_y = BEGIN_Y;
             none_left_line = 0;
@@ -476,6 +545,7 @@ void run_circle() {
             have_right_line = 0;
             none_left_line = 0;
             have_left_line = 0;
+            suppress_circle_reentry_after_exit();
         }
         else if (total_distence >= 4000) {
             print_circle_transition(circle_type, CIRCLE_NONE, "distance");
@@ -492,6 +562,7 @@ void run_circle() {
             have_right_line = 0;
             none_left_line = 0;
             have_left_line = 0;
+            suppress_circle_reentry_after_exit();
         }
     }
 }

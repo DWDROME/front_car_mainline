@@ -15,6 +15,9 @@ extern "C" {
 
 namespace
 {
+constexpr double kCircleLeftInGuideScale = 0.75;
+constexpr double kCircleLeftRunningGuideScale = 0.81;
+
 point_t atg_control_ref(const runtime_t *rt)
 {
     point_t ref = {CONTROL_CENTER_X, START_HIGH};
@@ -206,5 +209,14 @@ int tracking_process_frame(runtime_t *rt)
     rt->vision.guide_error =
         atg_lookahead_error(&rt->vision.mid) -
         static_cast<double>(control_config().guide_error_bias_deg);
+    if(circle_type == CIRCLE_LEFT_IN)
+    {
+        rt->vision.guide_error *= kCircleLeftInGuideScale;
+    }
+    else if(circle_type == CIRCLE_LEFT_RUNNING)
+    {
+        rt->vision.guide_error *= kCircleLeftRunningGuideScale;
+        rt->vision.guide_error = std::clamp(rt->vision.guide_error, -35.0, 35.0);
+    }
     return track_line_found(rt);
 }

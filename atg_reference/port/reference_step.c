@@ -15,6 +15,7 @@ extern int64_t g_atg_reference_encoder_total;
 
 static int64_t last_encoder_total;
 static float g_vehicle_raw_ref_x = MT9V03X_W / 2.0f;
+static const char *g_selected_line_source = "none";
 
 // 环岛状态停滞出口：ATG 原工程是舵机车，选线失败帧车仍按旧速度滚动，
 // 状态机靠"继续行驶"满足视觉出口或 total_distence 强制出口（circle.c 的 >4500）。
@@ -40,6 +41,7 @@ enum
     ATG_CIRCLE_BEGIN_MAX_DIST_COUNTS = 6000,
 };
 static int64_t g_circle_begin_dist;
+static int64_t g_circle_begin_last_dist;
 
 #ifndef ATG_ENABLE_CROSS
 #define ATG_ENABLE_CROSS 1
@@ -134,6 +136,7 @@ static void reset_element_state(void)
     Count_dis_Flag = 0;
     total_distence = 0;
     g_circle_begin_dist = 0;
+    g_circle_begin_last_dist = 0;
     Ramp_total_distence = 0;
     Clean_Time_count = 0;
     Clean_Time_count_flag = 0;
@@ -187,8 +190,22 @@ static void update_distance_counters(int64_t encoder_total)
     }
     else
     {
+        if(g_circle_begin_dist > 0)
+        {
+            g_circle_begin_last_dist = g_circle_begin_dist;
+        }
         g_circle_begin_dist = 0;
     }
+}
+
+int64_t atg_reference_circle_begin_dist(void)
+{
+    return g_circle_begin_dist;
+}
+
+int64_t atg_reference_circle_begin_last_dist(void)
+{
+    return g_circle_begin_last_dist;
 }
 
 static void choose_track_type_from_near_lines(void)
@@ -517,6 +534,7 @@ static void build_circle_spliced_lines(void)
 
 static void select_work_line(void)
 {
+    g_selected_line_source = "none";
     if(cross_type != CROSS_IN &&
        cross_type != CROSS_HALF &&
        garage_type != GARAGE_FOUND_LEFT &&
@@ -528,22 +546,37 @@ static void select_work_line(void)
         {
             rpts = Splicing_leftline_center;
             rpts_num = Splicing_leftline_center_num;
+            g_selected_line_source = "circle_splice_left";
         }
         else if((circle_type == CIRCLE_LEFT_OUT || circle_type == CIRCLE_LEFT_IN) &&
                 Splicing_rightline_center_num > 0)
         {
             rpts = Splicing_rightline_center;
             rpts_num = Splicing_rightline_center_num;
+            g_selected_line_source =
+                circle_type == CIRCLE_LEFT_IN ? "circle_in_fixed_right" : "circle_splice_right";
+        }
+        else if(circle_type == CIRCLE_LEFT_OUT && rptsc1_num > 0)
+        {
+            /*
+             * OUT 无出环中心线时，track_type=TRACK_LEFT 会选到空 rptsc0。
+             * 强制用原始右线 rptsc1，避免立即崩塌到 sel=0/0。
+             */
+            rpts = rptsc1;
+            rpts_num = rptsc1_num;
+            g_selected_line_source = "out_rptsc1";
         }
         else if(track_type == TRACK_LEFT)
         {
             rpts = rptsc0;
             rpts_num = rptsc0_num;
+            g_selected_line_source = "rptsc0";
         }
         else
         {
             rpts = rptsc1;
             rpts_num = rptsc1_num;
+            g_selected_line_source = "rptsc1";
         }
     }
     else if(track_type == TRACK_LEFT)
@@ -557,6 +590,7 @@ static void select_work_line(void)
                        (int)round(angle_dist / sample_dist),
                        pixel_per_meter * ROAD_WIDTH / 2);
         rpts_num = clipped_count(far_rpts0s_num - start);
+        g_selected_line_source = "far_left";
     }
     else
     {
@@ -569,6 +603,7 @@ static void select_work_line(void)
                         (int)round(angle_dist / sample_dist),
                         pixel_per_meter * ROAD_WIDTH / 2);
         rpts_num = count;
+        g_selected_line_source = "far_right";
     }
 }
 
@@ -670,7 +705,7 @@ static void reset_circle_to_none(const char *reason)
 {
     printf("ATGCircleReset: %s circle_type=%d -> NONE\n", reason, (int)circle_type);
         circle_type = CIRCLE_NONE;
-        reset_circle_entry_votes();
+        suppress_circle_reentry_after_exit();
     road_type = ROAD_NORMAL;
     begin_y = BEGIN_Y;
     Count_dis_Flag = 0;
@@ -686,6 +721,7 @@ static void reset_circle_to_none(const char *reason)
     if_clean_pid = 0;
     g_circle_stall_frames = 0;
     g_circle_begin_dist = 0;
+    g_circle_begin_last_dist = 0;
 }
 
 static void revoke_idle_circle_begin(void)
@@ -720,7 +756,7 @@ static void exit_circle_after_stall(int line_ok)
            (int)circle_type,
            g_circle_stall_frames);
     circle_type = CIRCLE_NONE;
-    reset_circle_entry_votes();
+    suppress_circle_reentry_after_exit();
     road_type = ROAD_NORMAL;
     begin_y = BEGIN_Y;
     Count_dis_Flag = 0;

@@ -14,15 +14,15 @@ const char *cross_type_name[CROSS_NUM] = {
         "CROSS_HALF"
 };
 
-// ±àÂëÆ÷Öµ£¬ÓÃÓÚ·ÀÖ¹Ò»Ğ©ÖØ¸´´¥·¢µÈ¡£
+// ç¼–ç å™¨å€¼ï¼Œç”¨äºé˜²æ­¢ä¸€äº›é‡å¤è§¦å‘ç­‰ã€‚
 int64_t cross_encoder;
 
-float conf3,conf4,conf3_max,conf4_max;  //¼ÇÂ¼±ßÏß½Ç¶ÈÖµ¼°Æä×î´óÖµ
+float conf3,conf4,conf3_max,conf4_max;  //è®°å½•è¾¹çº¿è§’åº¦å€¼åŠå…¶æœ€å¤§å€¼
 
 uint8 if_lost_left_line = 0,if_lost_right_line = 0;
 
 
-// ÒÔÏÂ¶¨ÒåÎªÊ®×ÖÑ°Ô¶ÏßÉè¶¨
+// ä»¥ä¸‹å®šä¹‰ä¸ºåå­—å¯»è¿œçº¿è®¾å®š
 bool far_Lpt0_found, far_Lpt1_found;
 int far_Lpt0_rpts0s_id, far_Lpt1_rpts1s_id;
 int8 Lpt0_found_flag,Lpt1_found_flag;
@@ -57,7 +57,7 @@ int far_x1 = 32, far_x2 = 118, far_y1, far_y2;
 int far_x11=70 , far_x22= 100;
 float inv_Lpt0_found[2],inv_Lpt1_found[2];
 float inv_far_Lpt0_found[2],inv_far_Lpt1_found[2];
-//Ë«L½Çµã,ÇĞÊ®×ÖÄ£Ê½
+//åŒLè§’ç‚¹,åˆ‡åå­—æ¨¡å¼
 void check_cross() {
     bool Xfound = Lpt0_found && Lpt1_found;
     if (cross_type == CROSS_NONE && Xfound) cross_type = CROSS_BEGIN;
@@ -68,7 +68,7 @@ void Double_check_cross_R()
 }
 void Double_check_cross_L()
 {
-    //µ±×ªÍä½ÓÊ®×ÖÓĞÒ»²àÈ«²¿¶ªÏßÊ±µÄ²¹¾È·½·¨
+    //å½“è½¬å¼¯æ¥åå­—æœ‰ä¸€ä¾§å…¨éƒ¨ä¸¢çº¿æ—¶çš„è¡¥æ•‘æ–¹æ³•
     cross_farline_L();
 
 }
@@ -78,8 +78,8 @@ void run_cross()
     int64_t current_encoder = 1;
     float Lpt0y = rpts0s[Lpt0_rpts0s_id][1];
     float Lpt1y = rpts1s[Lpt1_rpts1s_id][1];
-    //¼ì²âµ½Ê®×Ö£¬ÏÈ°´ÕÕ½üÏß×ß
-    // Ê®×Ö½Ø¶Ï
+    //æ£€æµ‹åˆ°åå­—ï¼Œå…ˆæŒ‰ç…§è¿‘çº¿èµ°
+    // åå­—æˆªæ–­
     if (cross_type == CROSS_BEGIN) {
         if (Lpt0_found) {
             rptsc0_num = rpts0s_num = Lpt0_rpts0s_id;
@@ -89,16 +89,16 @@ void run_cross()
         }
 
         //aim_distance = AIM_DISTENCE;
-        aim_distance = 0.4; // ²Î¿¼µÄ
-        //½ü½Çµã¹ıÉÙ£¬½øÈëÔ¶Ïß¿ØÖÆ
+        aim_distance = 0.4; // å‚è€ƒçš„
+        //è¿‘è§’ç‚¹è¿‡å°‘ï¼Œè¿›å…¥è¿œçº¿æ§åˆ¶
         if ((Xfound && (Lpt0_rpts0s_id < 0.1 / sample_dist || Lpt1_rpts1s_id < 0.1 / sample_dist))/* || (rpts1_num <30 && rpts0_num<30)*/) {
             cross_type = CROSS_IN;
             cross_encoder = current_encoder;
         }
     }
-        //Ô¶Ïß¿ØÖÆ½øÊ®×Ö,begin_y½¥±ä¿¿½ü·À¶ªÏß
+        //è¿œçº¿æ§åˆ¶è¿›åå­—,begin_yæ¸å˜é è¿‘é˜²ä¸¢çº¿
     else if (cross_type == CROSS_IN) {
-        //Ñ°Ô¶Ïß,Ëã·¨Óë½üÏßÏàÍ¬
+        //å¯»è¿œçº¿,ç®—æ³•ä¸è¿‘çº¿ç›¸åŒ
         cross_farline();
 
         if (rpts1s_num < 5 && rpts0s_num < 5) { not_have_line++; }
@@ -116,17 +116,17 @@ void run_cross()
 
     }
     else if(cross_type == CROSS_HALF){
-        //×îÖÕËùÓĞµÄÊ®×ÖÖ´ĞĞ¶¼ÔÚÕâ¸ö²¿·Ö£¬¿ÉÒÔÊµÏÖÔÚ½ö¿´µ½Ò»²àÊÓÒ°µÄÇé¿öÏÂÍ¨¹ıÊ®×Ö£¨ÁíÒ»²àÈ«¶ª¶¼Ã»ÎÊÌâ£©
-        //Lpt0_found_flagºÍLpt1_found_flagÅĞ¶Ï¿´µ½µÄÊÇÄÄÒ»²à
+        //æœ€ç»ˆæ‰€æœ‰çš„åå­—æ‰§è¡Œéƒ½åœ¨è¿™ä¸ªéƒ¨åˆ†ï¼Œå¯ä»¥å®ç°åœ¨ä»…çœ‹åˆ°ä¸€ä¾§è§†é‡çš„æƒ…å†µä¸‹é€šè¿‡åå­—ï¼ˆå¦ä¸€ä¾§å…¨ä¸¢éƒ½æ²¡é—®é¢˜ï¼‰
+        //Lpt0_found_flagå’ŒLpt1_found_flagåˆ¤æ–­çœ‹åˆ°çš„æ˜¯å“ªä¸€ä¾§
         if(Lpt0_found_flag)
         {
-            //ÈôÕÒµ½ÁË×ó½ü´¦90¡ã¹Õµã£¬¿ªÊ¼ËÑ×óÔ¶Ïß£¬ºóĞø²Ù×÷ÔÚÖĞÏß¸ú×Ù²¿·Ö
+            //è‹¥æ‰¾åˆ°äº†å·¦è¿‘å¤„90Â°æ‹ç‚¹ï¼Œå¼€å§‹æœå·¦è¿œçº¿ï¼Œåç»­æ“ä½œåœ¨ä¸­çº¿è·Ÿè¸ªéƒ¨åˆ†
             cross_farline_L();
             aim_distance = 0.25;
             track_type = TRACK_LEFT;
             if (rpts0s_num < 5) { not_have_line++; }
             if (not_have_line > 2 && rpts1s_num > 20 && rpts0s_num > 20) {
-                //¾­Àú¹ıÒ»¸öÏÈ¶ªÏÈÔÙÓĞÏßµÄ¹ı³ÌËµÃ÷¿ÉÒÔË¢µôÊ®×ÖÁË
+                //ç»å†è¿‡ä¸€ä¸ªå…ˆä¸¢å…ˆå†æœ‰çº¿çš„è¿‡ç¨‹è¯´æ˜å¯ä»¥åˆ·æ‰åå­—äº†
                 cross_type = CROSS_NONE;
                 if_lost_left_line = 0;
                 Clean_Time_count_flag = 0;
@@ -164,13 +164,13 @@ void cross_farline_L()
 
     if (Lpt0_found&&rpts0s_num>=3&&!if_lost_left_line) {
         /*
-         * if_lost_left_line±íÊ¾±ßÏßÊÇ·ñÔø¾­¶ªÊ§¹ı
-                        Èôif_lost_left_lineµÄÌõ¼ş²»Âú×ã£¬ÔòËµÃ÷±ßÏß¾­¹ıÁËÒ»¸öÏÈÓĞÏßºó¶ªÏßµÄ¹ı³Ì£¬ÓĞ¿ÉÄÜÊÇÄ³¸öÔªËØĞĞ½øµ½ÁËÏÂÒ»¸ö½×¶Î
-                        ±ÈÈçÔ²»·´ÓCIRCLE_LEFT_BEGINÌøµ½ÁËCIRCLE_LEFT_IN£¬´ÓÊ®×ÖÂ·¿ÚÖĞ¼äÊ»ÀëÊ®×ÖÔªËØµÈÇé¿ö¶¼»á¾­¹ıÕâ¸ö¹ı³Ì
-                        µÚÒ»²½£¬µ±ÕÒµ½×ó²à¹Õµã£¬ÇÒ×ó²àµÄ¹Õµã±ßÏß»¹ÔÚÃ»¶ªµÄÇé¿öÏÂ£¬½«¸©ÊÓ½ÇÏÂµÄ¹Õµã×ø±êÓ³Éä»ØÔ­Í¼×ø±ê
-                        ÀûÓÃ´Ë×ø±ê×÷ÎªÆğÊ¼µã£¬¿ÉÒÔÏòÉÏÈ¥ÕÒÍ¬²àÔ¶¶Ë±ßÏß
-                        ¼ÙÉè*±íÊ¾±ßÏß£¬&Îª½ü´¦µÄ¹Õµã£¬#±íÊ¾Ô¶´¦µÄ¹Õµã£¬ÔòÔÚÕâ¸ö½ü´¦¹Õµã&µÄ×ø±ê»ù´¡ÉÏ½øĞĞÒ»¶¨µÄÆ«ÒÆ£¬ÓÃ£¤±íÊ¾Ô¶¶Ë±ßÏßËÑË÷µÄÆğÊ¼µã×ø±ê
-                        Æ«ÒÆµÄÄ¿µÄÊÇ±£Ö¤Õâ¸öµã£¬ÔÚ³µÉíÎŞÂÛ¶àÍáµÄÇé¿öÏÂÄÜ¹»Ê¼ÖÕÔÚ½ü¶Ë±ßÏßµÄÉÏ·½£¬´Ó¶øÄÜ¹»ÏòÉÏËÑµ½Ô¶´¦µÄ±ßÏß
+         * if_lost_left_lineè¡¨ç¤ºè¾¹çº¿æ˜¯å¦æ›¾ç»ä¸¢å¤±è¿‡
+                        è‹¥if_lost_left_lineçš„æ¡ä»¶ä¸æ»¡è¶³ï¼Œåˆ™è¯´æ˜è¾¹çº¿ç»è¿‡äº†ä¸€ä¸ªå…ˆæœ‰çº¿åä¸¢çº¿çš„è¿‡ç¨‹ï¼Œæœ‰å¯èƒ½æ˜¯æŸä¸ªå…ƒç´ è¡Œè¿›åˆ°äº†ä¸‹ä¸€ä¸ªé˜¶æ®µ
+                        æ¯”å¦‚åœ†ç¯ä»CIRCLE_LEFT_BEGINè·³åˆ°äº†CIRCLE_LEFT_INï¼Œä»åå­—è·¯å£ä¸­é—´é©¶ç¦»åå­—å…ƒç´ ç­‰æƒ…å†µéƒ½ä¼šç»è¿‡è¿™ä¸ªè¿‡ç¨‹
+                        ç¬¬ä¸€æ­¥ï¼Œå½“æ‰¾åˆ°å·¦ä¾§æ‹ç‚¹ï¼Œä¸”å·¦ä¾§çš„æ‹ç‚¹è¾¹çº¿è¿˜åœ¨æ²¡ä¸¢çš„æƒ…å†µä¸‹ï¼Œå°†ä¿¯è§†è§’ä¸‹çš„æ‹ç‚¹åæ ‡æ˜ å°„å›åŸå›¾åæ ‡
+                        åˆ©ç”¨æ­¤åæ ‡ä½œä¸ºèµ·å§‹ç‚¹ï¼Œå¯ä»¥å‘ä¸Šå»æ‰¾åŒä¾§è¿œç«¯è¾¹çº¿
+                        å‡è®¾*è¡¨ç¤ºè¾¹çº¿ï¼Œ&ä¸ºè¿‘å¤„çš„æ‹ç‚¹ï¼Œ#è¡¨ç¤ºè¿œå¤„çš„æ‹ç‚¹ï¼Œåˆ™åœ¨è¿™ä¸ªè¿‘å¤„æ‹ç‚¹&çš„åæ ‡åŸºç¡€ä¸Šè¿›è¡Œä¸€å®šçš„åç§»ï¼Œç”¨ï¿¥è¡¨ç¤ºè¿œç«¯è¾¹çº¿æœç´¢çš„èµ·å§‹ç‚¹åæ ‡
+                        åç§»çš„ç›®çš„æ˜¯ä¿è¯è¿™ä¸ªç‚¹ï¼Œåœ¨è½¦èº«æ— è®ºå¤šæ­ªçš„æƒ…å†µä¸‹èƒ½å¤Ÿå§‹ç»ˆåœ¨è¿‘ç«¯è¾¹çº¿çš„ä¸Šæ–¹ï¼Œä»è€Œèƒ½å¤Ÿå‘ä¸Šæœåˆ°è¿œå¤„çš„è¾¹çº¿
 
                                  *
                                  *
@@ -183,7 +183,7 @@ void cross_farline_L()
 
 
 
-                                                  £¤
+                                                  ï¿¥
 
           ***********************&
                                  *
@@ -198,30 +198,30 @@ void cross_farline_L()
 
          */
         inv_Lpt0_found[0] = Cal_inv_rot_x(rpts0s[clip(Lpt0_rpts0s_id,0,rpts0s_num-1)][0],rpts0s[clip(Lpt0_rpts0s_id,0,rpts0s_num-1)][1])-5;
-        inv_Lpt0_found[1] = Cal_inv_rot_y(rpts0s[clip(Lpt0_rpts0s_id,0,rpts0s_num-1)][0],rpts0s[clip(Lpt0_rpts0s_id,0,rpts0s_num-1)][1])-17;//-5ºÍ-17¶¼ÊÇÔÚ¹Õµã×ø±êµÄ»ù´¡ÉÏ½øĞĞÏà¶ÔÆ«ÒÆ
-        rptsc0_num = rpts0s_num = Lpt0_rpts0s_id-1 ;            //½Ø¶Ï´¦Àí£¬·ÀÖ¹Ë³×ÅÒ»²à±ßÏß»®³öÈ¥
+        inv_Lpt0_found[1] = Cal_inv_rot_y(rpts0s[clip(Lpt0_rpts0s_id,0,rpts0s_num-1)][0],rpts0s[clip(Lpt0_rpts0s_id,0,rpts0s_num-1)][1])-17;//-5å’Œ-17éƒ½æ˜¯åœ¨æ‹ç‚¹åæ ‡çš„åŸºç¡€ä¸Šè¿›è¡Œç›¸å¯¹åç§»
+        rptsc0_num = rpts0s_num = Lpt0_rpts0s_id-1 ;            //æˆªæ–­å¤„ç†ï¼Œé˜²æ­¢é¡ºç€ä¸€ä¾§è¾¹çº¿åˆ’å‡ºå»
     }
     else if(circle_type== CIRCLE_LEFT_IN||circle_type== CIRCLE_RIGHT_OUT||circle_type== CIRCLE_RIGHT_END){
 
-        //ÔÚÕâ¸öifÌõ¼şÖĞÖ÷ÒªÓÃÓÚÔ²»·¸÷½×¶Î½ü´¦¶ªÏßÇé¿öÏÂ£¬Ñ°ÕÒºÏÊÊµÄÆğÊ¼µã£¬´Ó¶ø´ÓÔ¶¶ËµÄ±ßÏßĞÅÏ¢ÖĞÌáÈ¡½Çµã£¬´Ó¶ø½øĞĞ²¹ÏßµÄ²Ù×÷
+        //åœ¨è¿™ä¸ªifæ¡ä»¶ä¸­ä¸»è¦ç”¨äºåœ†ç¯å„é˜¶æ®µè¿‘å¤„ä¸¢çº¿æƒ…å†µä¸‹ï¼Œå¯»æ‰¾åˆé€‚çš„èµ·å§‹ç‚¹ï¼Œä»è€Œä»è¿œç«¯çš„è¾¹çº¿ä¿¡æ¯ä¸­æå–è§’ç‚¹ï¼Œä»è€Œè¿›è¡Œè¡¥çº¿çš„æ“ä½œ
         if(circle_type== CIRCLE_LEFT_IN)
         {
-            //Ô²»·CIRCLE_LEFT_IN½×¶ÎÔ­±¾ÊÇÀûÓÃËÑµ½µÄÄÚÔ²±ßÏß×÷ÎªÖĞÏß£¬µ«ÔÚR50ÇÒ³µËÙºÜ¿ìµÄÇé¿öÏÂ£¬»áÓĞ¶ªÊ§ÄÚ²à±ßÏßµÄ¿ÉÄÜĞÔ
+            //åœ†ç¯CIRCLE_LEFT_INé˜¶æ®µåŸæœ¬æ˜¯åˆ©ç”¨æœåˆ°çš„å†…åœ†è¾¹çº¿ä½œä¸ºä¸­çº¿ï¼Œä½†åœ¨R50ä¸”è½¦é€Ÿå¾ˆå¿«çš„æƒ…å†µä¸‹ï¼Œä¼šæœ‰ä¸¢å¤±å†…ä¾§è¾¹çº¿çš„å¯èƒ½æ€§
             if(ipts0_num>12&&!if_lost_left_line){
-                //µ±ÄÚ²à±ßÏß»¹ÄÜËÑË÷µ½¡¢Ã»¶ª¹ıÏß¡¢Âú×ãÒ»¶¨µÄ³¤¶ÈÊ±£¬¸ù¾İÄÚ²à±ßÏßÄ©¶ËµÄÒ»¸öµãµÄ×ø±ê×÷Îª»ù×¼£¬ÏòÈüµÀÖĞ¼û·½ÏòÆ½ÒÆÒ»¶¨µÄ¾àÀë×÷ÎªÔ¶¶Ë±ßÏßËÑË÷µÄÆğÊ¼µã
+                //å½“å†…ä¾§è¾¹çº¿è¿˜èƒ½æœç´¢åˆ°ã€æ²¡ä¸¢è¿‡çº¿ã€æ»¡è¶³ä¸€å®šçš„é•¿åº¦æ—¶ï¼Œæ ¹æ®å†…ä¾§è¾¹çº¿æœ«ç«¯çš„ä¸€ä¸ªç‚¹çš„åæ ‡ä½œä¸ºåŸºå‡†ï¼Œå‘èµ›é“ä¸­è§æ–¹å‘å¹³ç§»ä¸€å®šçš„è·ç¦»ä½œä¸ºè¿œç«¯è¾¹çº¿æœç´¢çš„èµ·å§‹ç‚¹
                 inv_Lpt0_found[0] = ipts0[ipts0_num-3][0]+15;
                 inv_Lpt0_found[1] = ipts0[ipts0_num-3][1]-5;
             }else{
-                //Èô¶ªÊ§Ê±Ôò±íÃ÷³µÉí´ËÊ±ÒÑ¾­½Ó½üÔ²»·µÄÈë»·¿Ú£¬ÄÚ²à¶ªÊ§±ßÏßµÄÇé¿öÏÂÔò¿ÉÒÔÊÖ¶¯¸ø¶¨Ò»¸ö¹Ì¶¨µÄÆğÊ¼µã×÷ÎªÔ¶¶Ë±ßÏßËÑË÷µÄÆğÊ¼µã
-                //¹Ì¶¨µãµÄ×ø±êĞèÒª¸ù¾İÄãÍ¼ÏñµÄ³ß´çºÍÉãÏñÍ·¸ß¶ÈĞŞ¸Ä
+                //è‹¥ä¸¢å¤±æ—¶åˆ™è¡¨æ˜è½¦èº«æ­¤æ—¶å·²ç»æ¥è¿‘åœ†ç¯çš„å…¥ç¯å£ï¼Œå†…ä¾§ä¸¢å¤±è¾¹çº¿çš„æƒ…å†µä¸‹åˆ™å¯ä»¥æ‰‹åŠ¨ç»™å®šä¸€ä¸ªå›ºå®šçš„èµ·å§‹ç‚¹ä½œä¸ºè¿œç«¯è¾¹çº¿æœç´¢çš„èµ·å§‹ç‚¹
+                //å›ºå®šç‚¹çš„åæ ‡éœ€è¦æ ¹æ®ä½ å›¾åƒçš„å°ºå¯¸å’Œæ‘„åƒå¤´é«˜åº¦ä¿®æ”¹
                 if_lost_left_line = 1;
                 inv_Lpt0_found[0] = 40;
                 inv_Lpt0_found[1] = begin_y*0.85;
             }
         }
         else {
-            //ÕâÊÇ³ö»·½×¶ÎµÄÇé¿öÏÂ£¬Ô­±¾µÄCIRCLE_RIGHT_OUTÊÇÀûÓÃÄÚ²à±ßÏß»®³öÈ¥£¬µ«ÊÇR50ÕâÖÖĞ¡Ô²Ò²ÊÇ¼«ÈİÒ×¶ªÊ§±ßÏßµÄ
-            //Òò´ËÎÒÑ¡ÁËÒ»¸ö±È½Ï¿¿½üÍ¼ÏñÕıÖĞÏÂ·½µÄÒ»¸öµã£¬ÕâÑùËû¼È²»»áÔÚÏòÉÏËÑ±ßÏßµÄÊ±ºòÅöµ½Íâ»·±ßÏß£¬¶øÇÒÄÜËÑµ½ÈüµÀ¶Ô²àµÄ³¤Ö±µÀ£¬ÓÃÓÚ³ö»·²¹Ïß
+            //è¿™æ˜¯å‡ºç¯é˜¶æ®µçš„æƒ…å†µä¸‹ï¼ŒåŸæœ¬çš„CIRCLE_RIGHT_OUTæ˜¯åˆ©ç”¨å†…ä¾§è¾¹çº¿åˆ’å‡ºå»ï¼Œä½†æ˜¯R50è¿™ç§å°åœ†ä¹Ÿæ˜¯æå®¹æ˜“ä¸¢å¤±è¾¹çº¿çš„
+            //å› æ­¤æˆ‘é€‰äº†ä¸€ä¸ªæ¯”è¾ƒé è¿‘å›¾åƒæ­£ä¸­ä¸‹æ–¹çš„ä¸€ä¸ªç‚¹ï¼Œè¿™æ ·ä»–æ—¢ä¸ä¼šåœ¨å‘ä¸Šæœè¾¹çº¿çš„æ—¶å€™ç¢°åˆ°å¤–ç¯è¾¹çº¿ï¼Œè€Œä¸”èƒ½æœåˆ°èµ›é“å¯¹ä¾§çš„é•¿ç›´é“ï¼Œç”¨äºå‡ºç¯è¡¥çº¿
             inv_Lpt0_found[0] = 80;
             inv_Lpt0_found[1] = begin_y*0.85;
 
@@ -230,13 +230,13 @@ void cross_farline_L()
 
     }
     else if(rpts0s_num<2){
-        //ÔÚ·ÇÔ²»·ÇÒ±ßÏß¼¸ºõ¶ªÊ§µÄÇé¿öÏÂ£¬ËµÃ÷½ü¶Ë¿Õ°×£¬¿ÉÒÔÓÃÒ»¸ö¹Ì¶¨µÄµãÎ»È¥ÏòÉÏËÑË÷£¬¹Ì¶¨µãµÄ×ø±êĞèÒª¸ù¾İÄãÍ¼ÏñµÄ³ß´çºÍÉãÏñÍ·¸ß¶ÈĞŞ¸Ä
+        //åœ¨éåœ†ç¯ä¸”è¾¹çº¿å‡ ä¹ä¸¢å¤±çš„æƒ…å†µä¸‹ï¼Œè¯´æ˜è¿‘ç«¯ç©ºç™½ï¼Œå¯ä»¥ç”¨ä¸€ä¸ªå›ºå®šçš„ç‚¹ä½å»å‘ä¸Šæœç´¢ï¼Œå›ºå®šç‚¹çš„åæ ‡éœ€è¦æ ¹æ®ä½ å›¾åƒçš„å°ºå¯¸å’Œæ‘„åƒå¤´é«˜åº¦ä¿®æ”¹
         if_lost_left_line = 1;
         inv_Lpt0_found[0] = 20;
         inv_Lpt0_found[1] = begin_y-5;
     }
 
-    if (Lpt1_found) {//¹Õµã½Ø¶Ï´¦Àí£¬¹ÕµãÖ®ºóµÄµã¶¼²»ÒªÁË
+    if (Lpt1_found) {//æ‹ç‚¹æˆªæ–­å¤„ç†ï¼Œæ‹ç‚¹ä¹‹åçš„ç‚¹éƒ½ä¸è¦äº†
         rptsc1_num = rpts1s_num = Lpt1_rpts1s_id -2;
     }
 
@@ -250,7 +250,7 @@ void cross_farline_L()
 
     int local_thres_left_up = 0;
     for (; y1 > block_size/2; y1--) {
-        //ÏÈºÚºó°×£¬ÏÈÕÒwhite
+        //å…ˆé»‘åç™½ï¼Œå…ˆæ‰¾white
         if (AT_IMAGE(&img_raw, far_x11, y1-1) < OSTU_thres) {
             break;
         }
@@ -273,14 +273,14 @@ void cross_farline_L()
             break;
         }
 
-    }//ÀûÓÃ×ÔÊÊÓ¦¶şÖµ»¯µÄ·½Ê½ÏòÉÏÑ°ÕÒ±ßÏß
+    }//åˆ©ç”¨è‡ªé€‚åº”äºŒå€¼åŒ–çš„æ–¹å¼å‘ä¸Šå¯»æ‰¾è¾¹çº¿
 
-    //´Ófar_y1£¬far_x11Î»ÖÃ¿ªÊ¼Ñ°ÕÒÔ¶¶Ë±ßÏß
+    //ä»far_y1ï¼Œfar_x11ä½ç½®å¼€å§‹å¯»æ‰¾è¿œç«¯è¾¹çº¿
     if (far_y1 > block_size/2 && AT_IMAGE(&img_raw, far_x11, far_y1 -1) < local_thres_left_up)
         findline_lefthand_adaptive(&img_raw, block_size, clip_value, far_x11, far_y1 , far_ipts0, &far_ipts0_num);
     else far_ipts0_num = 0;
 
-    // È¥»û±ä+Í¸ÊÓ±ä»»
+    // å»ç•¸å˜+é€è§†å˜æ¢
     for(int i=0;i<far_ipts0_num;i++)
     {
         far_rpts0[i][0] = (rot[1][0]*far_ipts0[i][1]+rot[1][1]*far_ipts0[i][0]+rot[1][2])/(rot[2][0]*far_ipts0[i][1]+rot[2][1]*far_ipts0[i][0]+1.0)+delta_x;
@@ -289,25 +289,25 @@ void cross_farline_L()
     }
 
     far_rpts0_num = far_ipts0_num;
-    // ±ßÏßÂË²¨
+    // è¾¹çº¿æ»¤æ³¢
     blur_points(far_rpts0, far_rpts0_num, far_rpts0b, (int) round(line_blur_kernel));
     far_rpts0b_num = far_rpts0_num;
 
-    // ±ßÏßµÈ¾à²ÉÑù
+    // è¾¹çº¿ç­‰è·é‡‡æ ·
     far_rpts0s_num = sizeof(far_rpts0s) / sizeof(far_rpts0s[0]);
     resample_points(far_rpts0b, far_rpts0b_num, far_rpts0s, &far_rpts0s_num, sample_dist * pixel_per_meter);
     //far_rpts1s_num = sizeof(far_rpts1s) / sizeof(far_rpts1s[0]);
 
 
-    // ±ßÏß¾Ö²¿½Ç¶È±ä»¯ÂÊ
+    // è¾¹çº¿å±€éƒ¨è§’åº¦å˜åŒ–ç‡
     local_angle_points(far_rpts0s, far_rpts0s_num, far_rpts0a, (int) round(angle_dist / sample_dist));
     far_rpts0a_num = far_rpts0s_num;
 
-    // ½Ç¶È±ä»¯ÂÊ·Ç¼«´óÒÖÖÆ
+    // è§’åº¦å˜åŒ–ç‡éæå¤§æŠ‘åˆ¶
     nms_angle(far_rpts0a, far_rpts0a_num, far_rpts0an, (int) round(angle_dist / sample_dist) * 2 + 1);
     far_rpts0an_num = far_rpts0a_num;
 
-    // ÕÒÔ¶ÏßÉÏµÄL½Çµã
+    // æ‰¾è¿œçº¿ä¸Šçš„Lè§’ç‚¹
     far_Lpt0_found = far_Lpt1_found = false;
     for (int i = 0; i < MIN(far_rpts0s_num, 70); i++) {
         if (far_rpts0an[i] == 0) continue;
@@ -315,14 +315,14 @@ void cross_farline_L()
         int ip1 = clip(i + (int) round(angle_dist / sample_dist), 0, far_rpts0s_num - 1);
 //        float conf = fabs(far_rpts0a[i]) - (fabs(far_rpts0a[im1]) + fabs(far_rpts0a[ip1])) / 2;
         conf3 = fabs(far_rpts0a[i]) - (fabs(far_rpts0a[im1]) + fabs(far_rpts0a[ip1])) / 2;
-        if (50. / 180. * PI < conf3 && conf3 < 140. / 180. * PI && i < 40&&far_rpts0s[i][0]<=far_rpts0s[ip1][0]&&i>1&&far_rpts0s[i][1]>far_rpts0s[ip1][1]&&far_rpts0s[im1][0]<far_rpts0s[ip1][0]) {//Îª·ÀÖ¹ÎóÅĞ£¬Ô¶¶ËµÄ¹Õµã½Ç¶È¶¨ÒåÓò¿ÉÒÔ·ÅµÄ´óÒ»µã£¬ÔÙ¼ÓÉÏ¹ÕµãºÍÇ°ºóÁ½µãµÄÏà¶ÔÎ»ÖÃ¹ØÏµ¿ÉÒÔÓĞĞ§½â¾öÎóÅĞ
+        if (50. / 180. * PI < conf3 && conf3 < 140. / 180. * PI && i < 40&&far_rpts0s[i][0]<=far_rpts0s[ip1][0]&&i>1&&far_rpts0s[i][1]>far_rpts0s[ip1][1]&&far_rpts0s[im1][0]<far_rpts0s[ip1][0]) {//ä¸ºé˜²æ­¢è¯¯åˆ¤ï¼Œè¿œç«¯çš„æ‹ç‚¹è§’åº¦å®šä¹‰åŸŸå¯ä»¥æ”¾çš„å¤§ä¸€ç‚¹ï¼Œå†åŠ ä¸Šæ‹ç‚¹å’Œå‰åä¸¤ç‚¹çš„ç›¸å¯¹ä½ç½®å…³ç³»å¯ä»¥æœ‰æ•ˆè§£å†³è¯¯åˆ¤
             far_Lpt0_rpts0s_id = i;
             far_Lpt0_found = true;
             inv_far_Lpt0_found[0] = Cal_inv_rot_x(far_rpts0s[clip(far_Lpt0_rpts0s_id,0,far_rpts0s_num-1)][0],far_rpts0s[clip(far_Lpt0_rpts0s_id,0,far_rpts0s_num-1)][1]);
-            inv_far_Lpt0_found[1] = Cal_inv_rot_y(far_rpts0s[clip(far_Lpt0_rpts0s_id,0,far_rpts0s_num-1)][0],far_rpts0s[clip(far_Lpt0_rpts0s_id,0,far_rpts0s_num-1)][1]);//ÄæÍ¸ÊÓ¼ÆËã£¬½«¸©ÊÓ½ÇÏÂµÄÔ¶¶Ë¹Õµã×ø±êÓ³Éä»ØÔ­Í¼
+            inv_far_Lpt0_found[1] = Cal_inv_rot_y(far_rpts0s[clip(far_Lpt0_rpts0s_id,0,far_rpts0s_num-1)][0],far_rpts0s[clip(far_Lpt0_rpts0s_id,0,far_rpts0s_num-1)][1]);//é€†é€è§†è®¡ç®—ï¼Œå°†ä¿¯è§†è§’ä¸‹çš„è¿œç«¯æ‹ç‚¹åæ ‡æ˜ å°„å›åŸå›¾
             break;
         }
-        if(conf3>conf3_max)conf3_max = conf3;//Ã¿´Î¼ÆËã±£´æÏÂµ±Ç°¼ÆËãÖÜÆÚÖĞµÄ±ßÏß×î´ó½Ç¶ÈÖµ£¬ÔÚÆÁÄ»ÉÏÏÔÊ¾³öÀ´×¼È·µÄÊı¾İ·½±ãµ÷Õû¹ÕµãµÄ¶¨ÒåÓò
+        if(conf3>conf3_max)conf3_max = conf3;//æ¯æ¬¡è®¡ç®—ä¿å­˜ä¸‹å½“å‰è®¡ç®—å‘¨æœŸä¸­çš„è¾¹çº¿æœ€å¤§è§’åº¦å€¼ï¼Œåœ¨å±å¹•ä¸Šæ˜¾ç¤ºå‡ºæ¥å‡†ç¡®çš„æ•°æ®æ–¹ä¾¿è°ƒæ•´æ‹ç‚¹çš„å®šä¹‰åŸŸ
     }
 
 
@@ -332,7 +332,7 @@ void cross_farline_L()
 }
 
 
-void cross_farline_R()//×óÓÒÍ¬Àí
+void cross_farline_R()//å·¦å³åŒç†
 {
     if (Lpt0_found) {
         rptsc0_num = rpts0s_num = Lpt0_rpts0s_id -2;
@@ -356,16 +356,108 @@ void cross_farline_R()//×óÓÒÍ¬Àí
             }
         }
         else {
-            if(rpts1s_num>10){
-                inv_Lpt1_found[0] = 80;
-                inv_Lpt1_found[1] = 105;
-            }
-            else{
-                inv_Lpt1_found[0] = 110;
-                inv_Lpt1_found[1] = 105;
+            int seed_mode_dynamic = 0;
+            const char *seed_reason = "not_left_out";
+
+            if(circle_type == CIRCLE_LEFT_OUT)
+            {
+                const int idx_low = rptsc1_num / 3;
+                const int idx_high = rptsc1_num * 2 / 3;
+                if(rptsc1_num > 10)
+                {
+                    const float raw_low_x = Cal_inv_rot_x(rptsc1[idx_low][0], rptsc1[idx_low][1]);
+                    const float raw_low_y = Cal_inv_rot_y(rptsc1[idx_low][0], rptsc1[idx_low][1]);
+                    const float raw_high_x = Cal_inv_rot_x(rptsc1[idx_high][0], rptsc1[idx_high][1]);
+                    const float raw_high_y = Cal_inv_rot_y(rptsc1[idx_high][0], rptsc1[idx_high][1]);
+                    const float dx_raw = raw_high_x - raw_low_x;
+                    const float dy_raw = raw_high_y - raw_low_y;
+                    const float len = sqrtf(dx_raw * dx_raw + dy_raw * dy_raw);
+
+                    /*
+                     * Left-circle OUT should see the right boundary trend from
+                     * lower-right toward upper-left in raw coordinates. Use that
+                     * current-frame trend only when both axes agree.
+                     */
+                    if(len > 1.0f && dx_raw < -1.0f && dy_raw < -1.0f)
+                    {
+                        const float proj = 20.0f;
+                        const float sx = raw_high_x + dx_raw / len * proj;
+                        const float sy = raw_high_y + dy_raw / len * proj;
+                        const float min_dynamic_x = MT9V03X_W * 0.5f;
+                        const float max_dynamic_x = MT9V03X_W - block_size / 2 - 1;
+                        const float min_dynamic_y = block_size / 2 + 1;
+                        const float max_dynamic_y = MT9V03X_H - block_size / 2 - 1;
+                        if(sx >= min_dynamic_x && sx <= max_dynamic_x &&
+                           sy >= min_dynamic_y && sy <= max_dynamic_y)
+                        {
+                            inv_Lpt1_found[0] = sx;
+                            inv_Lpt1_found[1] = sy;
+                            seed_mode_dynamic = 1;
+                            seed_reason = "ok";
+                            if(circle_cal_log_enabled())
+                            {
+                                printf("ATGCircleOutSeed: mode=dynamic circle=%s rptsc1=%d "
+                                       "idx=%d/%d ipm=%.1f,%.1f -> %.1f,%.1f "
+                                       "raw_seg=%.1f,%.1f -> %.1f,%.1f "
+                                       "delta=%.1f,%.1f raw=%.1f,%.1f proj=%.1f reason=%s\n",
+                                       circle_type_name[circle_type], rptsc1_num,
+                                       idx_low, idx_high,
+                                       rptsc1[idx_low][0], rptsc1[idx_low][1],
+                                       rptsc1[idx_high][0], rptsc1[idx_high][1],
+                                       raw_low_x, raw_low_y,
+                                       raw_high_x, raw_high_y,
+                                       dx_raw, dy_raw,
+                                       inv_Lpt1_found[0], inv_Lpt1_found[1], proj,
+                                       seed_reason);
+                            }
+                        }
+                        else
+                        {
+                            seed_reason = "out_of_band";
+                            if(circle_cal_log_enabled())
+                            {
+                                printf("ATGCircleOutSeed: mode=rejected_dynamic circle=%s rptsc1=%d "
+                                       "idx=%d/%d raw=%.1f,%.1f bounds=%.1f..%.1f,%.1f..%.1f "
+                                       "reason=%s\n",
+                                       circle_type_name[circle_type], rptsc1_num,
+                                       idx_low, idx_high,
+                                       sx, sy,
+                                       min_dynamic_x, max_dynamic_x,
+                                       min_dynamic_y, max_dynamic_y,
+                                       seed_reason);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        seed_reason = len <= 1.0f ? "degenerate" : "bad_slope";
+                    }
+                }
+                else
+                {
+                    seed_reason = "few_rptsc1";
+                }
             }
 
-
+            if(!seed_mode_dynamic)
+            {
+                if(rpts1s_num > 10){
+                    inv_Lpt1_found[0] = 80;
+                    inv_Lpt1_found[1] = 105;
+                }
+                else{
+                    inv_Lpt1_found[0] = 110;
+                    inv_Lpt1_found[1] = 105;
+                }
+                if(circle_cal_log_enabled())
+                {
+                    printf("ATGCircleOutSeed: mode=fixed circle=%s rptsc1=%d rpts1s=%d "
+                           "raw=%.1f,%.1f reason=%s\n",
+                           circle_type_name[circle_type], rptsc1_num, rpts1s_num,
+                           inv_Lpt1_found[0], inv_Lpt1_found[1],
+                           seed_reason);
+                }
+            }
         }
 
 
@@ -388,7 +480,7 @@ void cross_farline_R()//×óÓÒÍ¬Àí
 
     int local_thres_right_up = 0;
     for (; y1 > block_size/2; y1--) {
-        //ÏÈºÚºó°×£¬ÏÈÕÒwhite
+        //å…ˆé»‘åç™½ï¼Œå…ˆæ‰¾white
         if (AT_IMAGE(&img_raw, far_x11, y1-1) < OSTU_thres) {
             break;
         }
@@ -411,12 +503,12 @@ void cross_farline_R()//×óÓÒÍ¬Àí
                  break;
              }
          }
-         //´ÓÕÒµ½½ÇµãÎ»ÖÃ¿ªÊ¼Ñ°ÕÒ
+         //ä»æ‰¾åˆ°è§’ç‚¹ä½ç½®å¼€å§‹å¯»æ‰¾
          if (far_y1 > block_size/2 && AT_IMAGE(&img_raw, far_x11, far_y1 -1) < local_thres_right_up)
         findline_righthand_adaptive(&img_raw, block_size, clip_value, far_x11, far_y1 , far_ipts1, &far_ipts1_num);
          else far_ipts1_num = 0;
 
-    // È¥»û±ä+Í¸ÊÓ±ä»»
+    // å»ç•¸å˜+é€è§†å˜æ¢
     for(int i=0;i<far_ipts1_num;i++)
     {
         far_rpts1[i][0] = (rot[1][0]*far_ipts1[i][1]+rot[1][1]*far_ipts1[i][0]+rot[1][2])/(rot[2][0]*far_ipts1[i][1]+rot[2][1]*far_ipts1[i][0]+1.0)+delta_x;
@@ -425,25 +517,25 @@ void cross_farline_R()//×óÓÒÍ¬Àí
     }
 
     far_rpts1_num = far_ipts1_num;
-    // ±ßÏßÂË²¨
+    // è¾¹çº¿æ»¤æ³¢
     blur_points(far_rpts1, far_rpts1_num, far_rpts1b, (int) round(line_blur_kernel));
     far_rpts1b_num = far_rpts1_num;
 
-    // ±ßÏßµÈ¾à²ÉÑù
+    // è¾¹çº¿ç­‰è·é‡‡æ ·
     far_rpts1s_num = sizeof(far_rpts1s) / sizeof(far_rpts1s[0]);
     resample_points(far_rpts1b, far_rpts1b_num, far_rpts1s, &far_rpts1s_num, sample_dist * pixel_per_meter);
     //far_rpts1s_num = sizeof(far_rpts1s) / sizeof(far_rpts1s[0]);
 
 
-    // ±ßÏß¾Ö²¿½Ç¶È±ä»¯ÂÊ
+    // è¾¹çº¿å±€éƒ¨è§’åº¦å˜åŒ–ç‡
     local_angle_points(far_rpts1s, far_rpts1s_num, far_rpts1a, (int) round(angle_dist / sample_dist));
     far_rpts1a_num = far_rpts1s_num;
 
-    // ½Ç¶È±ä»¯ÂÊ·Ç¼«´óÒÖÖÆ
+    // è§’åº¦å˜åŒ–ç‡éæå¤§æŠ‘åˆ¶
     nms_angle(far_rpts1a, far_rpts1a_num, far_rpts1an, (int) round(angle_dist / sample_dist) * 2 + 1);
     far_rpts1an_num = far_rpts1a_num;
 
-    // ÕÒÔ¶ÏßÉÏµÄL½Çµã
+    // æ‰¾è¿œçº¿ä¸Šçš„Lè§’ç‚¹
 
 
     far_Lpt1_found = far_Lpt0_found = false;
@@ -476,7 +568,7 @@ void cross_farline() {
     bool white_found = false;
     far_ipts0_num = sizeof(far_ipts0) / sizeof(far_ipts0[0]);
 
-    //ÔÚbegin_yÏòÁ½±ßÕÒºÚÏß
+    //åœ¨begin_yå‘ä¸¤è¾¹æ‰¾é»‘çº¿
 //    for(;x1>cross_width*2; x1--)
 //    {
 //      if(AT_IMAGE(&img_raw, x1-1, y1) < low_thres) {
@@ -484,9 +576,9 @@ void cross_farline() {
 //        break;
 //      }
 //    }
-    //È«°×  far_x1 = 0,´Ó±ß½çÕÒ
+    //å…¨ç™½  far_x1 = 0,ä»è¾¹ç•Œæ‰¾
     for (; y1 > 0; y1--) {
-        //ÏÈºÚºó°×£¬ÏÈÕÒwhite
+        //å…ˆé»‘åç™½ï¼Œå…ˆæ‰¾white
         if (AT_IMAGE(&img_raw, far_x1, y1) >= thres) { white_found = true; }
         if (AT_IMAGE(&img_raw, far_x1, y1) < thres && (white_found || far_x1 == cross_width)) {
             far_y1 = y1;
@@ -494,7 +586,7 @@ void cross_farline() {
         }
     }
 
-    //´ÓÕÒµ½½ÇµãÎ»ÖÃ¿ªÊ¼Ñ°ÕÒ
+    //ä»æ‰¾åˆ°è§’ç‚¹ä½ç½®å¼€å§‹å¯»æ‰¾
     if (AT_IMAGE(&img_raw, far_x1, far_y1 + 1) >= thres)
         findline_lefthand_adaptive(&img_raw, block_size, clip_value, far_x1, far_y1 + 1, far_ipts0, &far_ipts0_num);
     else far_ipts0_num = 0;
@@ -504,7 +596,7 @@ void cross_farline() {
     white_found = false;
     far_ipts1_num = sizeof(far_ipts1) / sizeof(far_ipts1[0]);
 
-    //ÔÚbegin_yÏòÁ½±ßÕÒºÚÏß
+    //åœ¨begin_yå‘ä¸¤è¾¹æ‰¾é»‘çº¿
 //    for(;x2<img_raw.width-cross_width*2; x2++)
 //    {
 //      if(AT_IMAGE(&img_raw, x2+1, y2) < low_thres) {
@@ -512,9 +604,9 @@ void cross_farline() {
 //        break;
 //      }
 //    }
-    //È«°×  far_x2 = 0,´Ó±ß½çÕÒ
+    //å…¨ç™½  far_x2 = 0,ä»è¾¹ç•Œæ‰¾
     for (; y2 > 0; y2--) {
-        //ÏÈºÚºó°×£¬ÏÈÕÒwhite
+        //å…ˆé»‘åç™½ï¼Œå…ˆæ‰¾white
         if (AT_IMAGE(&img_raw, far_x2, y2) >= thres) { white_found = true; }
         if (AT_IMAGE(&img_raw, far_x2, y2) < thres && (white_found || far_x2 == img_raw.width - cross_width)) {
             far_y2 = y2;
@@ -522,13 +614,13 @@ void cross_farline() {
         }
     }
 
-    //´ÓÕÒµ½½ÇµãÎ»ÖÃ¿ªÊ¼Ñ°ÕÒ
+    //ä»æ‰¾åˆ°è§’ç‚¹ä½ç½®å¼€å§‹å¯»æ‰¾
     if (AT_IMAGE(&img_raw, far_x2, far_y2 + 1) >= thres)
         findline_righthand_adaptive(&img_raw, block_size, clip_value, far_x2, far_y2 + 1, far_ipts1, &far_ipts1_num);
 
     else far_ipts1_num = 0;
 
-    // È¥»û±ä+Í¸ÊÓ±ä»»
+    // å»ç•¸å˜+é€è§†å˜æ¢
     for(int i=0;i<far_ipts0_num;i++)
     {
         far_rpts0[i][0] = (rot[1][0]*far_ipts0[i][1]+rot[1][1]*far_ipts0[i][0]+rot[1][2])/(rot[2][0]*far_ipts0[i][1]+rot[2][1]*far_ipts0[i][0]+1.0)+delta_x;
@@ -544,32 +636,32 @@ void cross_farline() {
     far_rpts0_num = far_ipts0_num;
     far_rpts1_num = far_ipts1_num;
 
-    // ±ßÏßÂË²¨
+    // è¾¹çº¿æ»¤æ³¢
     blur_points(far_rpts0, far_rpts0_num, far_rpts0b, (int) round(line_blur_kernel));
     far_rpts0b_num = far_rpts0_num;
     blur_points(far_rpts1, far_rpts1_num, far_rpts1b, (int) round(line_blur_kernel));
     far_rpts1b_num = far_rpts1_num;
 
-    // ±ßÏßµÈ¾à²ÉÑù
+    // è¾¹çº¿ç­‰è·é‡‡æ ·
     far_rpts0s_num = sizeof(far_rpts0s) / sizeof(far_rpts0s[0]);
     resample_points(far_rpts0b, far_rpts0b_num, far_rpts0s, &far_rpts0s_num, sample_dist * pixel_per_meter);
     far_rpts1s_num = sizeof(far_rpts1s) / sizeof(far_rpts1s[0]);
     resample_points(far_rpts1b, far_rpts1b_num, far_rpts1s, &far_rpts1s_num, sample_dist * pixel_per_meter);
 
 
-    // ±ßÏß¾Ö²¿½Ç¶È±ä»¯ÂÊ
+    // è¾¹çº¿å±€éƒ¨è§’åº¦å˜åŒ–ç‡
     local_angle_points(far_rpts0s, far_rpts0s_num, far_rpts0a, (int) round(angle_dist / sample_dist));
     far_rpts0a_num = far_rpts0s_num;
     local_angle_points(far_rpts1s, far_rpts1s_num, far_rpts1a, (int) round(angle_dist / sample_dist));
     far_rpts1a_num = far_rpts1s_num;
 
-    // ½Ç¶È±ä»¯ÂÊ·Ç¼«´óÒÖÖÆ
+    // è§’åº¦å˜åŒ–ç‡éæå¤§æŠ‘åˆ¶
     nms_angle(far_rpts0a, far_rpts0a_num, far_rpts0an, (int) round(angle_dist / sample_dist) * 2 + 1);
     far_rpts0an_num = far_rpts0a_num;
     nms_angle(far_rpts1a, far_rpts1a_num, far_rpts1an, (int) round(angle_dist / sample_dist) * 2 + 1);
     far_rpts1an_num = far_rpts1a_num;
 
-    // ÕÒÔ¶ÏßÉÏµÄL½Çµã
+    // æ‰¾è¿œçº¿ä¸Šçš„Lè§’ç‚¹
 
     far_Lpt0_found = far_Lpt1_found = false;
     for (int i = 0; i < MIN(far_rpts0s_num, 40); i++) {
@@ -613,7 +705,7 @@ void cross_farline_half()
     bool white_found = false;
     far_ipts0_num = sizeof(far_ipts0) / sizeof(far_ipts0[0]);
 
-    //ÔÚbegin_yÏòÁ½±ßÕÒºÚÏß
+    //åœ¨begin_yå‘ä¸¤è¾¹æ‰¾é»‘çº¿
 //    for(;x1>cross_width*2; x1--)
 //    {
 //      if(AT_IMAGE(&img_raw, x1-1, y1) < low_thres) {
@@ -621,9 +713,9 @@ void cross_farline_half()
 //        break;
 //      }
 //    }
-    //È«°×  far_x1 = 0,´Ó±ß½çÕÒ
+    //å…¨ç™½  far_x1 = 0,ä»è¾¹ç•Œæ‰¾
     for (; y1 > 0; y1--) {
-        //ÏÈºÚºó°×£¬ÏÈÕÒwhite
+        //å…ˆé»‘åç™½ï¼Œå…ˆæ‰¾white
         if (AT_IMAGE(&img_raw, far_x1, y1) >= thres) { white_found = true; }
         if (AT_IMAGE(&img_raw, far_x1, y1) < thres && (white_found || far_x1 == cross_width)) {
             far_y1 = y1;
@@ -631,7 +723,7 @@ void cross_farline_half()
         }
     }
 
-    //´ÓÕÒµ½½ÇµãÎ»ÖÃ¿ªÊ¼Ñ°ÕÒ
+    //ä»æ‰¾åˆ°è§’ç‚¹ä½ç½®å¼€å§‹å¯»æ‰¾
     if (AT_IMAGE(&img_raw, far_x1, far_y1 + 1) >= thres)
         findline_lefthand_adaptive(&img_raw, block_size, clip_value, far_x1, far_y1 + 1, far_ipts0, &far_ipts0_num);
     else far_ipts0_num = 0;
@@ -641,7 +733,7 @@ void cross_farline_half()
     white_found = false;
     far_ipts1_num = sizeof(far_ipts1) / sizeof(far_ipts1[0]);
 
-    //ÔÚbegin_yÏòÁ½±ßÕÒºÚÏß
+    //åœ¨begin_yå‘ä¸¤è¾¹æ‰¾é»‘çº¿
 //    for(;x2<img_raw.width-cross_width*2; x2++)
 //    {
 //      if(AT_IMAGE(&img_raw, x2+1, y2) < low_thres) {
@@ -649,9 +741,9 @@ void cross_farline_half()
 //        break;
 //      }
 //    }
-    //È«°×  far_x2 = 0,´Ó±ß½çÕÒ
+    //å…¨ç™½  far_x2 = 0,ä»è¾¹ç•Œæ‰¾
     for (; y2 > 0; y2--) {
-        //ÏÈºÚºó°×£¬ÏÈÕÒwhite
+        //å…ˆé»‘åç™½ï¼Œå…ˆæ‰¾white
         if (AT_IMAGE(&img_raw, far_x2, y2) >= thres) { white_found = true; }
         if (AT_IMAGE(&img_raw, far_x2, y2) < thres && (white_found || far_x2 == img_raw.width - cross_width)) {
             far_y2 = y2;
@@ -659,13 +751,13 @@ void cross_farline_half()
         }
     }
 
-    //´ÓÕÒµ½½ÇµãÎ»ÖÃ¿ªÊ¼Ñ°ÕÒ
+    //ä»æ‰¾åˆ°è§’ç‚¹ä½ç½®å¼€å§‹å¯»æ‰¾
     if (AT_IMAGE(&img_raw, far_x2, far_y2 + 1) >= thres)
         findline_righthand_adaptive(&img_raw, block_size, clip_value, far_x2, far_y2 + 1, far_ipts1, &far_ipts1_num);
 
     else far_ipts1_num = 0;
 
-    // È¥»û±ä+Í¸ÊÓ±ä»»
+    // å»ç•¸å˜+é€è§†å˜æ¢
     for(int i=0;i<far_ipts0_num;i++)
     {
         far_rpts0[i][0] = (rot[1][0]*far_ipts0[i][1]+rot[1][1]*far_ipts0[i][0]+rot[1][2])/(rot[2][0]*far_ipts0[i][1]+rot[2][1]*far_ipts0[i][0]+1.0)+delta_x;
@@ -681,32 +773,32 @@ void cross_farline_half()
     far_rpts0_num = far_ipts0_num;
     far_rpts1_num = far_ipts1_num;
 
-    // ±ßÏßÂË²¨
+    // è¾¹çº¿æ»¤æ³¢
     blur_points(far_rpts0, far_rpts0_num, far_rpts0b, (int) round(line_blur_kernel));
     far_rpts0b_num = far_rpts0_num;
     blur_points(far_rpts1, far_rpts1_num, far_rpts1b, (int) round(line_blur_kernel));
     far_rpts1b_num = far_rpts1_num;
 
-    // ±ßÏßµÈ¾à²ÉÑù
+    // è¾¹çº¿ç­‰è·é‡‡æ ·
     far_rpts0s_num = sizeof(far_rpts0s) / sizeof(far_rpts0s[0]);
     resample_points(far_rpts0b, far_rpts0b_num, far_rpts0s, &far_rpts0s_num, sample_dist * pixel_per_meter);
     far_rpts1s_num = sizeof(far_rpts1s) / sizeof(far_rpts1s[0]);
     resample_points(far_rpts1b, far_rpts1b_num, far_rpts1s, &far_rpts1s_num, sample_dist * pixel_per_meter);
 
 
-    // ±ßÏß¾Ö²¿½Ç¶È±ä»¯ÂÊ
+    // è¾¹çº¿å±€éƒ¨è§’åº¦å˜åŒ–ç‡
     local_angle_points(far_rpts0s, far_rpts0s_num, far_rpts0a, (int) round(angle_dist / sample_dist));
     far_rpts0a_num = far_rpts0s_num;
     local_angle_points(far_rpts1s, far_rpts1s_num, far_rpts1a, (int) round(angle_dist / sample_dist));
     far_rpts1a_num = far_rpts1s_num;
 
-    // ½Ç¶È±ä»¯ÂÊ·Ç¼«´óÒÖÖÆ
+    // è§’åº¦å˜åŒ–ç‡éæå¤§æŠ‘åˆ¶
     nms_angle(far_rpts0a, far_rpts0a_num, far_rpts0an, (int) round(angle_dist / sample_dist) * 2 + 1);
     far_rpts0an_num = far_rpts0a_num;
     nms_angle(far_rpts1a, far_rpts1a_num, far_rpts1an, (int) round(angle_dist / sample_dist) * 2 + 1);
     far_rpts1an_num = far_rpts1a_num;
 
-    // ÕÒÔ¶ÏßÉÏµÄL½Çµã
+    // æ‰¾è¿œçº¿ä¸Šçš„Lè§’ç‚¹
     far_Lpt0_found = far_Lpt1_found = false;
     for (int i = 0; i < MIN(far_rpts0s_num, 40); i++) {
         if (far_rpts0an[i] == 0) continue;
@@ -736,4 +828,3 @@ void cross_farline_half()
     lcd_showint8(105,6,far_Lpt1_found);
 #endif
 }
-
