@@ -4,6 +4,7 @@
 #include "tracking/atg_reference_mainline.hpp"
 
 #include <array>
+#include <cstddef>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -14,6 +15,7 @@
 
 extern "C" {
 #include "atg_reference_step.h"
+#include "shy_Image.h"
 #include "headfile.h"
 }
 
@@ -141,6 +143,120 @@ int angle_bucket(float rad)
 int flag(bool value)
 {
     return value ? 1 : 0;
+}
+
+int clamp_index_for_report(int index, int count)
+{
+    if(count <= 0)
+    {
+        return -1;
+    }
+    if(index < 0)
+    {
+        return 0;
+    }
+    if(index >= count)
+    {
+        return count - 1;
+    }
+    return index;
+}
+
+struct atg_point_diag_t
+{
+    int found;
+    int id;
+    float ipm_x;
+    float ipm_y;
+    float raw_x;
+    float raw_y;
+};
+
+atg_point_diag_t near_point_diag(bool found, int id, const float pts[][2], int count)
+{
+    atg_point_diag_t out = {};
+    out.found = flag(found);
+    out.id = found ? id : -1;
+    out.ipm_x = -1.0F;
+    out.ipm_y = -1.0F;
+    out.raw_x = -1.0F;
+    out.raw_y = -1.0F;
+
+    if(!found)
+    {
+        return out;
+    }
+    const int idx = clamp_index_for_report(id, count);
+    if(idx < 0)
+    {
+        return out;
+    }
+    out.ipm_x = pts[idx][0];
+    out.ipm_y = pts[idx][1];
+    out.raw_x = Cal_inv_rot_x(out.ipm_x, out.ipm_y);
+    out.raw_y = Cal_inv_rot_y(out.ipm_x, out.ipm_y);
+    return out;
+}
+
+atg_point_diag_t far_point_diag(bool found, int id, const float pts[][2], int count, const float inv_pt[2])
+{
+    atg_point_diag_t out = {};
+    out.found = flag(found);
+    out.id = found ? id : -1;
+    out.ipm_x = -1.0F;
+    out.ipm_y = -1.0F;
+    out.raw_x = -1.0F;
+    out.raw_y = -1.0F;
+
+    if(!found)
+    {
+        return out;
+    }
+    const int idx = clamp_index_for_report(id, count);
+    if(idx < 0)
+    {
+        return out;
+    }
+    out.ipm_x = pts[idx][0];
+    out.ipm_y = pts[idx][1];
+    out.raw_x = inv_pt[0];
+    out.raw_y = inv_pt[1];
+    return out;
+}
+
+const char *left_farline_seed_source()
+{
+    if(Lpt0_found && rpts0s_num >= 3 && !if_lost_left_line)
+    {
+        return "lpt";
+    }
+    if(circle_type == CIRCLE_LEFT_IN || circle_type == CIRCLE_RIGHT_OUT || circle_type == CIRCLE_RIGHT_END)
+    {
+        return "circle";
+    }
+    if(rpts0s_num < 2)
+    {
+        return "lost";
+    }
+    return "none";
+}
+
+const char *right_farline_seed_source()
+{
+    if(Lpt1_found && Lpt1_rpts1s_id > 2 && !if_lost_right_line)
+    {
+        return "lpt";
+    }
+    if((circle_type == CIRCLE_RIGHT_IN || circle_type == CIRCLE_LEFT_OUT || circle_type == CIRCLE_LEFT_END) &&
+       !garage_type)
+    {
+        return "circle";
+    }
+    if(rpts1s_num < 2)
+    {
+        return "lost";
+    }
+    return "none";
 }
 
 const char *circle_enum_name(int value)
@@ -313,20 +429,98 @@ void print_atg_elements()
 
 void print_atg_corners()
 {
+    const atg_point_diag_t l0 = near_point_diag(Lpt0_found, Lpt0_rpts0s_id, rpts0s, rpts0s_num);
+    const atg_point_diag_t l1 = near_point_diag(Lpt1_found, Lpt1_rpts1s_id, rpts1s, rpts1s_num);
+    const atg_point_diag_t y0 = near_point_diag(Ypt0_found, Ypt0_rpts0s_id, rpts0s, rpts0s_num);
+    const atg_point_diag_t y1 = near_point_diag(Ypt1_found, Ypt1_rpts1s_id, rpts1s, rpts1s_num);
+    const atg_point_diag_t fl0 = far_point_diag(far_Lpt0_found,
+                                                far_Lpt0_rpts0s_id,
+                                                far_rpts0s,
+                                                far_rpts0s_num,
+                                                inv_far_Lpt0_found);
+    const atg_point_diag_t fl1 = far_point_diag(far_Lpt1_found,
+                                                far_Lpt1_rpts1s_id,
+                                                far_rpts1s,
+                                                far_rpts1s_num,
+                                                inv_far_Lpt1_found);
+
     std::printf("ATGCorner: L=%d@%d/%d@%d Y=%d@%d/%d@%d farL=%d@%d/%d@%d "
+                "Lxy=%.1f,%.1f:%.1f,%.1f/%.1f,%.1f:%.1f,%.1f "
+                "Yxy=%.1f,%.1f:%.1f,%.1f/%.1f,%.1f:%.1f,%.1f "
+                "farLxy=%.1f,%.1f:%.1f,%.1f/%.1f,%.1f:%.1f,%.1f "
+                "best=%d:%.1f,%.1f:%.1f,%.1f:%.1f:%d%d%d%d%d/%d:%.1f,%.1f:%.1f,%.1f:%.1f:%d%d%d%d%d "
+                "seed_src=%s/%s seed=%.1f,%.1f/%.1f,%.1f far_start=%d,%d far_raw=%d/%d far_num=%d/%d "
                 "straight=%d/%d far_straight=%d/%d conf_deg=%.1f/%.1f/%.1f/%.1f\n",
-                flag(Lpt0_found),
-                Lpt0_found ? Lpt0_rpts0s_id : -1,
-                flag(Lpt1_found),
-                Lpt1_found ? Lpt1_rpts1s_id : -1,
-                flag(Ypt0_found),
-                Ypt0_found ? Ypt0_rpts0s_id : -1,
-                flag(Ypt1_found),
-                Ypt1_found ? Ypt1_rpts1s_id : -1,
-                flag(far_Lpt0_found),
-                far_Lpt0_found ? far_Lpt0_rpts0s_id : -1,
-                flag(far_Lpt1_found),
-                far_Lpt1_found ? far_Lpt1_rpts1s_id : -1,
+                l0.found,
+                l0.id,
+                l1.found,
+                l1.id,
+                y0.found,
+                y0.id,
+                y1.found,
+                y1.id,
+                fl0.found,
+                fl0.id,
+                fl1.found,
+                fl1.id,
+                l0.ipm_x,
+                l0.ipm_y,
+                l0.raw_x,
+                l0.raw_y,
+                l1.ipm_x,
+                l1.ipm_y,
+                l1.raw_x,
+                l1.raw_y,
+                y0.ipm_x,
+                y0.ipm_y,
+                y0.raw_x,
+                y0.raw_y,
+                y1.ipm_x,
+                y1.ipm_y,
+                y1.raw_x,
+                y1.raw_y,
+                fl0.ipm_x,
+                fl0.ipm_y,
+                fl0.raw_x,
+                fl0.raw_y,
+                fl1.ipm_x,
+                fl1.ipm_y,
+                fl1.raw_x,
+                fl1.raw_y,
+                atg_lpt0_best_i,
+                atg_lpt0_best_x,
+                atg_lpt0_best_y,
+                atg_lpt0_best_inv_x,
+                atg_lpt0_best_inv_y,
+                atg_lpt0_best_conf * k_rad_to_deg,
+                atg_lpt0_pass_nms,
+                atg_lpt0_pass_low,
+                atg_lpt0_pass_high,
+                atg_lpt0_pass_near,
+                atg_lpt0_pass_dir,
+                atg_lpt1_best_i,
+                atg_lpt1_best_x,
+                atg_lpt1_best_y,
+                atg_lpt1_best_inv_x,
+                atg_lpt1_best_inv_y,
+                atg_lpt1_best_conf * k_rad_to_deg,
+                atg_lpt1_pass_nms,
+                atg_lpt1_pass_low,
+                atg_lpt1_pass_high,
+                atg_lpt1_pass_near,
+                atg_lpt1_pass_dir,
+                left_farline_seed_source(),
+                right_farline_seed_source(),
+                inv_Lpt0_found[0],
+                inv_Lpt0_found[1],
+                inv_Lpt1_found[0],
+                inv_Lpt1_found[1],
+                far_x11,
+                far_y1,
+                far_ipts0_num,
+                far_ipts1_num,
+                far_rpts0s_num,
+                far_rpts1s_num,
                 flag(is_straight0),
                 flag(is_straight1),
                 flag(is_straight_far_0),
@@ -923,6 +1117,10 @@ void print_live(uint32_t frame_id, const runtime_t *rt, int div)
                 rt->control.right_actual_rps_milli,
                 rt->control.left_duty,
                 rt->control.right_duty);
+    if(force_log || element_log)
+    {
+        print_atg_corners();
+    }
     print_cross_diag();
     print_line_error_diag();
     print_atg_vision_diag();
