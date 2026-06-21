@@ -1,6 +1,9 @@
 #include "circle.h"
 #include "motor.h"
 #include "headfile.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #define ENCODER_PER_METER   (5800)
 int is_large_circle,is_small_circle,circle_count;  //记录赛道有几个圆环及其大小，配合离线调参可以提前预判大小圆环从而进行加减速操作
 int circle_in_length=60,circle_in_distance=2000;   //入环时内侧边线长度，入环时编码器记录长度
@@ -25,6 +28,7 @@ int have_left_line = 0, have_right_line = 0;                //重找到线的线
 enum
 {
     CIRCLE_ENTRY_CONFIRM_FRAMES = 2,
+    CIRCLE_BEGIN_LOST_CONFIRM_FRAMES = 2,
     CIRCLE_IN_DISTANCE_CONFIRM = 2000,
     // RUNNING 是环内最长段。该值只是陀螺失效时的距离兜底，16000 / 5800 about 2.76m，需上车标定。
     CIRCLE_RUNNING_FORCE_OUT_COUNTS = 16000,
@@ -41,10 +45,59 @@ static int circle_left_entry_votes;
 static int circle_right_entry_votes;
 static float circle_heading_rad;
 
+static int circle_cal_log_enabled(void)
+{
+    const char *val = getenv("FRONT_CAR_CIRCLE_CAL_LOG");
+    static int warned_invalid;
+    if(val == NULL || val[0] == '\0' || strcmp(val, "0") == 0 || strcmp(val, "false") == 0)
+    {
+        return 0;
+    }
+    if(strcmp(val, "1") == 0 || strcmp(val, "true") == 0)
+    {
+        return 1;
+    }
+    if(!warned_invalid)
+    {
+        printf("EnvWarn: invalid flag for FRONT_CAR_CIRCLE_CAL_LOG='%s'\n", val);
+        warned_invalid = 1;
+    }
+    return 0;
+}
+
+static int circle_heading_deg10(void)
+{
+    return (int)(fabsf(circle_heading_rad) * CIRCLE_RAD_TO_DEG10);
+}
+
+static void print_circle_transition(enum circle_type_e from,
+                                    enum circle_type_e to,
+                                    const char *reason)
+{
+    if(!circle_cal_log_enabled())
+    {
+        return;
+    }
+    printf("ATGCircleCal: from=%s to=%s reason=%s heading_deg10=%d dist=%d\n",
+           circle_type_name[from],
+           circle_type_name[to],
+           reason,
+           circle_heading_deg10(),
+           total_distence);
+}
+
 void reset_circle_entry_votes()
 {
     circle_left_entry_votes = 0;
     circle_right_entry_votes = 0;
+}
+
+void reset_circle_begin_flags()
+{
+    none_left_line = 0;
+    none_right_line = 0;
+    have_left_line = 0;
+    have_right_line = 0;
 }
 
 static void reset_circle_heading(void)
@@ -90,17 +143,17 @@ void check_circle() {
     circle_right_entry_votes = right_entry ? circle_right_entry_votes + 1 : 0;
 
     if (circle_left_entry_votes >= CIRCLE_ENTRY_CONFIRM_FRAMES) {
+        print_circle_transition(circle_type, CIRCLE_LEFT_BEGIN, "entry_vote");
         circle_type = CIRCLE_LEFT_BEGIN;
-        none_left_line = 0;
-        have_left_line = 0;
+        reset_circle_begin_flags();
         Count_dis_Flag=0;
         reset_circle_entry_votes();
     }
 
     if (circle_right_entry_votes >= CIRCLE_ENTRY_CONFIRM_FRAMES) {
+        print_circle_transition(circle_type, CIRCLE_RIGHT_BEGIN, "entry_vote");
         circle_type = CIRCLE_RIGHT_BEGIN;
-        none_right_line = 0;
-        have_right_line = 0;
+        reset_circle_begin_flags();
         Count_dis_Flag=0;
         reset_circle_entry_votes();
     }
@@ -129,16 +182,23 @@ void run_circle() {
          * 偏置进环时内侧线可能追不到"重现 -> 再变短"，会卡在 BEGIN。
          * 现在只要求已发生丢线事件，再由距离或陀螺确认进入固定动作 IN。
          */
-        if (none_left_line > 0 &&
-            (total_distence > circle_in_distance ||
-             circle_heading_abs_ge(CIRCLE_HEADING_ENTER_DEG10))) {
+        if (none_left_line >= CIRCLE_BEGIN_LOST_CONFIRM_FRAMES &&
+            total_distence > circle_in_distance) {
+            print_circle_transition(circle_type, CIRCLE_LEFT_IN, "entry_distance");
             circle_type = CIRCLE_LEFT_IN;
             reset_circle_heading();
             if_lost_right_line = 0;
-            none_left_line = 0;
-            none_right_line = 0;
-            have_left_line = 0;
-            have_right_line = 0;
+            reset_circle_begin_flags();
+            if_clean_pid = 1;
+            Count_dis_Flag = 0;
+        }
+        else if (none_left_line >= CIRCLE_BEGIN_LOST_CONFIRM_FRAMES &&
+                 circle_heading_abs_ge(CIRCLE_HEADING_ENTER_DEG10)) {
+            print_circle_transition(circle_type, CIRCLE_LEFT_IN, "entry_gyro");
+            circle_type = CIRCLE_LEFT_IN;
+            reset_circle_heading();
+            if_lost_right_line = 0;
+            reset_circle_begin_flags();
             if_clean_pid = 1;
             Count_dis_Flag = 0;
         }
@@ -163,8 +223,14 @@ void run_circle() {
          *     (total_distence > CIRCLE_IN_DISTANCE_CONFIRM && rpts0s_num < circle_in_length && rpts1s_num > 25) ||
          *     (rpts0s_num < circle_in_length && rpts1s_num > 25 && circle_heading_abs_ge(CIRCLE_HEADING_ENTER_DEG10)))
          */
-        if (circle_heading_abs_ge(CIRCLE_HEADING_ENTER_DEG10) ||
-            total_distence > CIRCLE_IN_DISTANCE_CONFIRM) {
+        if (circle_heading_abs_ge(CIRCLE_HEADING_ENTER_DEG10)) {
+            print_circle_transition(circle_type, CIRCLE_LEFT_RUNNING, "gyro");
+            circle_type = CIRCLE_LEFT_RUNNING;
+            Count_dis_Flag = 0;
+            none_right_line = 0;
+        }
+        else if (total_distence > CIRCLE_IN_DISTANCE_CONFIRM) {
+            print_circle_transition(circle_type, CIRCLE_LEFT_RUNNING, "distance");
             circle_type = CIRCLE_LEFT_RUNNING;
             Count_dis_Flag = 0;
             none_right_line = 0;
@@ -184,8 +250,15 @@ void run_circle() {
          *
          * RUNNING -> OUT 现在只用累计陀螺正常触发；距离只作陀螺失效兜底。
          */
-        if (circle_heading_abs_ge(CIRCLE_HEADING_START_OUT_DEG10) ||
-            total_distence > CIRCLE_RUNNING_FORCE_OUT_COUNTS) {
+        if (circle_heading_abs_ge(CIRCLE_HEADING_START_OUT_DEG10)) {
+            print_circle_transition(circle_type, CIRCLE_LEFT_OUT, "gyro");
+            circle_type = CIRCLE_LEFT_OUT;
+            Count_dis_Flag = 0;
+            if_lost_right_line = 0;
+            if_clean_pid = 1;
+        }
+        else if (total_distence > CIRCLE_RUNNING_FORCE_OUT_COUNTS) {
+            print_circle_transition(circle_type, CIRCLE_LEFT_OUT, "distance");
             circle_type = CIRCLE_LEFT_OUT;
             Count_dis_Flag = 0;
             if_lost_right_line = 0;
@@ -202,8 +275,14 @@ void run_circle() {
          * if (rpts1s_num < 5) none_right_line++;
          * if (rpts1s_num > 30 && !Lpt1_found && none_right_line > 1) ...
          */
-        if (total_distence > 4500 ||
-            circle_heading_abs_ge(CIRCLE_HEADING_FORCE_OUT_DEG10)) {
+        if (circle_heading_abs_ge(CIRCLE_HEADING_FORCE_OUT_DEG10)) {
+            print_circle_transition(circle_type, CIRCLE_LEFT_END, "gyro");
+            circle_type = CIRCLE_LEFT_END;
+            none_right_line = 0;
+            Count_dis_Flag = 0;
+        }
+        else if (total_distence > 4500) {
+            print_circle_transition(circle_type, CIRCLE_LEFT_END, "distance");
             circle_type = CIRCLE_LEFT_END;
             none_right_line = 0;
             Count_dis_Flag = 0;
@@ -214,8 +293,24 @@ void run_circle() {
         broadcast_flag = 1;
         Count_dis_Flag = 1;
 
-        if (total_distence >= 7500 ||
-            circle_heading_abs_ge(CIRCLE_HEADING_FINISH_DEG10)) {
+        if (circle_heading_abs_ge(CIRCLE_HEADING_FINISH_DEG10)) {
+            print_circle_transition(circle_type, CIRCLE_NONE, "gyro");
+            circle_type = CIRCLE_NONE;
+            road_type = ROAD_NORMAL;
+            begin_y = BEGIN_Y;
+            Count_dis_Flag = 0;
+            aim_distance = AIM_DISTENCE;
+            is_large_circle = is_small_circle = 0;
+            if_lost_right_line = 0;
+            if_lost_left_line = 0;
+            circle_count++;
+            none_right_line = 0;
+            have_right_line = 0;
+            none_left_line = 0;
+            have_left_line = 0;
+        }
+        else if (total_distence >= 7500) {
+            print_circle_transition(circle_type, CIRCLE_NONE, "distance");
             circle_type = CIRCLE_NONE;
             road_type = ROAD_NORMAL;
             begin_y = BEGIN_Y;
@@ -249,16 +344,24 @@ void run_circle() {
          * if ((rpts1s_num < circle_in_length && total_distence > circle_in_distance && have_right_line) ||
          *     (rpts1s_num < circle_in_length && have_right_line && circle_heading_abs_ge(CIRCLE_HEADING_ENTER_DEG10)))
          */
-        if (none_right_line > 0 &&
-            (total_distence > circle_in_distance ||
-             circle_heading_abs_ge(CIRCLE_HEADING_ENTER_DEG10))) {
+        if (none_right_line >= CIRCLE_BEGIN_LOST_CONFIRM_FRAMES &&
+            total_distence > circle_in_distance) {
+            print_circle_transition(circle_type, CIRCLE_RIGHT_IN, "entry_distance");
             circle_type = CIRCLE_RIGHT_IN;
             reset_circle_heading();
             if_lost_left_line = 0;
-            none_right_line = 0;
-            none_left_line = 0;
-            have_right_line = 0;
-            have_left_line = 0;
+            reset_circle_begin_flags();
+            circle_encoder = current_encoder;
+            Count_dis_Flag = 0;
+            if_clean_pid = 1;
+        }
+        else if (none_right_line >= CIRCLE_BEGIN_LOST_CONFIRM_FRAMES &&
+                 circle_heading_abs_ge(CIRCLE_HEADING_ENTER_DEG10)) {
+            print_circle_transition(circle_type, CIRCLE_RIGHT_IN, "entry_gyro");
+            circle_type = CIRCLE_RIGHT_IN;
+            reset_circle_heading();
+            if_lost_left_line = 0;
+            reset_circle_begin_flags();
             circle_encoder = current_encoder;
             Count_dis_Flag = 0;
             if_clean_pid = 1;
@@ -284,8 +387,15 @@ void run_circle() {
          *     (total_distence > CIRCLE_IN_DISTANCE_CONFIRM && rpts1s_num < circle_in_length && rpts0s_num > 25) ||
          *     (rpts1s_num < circle_in_length && rpts0s_num > 25 && circle_heading_abs_ge(CIRCLE_HEADING_ENTER_DEG10)))
          */
-        if (circle_heading_abs_ge(CIRCLE_HEADING_ENTER_DEG10) ||
-            total_distence > CIRCLE_IN_DISTANCE_CONFIRM) {
+        if (circle_heading_abs_ge(CIRCLE_HEADING_ENTER_DEG10)) {
+            print_circle_transition(circle_type, CIRCLE_RIGHT_RUNNING, "gyro");
+            circle_type = CIRCLE_RIGHT_RUNNING;
+            Count_dis_Flag = 0;
+            begin_y = BEGIN_Y;
+            none_left_line = 0;
+        }
+        else if (total_distence > CIRCLE_IN_DISTANCE_CONFIRM) {
+            print_circle_transition(circle_type, CIRCLE_RIGHT_RUNNING, "distance");
             circle_type = CIRCLE_RIGHT_RUNNING;
             Count_dis_Flag = 0;
             begin_y = BEGIN_Y;
@@ -304,8 +414,15 @@ void run_circle() {
          * }
          * if (Lpt0_found && Lpt0_rpts0s_id < 0.7 / sample_dist) ...
          */
-        if (circle_heading_abs_ge(CIRCLE_HEADING_START_OUT_DEG10) ||
-            total_distence > CIRCLE_RUNNING_FORCE_OUT_COUNTS) {
+        if (circle_heading_abs_ge(CIRCLE_HEADING_START_OUT_DEG10)) {
+            print_circle_transition(circle_type, CIRCLE_RIGHT_OUT, "gyro");
+            circle_type = CIRCLE_RIGHT_OUT;
+            Count_dis_Flag = 0;
+            if_lost_left_line = 0;
+            if_clean_pid = 1;
+        }
+        else if (total_distence > CIRCLE_RUNNING_FORCE_OUT_COUNTS) {
+            print_circle_transition(circle_type, CIRCLE_RIGHT_OUT, "distance");
             circle_type = CIRCLE_RIGHT_OUT;
             Count_dis_Flag = 0;
             if_lost_left_line = 0;
@@ -323,8 +440,14 @@ void run_circle() {
          * if (rpts0s_num < 5) none_left_line++;
          * if (rpts0s_num > 30 && !Lpt0_found && none_left_line >= 1) ...
          */
-        if (total_distence > 4500 ||
-            circle_heading_abs_ge(CIRCLE_HEADING_FORCE_OUT_DEG10)) {
+        if (circle_heading_abs_ge(CIRCLE_HEADING_FORCE_OUT_DEG10)) {
+            print_circle_transition(circle_type, CIRCLE_RIGHT_END, "gyro");
+            circle_type = CIRCLE_RIGHT_END;
+            none_left_line = 0;
+            Count_dis_Flag = 0;
+        }
+        else if (total_distence > 4500) {
+            print_circle_transition(circle_type, CIRCLE_RIGHT_END, "distance");
             circle_type = CIRCLE_RIGHT_END;
             none_left_line = 0;
             Count_dis_Flag = 0;
@@ -338,8 +461,24 @@ void run_circle() {
          * legacy unused line-loss count:
          * if (rpts1s_num < 0.2 / sample_dist) { none_right_line++; Count_dis_Flag = 1; }
          */
-        if (total_distence >= 4000 ||
-            circle_heading_abs_ge(CIRCLE_HEADING_FINISH_DEG10)) {
+        if (circle_heading_abs_ge(CIRCLE_HEADING_FINISH_DEG10)) {
+            print_circle_transition(circle_type, CIRCLE_NONE, "gyro");
+            circle_type = CIRCLE_NONE;
+            road_type = ROAD_NORMAL;
+            begin_y = BEGIN_Y;
+            Count_dis_Flag = 0;
+            aim_distance = AIM_DISTENCE;
+            is_large_circle = is_small_circle = 0;
+            if_lost_right_line = 0;
+            if_lost_left_line = 0;
+            circle_count++;
+            none_right_line = 0;
+            have_right_line = 0;
+            none_left_line = 0;
+            have_left_line = 0;
+        }
+        else if (total_distence >= 4000) {
+            print_circle_transition(circle_type, CIRCLE_NONE, "distance");
             circle_type = CIRCLE_NONE;
             road_type = ROAD_NORMAL;
             begin_y = BEGIN_Y;

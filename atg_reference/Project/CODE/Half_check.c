@@ -56,6 +56,8 @@ void check_Half_left()
             //Ê×ÏÈ£¬³µ¿â¼ì²éµÄÓÅÏÈ¼¶×î¸ßµ«²¢Ã»ÓĞËÑµ½³µ¿âµÄ±êÖ¾Î»£¬Ôò½øĞĞµ½°ë±ß¼ì²âµÄº¯ÊıÖĞ£¬Æä´ÎÈç¹ûÔÚ°ë±ß¼ì²âÖĞ²»ÊÇÊ®×Ö£¬ÄÇÓĞ¹ÕµãµÄÔªËØÖ»ÄÜÊÇÔ²»·£¨18½ìµÄ¶ÏÂ·ºÍÕÏ°­ÎïĞèÒªÁíÍâµÄ¼ì²â£¡£©
             //ÔÚÎÒ17½ìµ÷³µµÄ¹ı³ÌÖĞ£¬ÓÃÕâÖÖ·½Ê½»ù±¾ÉÏÔªËØÅĞ¶ÏÊÇ²»»á³ö´íµÄ
             circle_type = CIRCLE_LEFT_BEGIN;
+            reset_circle_begin_flags();
+            reset_circle_entry_votes();
             Count_dis_Flag=0;
         }
 
@@ -94,6 +96,8 @@ void check_Half_right()//×óÓÒÍ¬Àí
      if(Lpt1_rpts1s_id<5&&!far_Lpt1_found&&is_straight0&&cross_type == CROSS_NONE&&round_type ==ROUND_NONE) {
          // is_straight0 åŒä¸Šï¼šå¯¹ä¾§é•¿ç›´é“è¯æ®ï¼Œä¸ check_circle() å³ç¯æ­£é—¨ä¸€è‡´ã€‚
          circle_type = CIRCLE_RIGHT_BEGIN;
+         reset_circle_begin_flags();
+         reset_circle_entry_votes();
          Count_dis_Flag=0;
      }
 }

@@ -342,6 +342,33 @@ yaw_valid=<0|1> yaw_mrad_s=<n> period_ms=<n>
 | `END -> NONE` by gyro | `gyro` |
 | `END -> NONE` by distance | `distance` |
 
+## Review Follow-up Scope
+
+Web review conclusion: `revise`.
+
+Accepted mandatory changes:
+
+* Fix `ATG_CIRCLE_BEGIN_MAX_DIST_COUNTS`: `24000` was mislabeled as about `0.8m`; with `ENCODER_PER_METER=5800`, it is about `4.14m`. Use `6000` counts, about `1.03m`, for faster false-BEGIN revocation.
+* Clean circle begin flags when `Half_check.c` directly sets `CIRCLE_LEFT_BEGIN` / `CIRCLE_RIGHT_BEGIN`, matching the hygiene already used by `check_circle()`.
+* Require two consecutive lost-line frames before `BEGIN -> IN`: `none_left_line >= 2` / `none_right_line >= 2`.
+* Implement minimal `FRONT_CAR_CIRCLE_CAL_LOG=1` transition logging in `circle.c`, default off and behavior-neutral.
+
+Rejected scope expansion:
+
+* No rewrite of `check_circle()` / `Half_check()` entrance detection.
+* No control-layer circle special case.
+* No YAML/CLI parameterization for these calibration values.
+* No replay/offline gyro injection framework.
+
+Rationale table:
+
+| 参考版怎么样 | 当前代码差异 | 我修改什么 | 原因 | 不是兜底的证据 |
+| --- | --- | --- | --- | --- |
+| RT1064-style ring flow expects direct element state entry to start from clean per-element counters. | `Half_check.c` directly set `CIRCLE_*_BEGIN` but did not clear `none_*` / `have_*` / entry votes. | Add `reset_circle_begin_flags()` and `reset_circle_entry_votes()` after Half_check sets BEGIN. | Prevent stale state from satisfying the new `BEGIN -> IN` lost-event gate. | It clears state instead of inventing geometry or forcing entry. |
+| No direct RT1064 equivalent for this LS2K false-BEGIN revocation; this is a port safety guard for differential car stop/selection behavior. | `ATG_CIRCLE_BEGIN_MAX_DIST_COUNTS=24000` was documented as about `0.8m`, but is about `4.14m` at `5800 counts/m`. | Set the guard to `6000` counts and fix the comment/log text to about `1.0m`. | A false BEGIN that never sees lost-line evidence should revoke before running several meters. | It rejects BEGIN when required evidence never appears; it does not fabricate a line or continue stale output. |
+| Reference-style ring entry uses persistent element evidence, not one-frame noise. | New fixed-action gate accepted `none_*_line > 0`, so one lost-line frame armed IN. | Require `CIRCLE_BEGIN_LOST_CONFIRM_FRAMES=2`. | True ring inner-line loss should persist; one-frame noise should not arm fixed action. | It tightens evidence before entry; no hidden fallback is added. |
+| Reference does not prescribe host-side calibration logs. | Gyro/distance thresholds are unvalidated on this car and not visible at transition points. | Add `ATGCircleCal` transition logs behind `FRONT_CAR_CIRCLE_CAL_LOG=1`. | Needed to decide whether gyro or distance triggered each phase before tuning thresholds. | Default off; reports current state, heading, and distance without changing transition conditions. |
+
 ## Acceptance Criteria
 
 * [ ] PRD 记录当前积分公式、距离换算公式、阈值单位。

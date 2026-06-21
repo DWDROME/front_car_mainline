@@ -31,13 +31,13 @@ static int g_circle_stall_frames;
 // CIRCLE_*_BEGIN 误入撤销：真环 BEGIN 后短距离内必然出现入环口"丢线"事件
 // (none_left/right_line>0) 才能推进到 IN；直道伪 L 误入时该事件永不发生，
 // 状态会滞留并把 track_type 锁在对侧边线上(本次实测表现为稳定贴左直行)。
-// 进入 BEGIN 后累计行驶超过 ATG_CIRCLE_BEGIN_MAX_DIST_COUNTS(约0.8m)仍无丢线
+// 进入 BEGIN 后累计行驶超过 ATG_CIRCLE_BEGIN_MAX_DIST_COUNTS(约1.0m)仍无丢线
 // 事件即判定证据消失，撤回 NONE 并显式打日志。用距离不用帧数，与车速解耦。
 // 本 port 的 total_distence 是 int16，元素内门限沿用 ATG counts 量级；
-// 0.8m 对应约 24000，低于 int16 饱和值，能在误入 BEGIN 时实际触发撤销。
+// ENCODER_PER_METER=5800，6000 counts 约 1.03m，能在误入 BEGIN 时及时撤销。
 enum
 {
-    ATG_CIRCLE_BEGIN_MAX_DIST_COUNTS = 24000,
+    ATG_CIRCLE_BEGIN_MAX_DIST_COUNTS = 6000,
 };
 static int64_t g_circle_begin_dist;
 
@@ -693,12 +693,12 @@ static void revoke_idle_circle_begin(void)
     if(circle_type == CIRCLE_LEFT_BEGIN && none_left_line == 0 &&
        g_circle_begin_dist > ATG_CIRCLE_BEGIN_MAX_DIST_COUNTS)
     {
-        reset_circle_to_none("LEFT_BEGIN idle beyond 0.8m without lost-line evidence,");
+        reset_circle_to_none("LEFT_BEGIN idle beyond 1.0m without lost-line evidence,");
     }
     else if(circle_type == CIRCLE_RIGHT_BEGIN && none_right_line == 0 &&
             g_circle_begin_dist > ATG_CIRCLE_BEGIN_MAX_DIST_COUNTS)
     {
-        reset_circle_to_none("RIGHT_BEGIN idle beyond 0.8m without lost-line evidence,");
+        reset_circle_to_none("RIGHT_BEGIN idle beyond 1.0m without lost-line evidence,");
     }
 }
 

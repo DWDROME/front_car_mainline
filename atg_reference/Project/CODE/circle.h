@@ -32,6 +32,8 @@ void check_circle();
 
 void reset_circle_entry_votes();
 
+void reset_circle_begin_flags();
+
 void update_circle_heading(float yaw_rate_rad_s, int period_ms, int valid);
 
 void run_circle();
