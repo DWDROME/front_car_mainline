@@ -113,6 +113,7 @@ static void reset_element_state(void)
     cross_type = CROSS_NONE;
     circle_type = CIRCLE_NONE;
     reset_circle_entry_votes();
+    clear_circle_entry_suppression();
     round_type = ROUND_NONE;
     ramp_type = RAMP_NONE;
     yroad_type = YROAD_NONE;

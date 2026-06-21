@@ -139,6 +139,11 @@ void suppress_circle_reentry_after_exit(void)
     suppress_circle_entry_frames(CIRCLE_REENTRY_SUPPRESS_FRAMES);
 }
 
+void clear_circle_entry_suppression(void)
+{
+    circle_entry_suppress_frames = 0;
+}
+
 static int circle_entry_suppressed(void)
 {
     if(circle_entry_suppress_frames <= 0)
