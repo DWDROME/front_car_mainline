@@ -16,6 +16,7 @@ extern "C" {
 namespace
 {
 constexpr double kCircleInGuideScale = 0.75;
+constexpr double kCircleRightOutGuideScale = 0.75;
 constexpr double kCircleRunningGuideScale = 0.81;
 
 point_t atg_control_ref(const runtime_t *rt)
@@ -212,6 +213,10 @@ int tracking_process_frame(runtime_t *rt)
     if(circle_type == CIRCLE_LEFT_IN || circle_type == CIRCLE_RIGHT_IN)
     {
         rt->vision.guide_error *= kCircleInGuideScale;
+    }
+    else if(circle_type == CIRCLE_RIGHT_OUT)
+    {
+        rt->vision.guide_error *= kCircleRightOutGuideScale;
     }
     else if(circle_type == CIRCLE_LEFT_RUNNING || circle_type == CIRCLE_RIGHT_RUNNING)
     {
