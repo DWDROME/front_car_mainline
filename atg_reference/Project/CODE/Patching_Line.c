@@ -145,7 +145,7 @@ void point_Cal_Line_2(float x1,float y1,float x2,float y2,float outline[][2],int
         zhi=MT9V03X_H;
         else if(zhi<0)
         zhi=0;
-        i=max_x-j;
+        i=(int)max_x - 1 - j;
         outline[i][0]=j;
         outline[i][1]=zhi;
     }

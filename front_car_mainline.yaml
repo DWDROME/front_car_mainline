@@ -1,88 +1,38 @@
-# front_car_mainline 控制参数。
-# 来源：front_car_control_calib 标定基线 (front_car_control_calib.yaml)。
-# 运行时默认从 /root/front_car_mainline.yaml 读取；可通过环境变量 FRONT_CAR_CONFIG 覆盖路径。
-# 文件不存在或字段缺失时退回到 code/core/config.hpp 中的默认值。
-
-# 以下是配置文件传输命令，需要修改成对应的绝对地址
-# scp "E:/longxin/LS2K0300_Library/LS2K300_Library/Seekfree_LS2K0300_Opensource_Library/test_project/front_car_mainline/front_car_mainline.yaml" "ls2k0300:/root/front_car_mainline.yaml"
-
-# 确认配置文件是否传输成功
-# ssh "ls2k0300" "ls -l /root/front_car_mainline.yaml && sed -n '1,12p' /root/front_car_mainline.yaml"
-
-
-
-# 闭环周期，必须 >0；实车入口通常限制到 1~100ms
 control_period_ms: 10
 
-# 速度目标 (rps)
-# target_rps: 普通巡线基础速度
-# element_target_rps: 十字/环岛内基础速度
-# speed_target_rps: 左右轮 FF 前馈缩放参考
 target_rps: 5.0
 element_target_rps: 3.8
 speed_target_rps: 4.0
-# curve_speed_slowdown: 弯道按转向连续降速，满转向时 center_rps×(1-该值)；0=关闭，上车从 0 往上调
-curve_speed_slowdown: 0.0
+curve_speed_slowdown: 0.60
 
-# 左右轮 FF + PI
-# base_percent 是基础占空前馈；kp 管当前轮速误差；ki 管长期轮速偏差
 left_speed_base_percent: 9.0
-# right_speed_base_percent: 9.7  # before 2026-06-13 straight-speed base sweep
 right_speed_base_percent: 11.0
 left_speed_kp: 1.25
 right_speed_kp: 1.25
 left_speed_ki: 0.35
 right_speed_ki: 0.35
 
-# 车辆几何
-# wheel_track_m / encoder_gear_diameter_m 影响 yaw_cmd 到左右轮目标转速的差速换算
 wheel_track_m: 0.155
 encoder_gear_diameter_m: 0.018
-
-# IMU (yaw 主轴为 Y, 与 calib 标定一致)
-# 未验证 IMU 方向和比例前，imu_yaw_feedback_enabled 可先设为 0
 gyro_raw_to_rad_s: 0.001277562
-# 2026-06-13 环岛日志里 yaw/actual 多数同号，先弱启用 yaw-rate 内环；若实车发散再反查 gyro 符号。
 imu_yaw_feedback_enabled: 1
 
-# 视觉外环 PD: guide_error_deg -> target_yaw_rate
-# outer_kd 默认可以为 0；图像误差抖动时不要轻易打开
-# outer_kp: 0.03  # before 2026-06-13 element turn authority split
-outer_kp: 0.06
+outer_kp: 0.08
 outer_kd: 0.0
-# 2026-06-13 实车确认：outer_sign=-1.0 才是对的（+1.0 实跑反向）。
-# 推论：control.cpp 注释"yaw_cmd>0=右轮快=左转"与实际执行器方向相反，待实测核对后修注释。
 outer_sign: -1.0
-# straight_error_threshold: 12.0  # 2026-06-13 前值：死区过宽，贴边小偏差被衰减导致不回中
-straight_error_threshold: 6.0
-# straight_turn_scale: 0.85  # before 2026-06-13; outer_kp 翻倍后直道小误差保持同等转向量
+straight_error_threshold: 4.0
 straight_turn_scale: 0.425
-# max_target_yaw_rate: 2.0  # before 2026-06-13 circle RUNNING log; inner target stayed positive at element_rps=4.0
-max_target_yaw_rate: 3.2
-# 元素内差速打满时允许内侧轮小幅反拖；普通巡线不倒车
+max_target_yaw_rate: 4.5
 element_reverse_brake_percent: 12
 
-# yaw rate 内环 PI: target -> correction
-# yaw_kp/yaw_ki 只修正 yaw-rate；max_yaw_rate_correction 限制 IMU 内环补偿量
-yaw_kp: 1.0
+yaw_kp: 2.0
 yaw_ki: 0.0
-# max_yaw_rate_correction: 0.4  # before 2026-06-13 IMU weak-enable; 0.4 对未完全确认符号太激进
-max_yaw_rate_correction: 0.20
+max_yaw_rate_correction: 0.40
 
-# 视觉预瞄时间(s)：预瞄距离 = clamp(lookahead_time_s × 目标车速, 0.20m, 0.58m)
-# 速度由 target_rps × π × encoder_gear_diameter_m 换算；改 target_rps 时预瞄自动跟随
-# 当前低速会被 0.20m 下限兜住，提速后自动放远
-lookahead_time_s: 1.0
-# 车体参考点 raw x：重标定 IPM 后回到图像中心；若 CxScan 仍有固定残差，再重新评估相机/IPM
+lookahead_time_s: 1.25
 vehicle_raw_ref_x: 80.0
-# 视觉 guide 零点标定(deg)：几何参考点已用 vehicle_raw_ref_x 对齐，先保持 0，不用角度 bias 掩盖 IPM/车体投影问题
 guide_error_bias_deg: 0.0
 
-# 反馈滤波
-# rps_filter_alpha 应在 0~1；越大越跟手，越小越平滑
 rps_filter_alpha: 0.5
-# yaw_rate_filter_window 应为正数；越大越稳但反馈越慢
 yaw_rate_filter_window: 7
-
-# 输出限幅
 max_duty_percent: 35

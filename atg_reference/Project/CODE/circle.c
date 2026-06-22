@@ -37,6 +37,8 @@ enum
     CIRCLE_HEADING_ENTER_DEG10 = 600,
     CIRCLE_HEADING_START_OUT_DEG10 = 2000,
     CIRCLE_HEADING_FORCE_OUT_DEG10 = 2500,
+    // drive163: 355deg keeps ReadyoutRing fixed-line control after real right-line evidence disappears.
+    CIRCLE_HEADING_READY_OUT_TO_END_DEG10 = 2800,
     CIRCLE_HEADING_FINISH_DEG10 = 3550,
     CIRCLE_REENTRY_SUPPRESS_FRAMES = 150,
 };
@@ -89,34 +91,6 @@ static void print_circle_transition(enum circle_type_e from,
            total_distence,
            (long long)atg_reference_circle_begin_dist(),
            (long long)atg_reference_circle_begin_last_dist());
-}
-
-static void print_left_out_farline_evidence(void)
-{
-    if(!circle_cal_log_enabled())
-    {
-        return;
-    }
-    printf("ATGCircleOutEvidence: stage=after_cross_farline_R circle=%s "
-           "Lpt1=%d/%d rpts1s=%d rptsc1=%d lost_right=%d seed_raw=%.1f,%.1f "
-           "far_ipts1=%d far_rpts1s=%d far_Lpt1=%d/%d far_seed_raw=%.1f,%.1f "
-           "dist=%d heading_deg10=%d\n",
-           circle_type_name[circle_type],
-           Lpt1_found ? 1 : 0,
-           Lpt1_found ? Lpt1_rpts1s_id : -1,
-           rpts1s_num,
-           rptsc1_num,
-           if_lost_right_line,
-           inv_Lpt1_found[0],
-           inv_Lpt1_found[1],
-           far_ipts1_num,
-           far_rpts1s_num,
-           far_Lpt1_found ? 1 : 0,
-           far_Lpt1_found ? far_Lpt1_rpts1s_id : -1,
-           inv_far_Lpt1_found[0],
-           inv_far_Lpt1_found[1],
-           total_distence,
-           circle_heading_deg10());
 }
 
 void reset_circle_entry_votes()
@@ -335,8 +309,6 @@ void run_circle() {
         }
     }
     else if (circle_type == CIRCLE_LEFT_OUT) {
-        cross_farline_R();
-        print_left_out_farline_evidence();
         track_type = TRACK_LEFT;
         Count_dis_Flag = 1;
 
@@ -345,7 +317,13 @@ void run_circle() {
          * if (rpts1s_num < 5) none_right_line++;
          * if (rpts1s_num > 30 && !Lpt1_found && none_right_line > 1) ...
          */
-        if (circle_heading_abs_ge(CIRCLE_HEADING_FORCE_OUT_DEG10)) {
+        /*
+         * Reference ring has two exit phases:
+         * ReadyoutRing keeps the fixed outside line until OUTRING, then
+         * outRing follows the current outside boundary plus half width.
+         * This port maps LEFT_OUT to ReadyoutRing and LEFT_END to outRing.
+         */
+        if (circle_heading_abs_ge(CIRCLE_HEADING_READY_OUT_TO_END_DEG10)) {
             print_circle_transition(circle_type, CIRCLE_LEFT_END, "gyro");
             circle_type = CIRCLE_LEFT_END;
             none_right_line = 0;
@@ -363,24 +341,7 @@ void run_circle() {
         broadcast_flag = 1;
         Count_dis_Flag = 1;
 
-        if (circle_heading_abs_ge(CIRCLE_HEADING_FINISH_DEG10)) {
-            print_circle_transition(circle_type, CIRCLE_NONE, "gyro");
-            circle_type = CIRCLE_NONE;
-            road_type = ROAD_NORMAL;
-            begin_y = BEGIN_Y;
-            Count_dis_Flag = 0;
-            aim_distance = AIM_DISTENCE;
-            is_large_circle = is_small_circle = 0;
-            if_lost_right_line = 0;
-            if_lost_left_line = 0;
-            circle_count++;
-            none_right_line = 0;
-            have_right_line = 0;
-            none_left_line = 0;
-            have_left_line = 0;
-            suppress_circle_reentry_after_exit();
-        }
-        else if (total_distence >= 7500) {
+        if (total_distence >= 7500) {
             print_circle_transition(circle_type, CIRCLE_NONE, "distance");
             circle_type = CIRCLE_NONE;
             road_type = ROAD_NORMAL;
@@ -504,7 +465,6 @@ void run_circle() {
         }
     }
     else if (circle_type == CIRCLE_RIGHT_OUT) {
-        cross_farline_L();
         track_type = TRACK_RIGHT;
         broadcast_flag = 1;
         Count_dis_Flag = 1;
@@ -514,7 +474,10 @@ void run_circle() {
          * if (rpts0s_num < 5) none_left_line++;
          * if (rpts0s_num > 30 && !Lpt0_found && none_left_line >= 1) ...
          */
-        if (circle_heading_abs_ge(CIRCLE_HEADING_FORCE_OUT_DEG10)) {
+        /*
+         * Symmetric mapping: RIGHT_OUT is ReadyoutRing, RIGHT_END is outRing.
+         */
+        if (circle_heading_abs_ge(CIRCLE_HEADING_READY_OUT_TO_END_DEG10)) {
             print_circle_transition(circle_type, CIRCLE_RIGHT_END, "gyro");
             circle_type = CIRCLE_RIGHT_END;
             none_left_line = 0;
@@ -535,24 +498,7 @@ void run_circle() {
          * legacy unused line-loss count:
          * if (rpts1s_num < 0.2 / sample_dist) { none_right_line++; Count_dis_Flag = 1; }
          */
-        if (circle_heading_abs_ge(CIRCLE_HEADING_FINISH_DEG10)) {
-            print_circle_transition(circle_type, CIRCLE_NONE, "gyro");
-            circle_type = CIRCLE_NONE;
-            road_type = ROAD_NORMAL;
-            begin_y = BEGIN_Y;
-            Count_dis_Flag = 0;
-            aim_distance = AIM_DISTENCE;
-            is_large_circle = is_small_circle = 0;
-            if_lost_right_line = 0;
-            if_lost_left_line = 0;
-            circle_count++;
-            none_right_line = 0;
-            have_right_line = 0;
-            none_left_line = 0;
-            have_left_line = 0;
-            suppress_circle_reentry_after_exit();
-        }
-        else if (total_distence >= 4000) {
+        if (total_distence >= 4000) {
             print_circle_transition(circle_type, CIRCLE_NONE, "distance");
             circle_type = CIRCLE_NONE;
             road_type = ROAD_NORMAL;

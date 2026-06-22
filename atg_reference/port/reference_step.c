@@ -68,9 +68,11 @@ enum
     RAW_RIGHT_ANCHOR_X = MT9V03X_W - 6,
     RAW_BOTTOM_ANCHOR_Y = MT9V03X_H - 2,
     CIRCLE_FIXED_IN_TARGET_RAW_Y = 70,
-    CIRCLE_FIXED_IN_TARGET_RAW_X_OFFSET = 35,
-    CIRCLE_FIXED_LEFT_IN_TARGET_RAW_X = MT9V03X_W / 2 - CIRCLE_FIXED_IN_TARGET_RAW_X_OFFSET,
-    CIRCLE_FIXED_RIGHT_IN_TARGET_RAW_X = MT9V03X_W / 2 + CIRCLE_FIXED_IN_TARGET_RAW_X_OFFSET,
+    CIRCLE_FIXED_LEFT_IN_TARGET_RAW_X_OFFSET = 35,
+    CIRCLE_FIXED_RIGHT_IN_TARGET_RAW_X_OFFSET = 30,
+    CIRCLE_FIXED_LEFT_IN_TARGET_RAW_X = MT9V03X_W / 2 - CIRCLE_FIXED_LEFT_IN_TARGET_RAW_X_OFFSET,
+    CIRCLE_FIXED_RIGHT_IN_TARGET_RAW_X = MT9V03X_W / 2 + CIRCLE_FIXED_RIGHT_IN_TARGET_RAW_X_OFFSET,
+    CIRCLE_RUNNING_NATURAL_MIN_POINTS = 20,
 };
 
 static void reset_atg_params(void)
@@ -329,36 +331,77 @@ static void run_atg_elements(void)
     keep_disabled_elements_idle();
 }
 
+static int circle_left_running_natural_right_ready(void)
+{
+    return rpts1s_num >= CIRCLE_RUNNING_NATURAL_MIN_POINTS &&
+           rptsc1_num >= CIRCLE_RUNNING_NATURAL_MIN_POINTS;
+}
+
+static int circle_right_running_natural_left_ready(void)
+{
+    return rpts0s_num >= CIRCLE_RUNNING_NATURAL_MIN_POINTS &&
+           rptsc0_num >= CIRCLE_RUNNING_NATURAL_MIN_POINTS;
+}
+
+static void build_fixed_left_center_for_circle(void)
+{
+    point_Cal_Line(Cal_rot_x(RAW_LEFT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
+                   Cal_rot_y(RAW_LEFT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
+                   Cal_rot_x(CIRCLE_FIXED_RIGHT_IN_TARGET_RAW_X,
+                             CIRCLE_FIXED_IN_TARGET_RAW_Y),
+                   Cal_rot_y(CIRCLE_FIXED_RIGHT_IN_TARGET_RAW_X,
+                             CIRCLE_FIXED_IN_TARGET_RAW_Y),
+                   leftline,
+                   &leftline_num);
+    Splicing_leftline_s1s_num = MT9V03X_H;
+    resample_points(leftline,
+                    leftline_num,
+                    Splicing_leftline_s1s,
+                    &Splicing_leftline_s1s_num,
+                    sample_dist * pixel_per_meter);
+    track_leftline(Splicing_leftline_s1s,
+                   Splicing_leftline_s1s_num,
+                   Splicing_leftline_center,
+                   (int)round(2.0),
+                   pixel_per_meter * ROAD_WIDTH / 2);
+    Splicing_leftline_center_num = Splicing_leftline_s1s_num;
+}
+
+static void build_fixed_right_center_for_circle(void)
+{
+    point_Cal_Line_2(Cal_rot_x(RAW_RIGHT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
+                     Cal_rot_y(RAW_RIGHT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
+                     Cal_rot_x(CIRCLE_FIXED_LEFT_IN_TARGET_RAW_X,
+                               CIRCLE_FIXED_IN_TARGET_RAW_Y),
+                     Cal_rot_y(CIRCLE_FIXED_LEFT_IN_TARGET_RAW_X,
+                               CIRCLE_FIXED_IN_TARGET_RAW_Y),
+                     rightline,
+                     &rightline_num);
+    Splicing_rightline_s0s_num = MT9V03X_H;
+    resample_points(rightline,
+                    rightline_num,
+                    Splicing_rightline_s0s,
+                    &Splicing_rightline_s0s_num,
+                    sample_dist * pixel_per_meter);
+    track_rightline(Splicing_rightline_s0s,
+                    Splicing_rightline_s0s_num,
+                    Splicing_rightline_center,
+                    (int)round(2.0),
+                    pixel_per_meter * ROAD_WIDTH / 2);
+    Splicing_rightline_center_num = Splicing_rightline_s0s_num;
+}
+
 static void build_circle_spliced_lines(void)
 {
-    // 补线中心是环岛 IN/OUT 的控制选线来源。
-    // IN 是明确的元素固定动作，使用当帧固定 raw 锚点重建；OUT 仍依赖当帧远线证据。
+    // 补线中心是环岛 IN/OUT/RUNNING 桥接的控制选线来源。
+    // IN 和 OUT(ReadyoutRing) 使用固定外侧线；END(outRing) 使用当前外侧半宽线。
     // 不复用旧帧中线，当前状态不能建线时就让选线显式为空。
     Splicing_leftline_center_num = 0;
     Splicing_rightline_center_num = 0;
 
     if(circle_type == CIRCLE_RIGHT_IN)
     {
-        point_Cal_Line(Cal_rot_x(RAW_LEFT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
-                       Cal_rot_y(RAW_LEFT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
-                       Cal_rot_x(CIRCLE_FIXED_RIGHT_IN_TARGET_RAW_X,
-                                 CIRCLE_FIXED_IN_TARGET_RAW_Y),
-                       Cal_rot_y(CIRCLE_FIXED_RIGHT_IN_TARGET_RAW_X,
-                                 CIRCLE_FIXED_IN_TARGET_RAW_Y),
-                       leftline,
-                       &leftline_num);
-        Splicing_leftline_s1s_num = MT9V03X_H;
-        resample_points(leftline,
-                        leftline_num,
-                        Splicing_leftline_s1s,
-                        &Splicing_leftline_s1s_num,
-                        sample_dist * pixel_per_meter);
-        track_leftline(Splicing_leftline_s1s,
-                       Splicing_leftline_s1s_num,
-                       Splicing_leftline_center,
-                       (int)round(2.0),
-                       pixel_per_meter * ROAD_WIDTH / 2);
-        Splicing_leftline_center_num = Splicing_leftline_s1s_num;
+        build_fixed_left_center_for_circle();
 
         /*
          * legacy far-line splice for CIRCLE_RIGHT_IN:
@@ -413,49 +456,18 @@ static void build_circle_spliced_lines(void)
          * }
          */
     }
-    else if(circle_type == CIRCLE_RIGHT_OUT && far_rpts0s_num > 0)
+    else if(circle_type == CIRCLE_RIGHT_RUNNING &&
+            !circle_right_running_natural_left_ready())
     {
-        point_Cal_Line(far_rpts0s[far_rpts0s_num - 1][0],
-                       far_rpts0s[far_rpts0s_num - 1][1],
-                       Cal_rot_x(RAW_LEFT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
-                       Cal_rot_y(RAW_LEFT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
-                       leftline,
-                       &leftline_num);
-        Splicing_leftline_s1s_num = MT9V03X_H;
-        resample_points(leftline,
-                        leftline_num,
-                        Splicing_leftline_s1s,
-                        &Splicing_leftline_s1s_num,
-                        sample_dist * pixel_per_meter);
-        track_leftline(Splicing_leftline_s1s,
-                       Splicing_leftline_s1s_num,
-                       Splicing_leftline_center,
-                       (int)round(2.0),
-                       pixel_per_meter * ROAD_WIDTH / 2);
-        Splicing_leftline_center_num = Splicing_leftline_s1s_num;
+        build_fixed_left_center_for_circle();
+    }
+    else if(circle_type == CIRCLE_RIGHT_OUT)
+    {
+        build_fixed_left_center_for_circle();
     }
     else if(circle_type == CIRCLE_LEFT_IN)
     {
-        point_Cal_Line_2(Cal_rot_x(RAW_RIGHT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
-                         Cal_rot_y(RAW_RIGHT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
-                         Cal_rot_x(CIRCLE_FIXED_LEFT_IN_TARGET_RAW_X,
-                                   CIRCLE_FIXED_IN_TARGET_RAW_Y),
-                         Cal_rot_y(CIRCLE_FIXED_LEFT_IN_TARGET_RAW_X,
-                                   CIRCLE_FIXED_IN_TARGET_RAW_Y),
-                         rightline,
-                         &rightline_num);
-        Splicing_rightline_s0s_num = MT9V03X_H;
-        resample_points(rightline,
-                        rightline_num,
-                        Splicing_rightline_s0s,
-                        &Splicing_rightline_s0s_num,
-                        sample_dist * pixel_per_meter);
-        track_rightline(Splicing_rightline_s0s,
-                        Splicing_rightline_s0s_num,
-                        Splicing_rightline_center,
-                        (int)round(2.0),
-                        pixel_per_meter * ROAD_WIDTH / 2);
-        Splicing_rightline_center_num = Splicing_rightline_s0s_num;
+        build_fixed_right_center_for_circle();
 
         /*
          * legacy far-line splice for CIRCLE_LEFT_IN:
@@ -510,26 +522,14 @@ static void build_circle_spliced_lines(void)
          * }
          */
     }
-    else if(circle_type == CIRCLE_LEFT_OUT && far_rpts1s_num > 0)
+    else if(circle_type == CIRCLE_LEFT_RUNNING &&
+            !circle_left_running_natural_right_ready())
     {
-        point_Cal_Line(far_rpts1s[far_rpts1s_num - 1][0],
-                       far_rpts1s[far_rpts1s_num - 1][1],
-                       Cal_rot_x(RAW_RIGHT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
-                       Cal_rot_y(RAW_RIGHT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
-                       rightline,
-                       &rightline_num);
-        Splicing_rightline_s0s_num = MT9V03X_H;
-        resample_points(rightline,
-                        rightline_num,
-                        Splicing_rightline_s0s,
-                        &Splicing_rightline_s0s_num,
-                        sample_dist * pixel_per_meter);
-        track_rightline(Splicing_rightline_s0s,
-                        Splicing_rightline_s0s_num,
-                        Splicing_rightline_center,
-                        (int)round(5.0),
-                        pixel_per_meter * ROAD_WIDTH / 2);
-        Splicing_rightline_center_num = Splicing_rightline_s0s_num;
+        build_fixed_right_center_for_circle();
+    }
+    else if(circle_type == CIRCLE_LEFT_OUT)
+    {
+        build_fixed_right_center_for_circle();
     }
 }
 
@@ -542,20 +542,39 @@ static void select_work_line(void)
        garage_type != GARAGE_FOUND_RIGHT)
     {
         build_circle_spliced_lines();
-        if((circle_type == CIRCLE_RIGHT_OUT || circle_type == CIRCLE_RIGHT_IN) &&
+        if((circle_type == CIRCLE_RIGHT_OUT ||
+            circle_type == CIRCLE_RIGHT_IN ||
+            circle_type == CIRCLE_RIGHT_RUNNING) &&
            Splicing_leftline_center_num > 0)
         {
             rpts = Splicing_leftline_center;
             rpts_num = Splicing_leftline_center_num;
-            g_selected_line_source = "circle_splice_left";
+            g_selected_line_source =
+                circle_type == CIRCLE_RIGHT_RUNNING ? "circle_running_fixed_left" :
+                (circle_type == CIRCLE_RIGHT_IN ? "circle_in_fixed_left" : "circle_out_fixed_left");
         }
-        else if((circle_type == CIRCLE_LEFT_OUT || circle_type == CIRCLE_LEFT_IN) &&
+        else if((circle_type == CIRCLE_LEFT_OUT ||
+                 circle_type == CIRCLE_LEFT_IN ||
+                 circle_type == CIRCLE_LEFT_RUNNING) &&
                 Splicing_rightline_center_num > 0)
         {
             rpts = Splicing_rightline_center;
             rpts_num = Splicing_rightline_center_num;
             g_selected_line_source =
-                circle_type == CIRCLE_LEFT_IN ? "circle_in_fixed_right" : "circle_splice_right";
+                circle_type == CIRCLE_LEFT_RUNNING ? "circle_running_fixed_right" :
+                (circle_type == CIRCLE_LEFT_IN ? "circle_in_fixed_right" : "circle_out_fixed_right");
+        }
+        else if(circle_type == CIRCLE_RIGHT_END && rptsc0_num > 0)
+        {
+            rpts = rptsc0;
+            rpts_num = rptsc0_num;
+            g_selected_line_source = "circle_end_left_half";
+        }
+        else if(circle_type == CIRCLE_LEFT_END && rptsc1_num > 0)
+        {
+            rpts = rptsc1;
+            rpts_num = rptsc1_num;
+            g_selected_line_source = "circle_end_right_half";
         }
         else if(circle_type == CIRCLE_LEFT_OUT && rptsc1_num > 0)
         {
