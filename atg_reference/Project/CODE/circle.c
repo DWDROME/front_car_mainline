@@ -30,6 +30,10 @@ enum
 {
     CIRCLE_ENTRY_CONFIRM_FRAMES = 2,
     CIRCLE_BEGIN_LOST_CONFIRM_FRAMES = 2,
+    // BEGIN 内丢线必须是连续证据:内侧线恢复到 > 此长度即视为短丢线瞬态,清掉
+    // none_*_line / Count_dis_Flag,防止 drive28"丢->恢复"被距离门推进 IN;
+    // drive30 真入口早期一帧丢线(frame65)恢复后(frame66 near>30)也不再被误撤。
+    CIRCLE_BEGIN_LINE_RECOVER_COUNT = 30,
     CIRCLE_IN_DISTANCE_CONFIRM = 2000,
     // RUNNING 是环内最长段。该值只是陀螺失效时的距离兜底，16000 / 5800 about 2.76m，需上车标定。
     CIRCLE_RUNNING_FORCE_OUT_COUNTS = 16000,
@@ -42,8 +46,8 @@ enum
     // END 视觉退出: 出环口角点很近时趁有线交棒普通巡线, 防右线丢失停车 stall (drive04 出环口 Lpt conf96 id=8, drive02 END Lpt1=1@9 在停车前)
     CIRCLE_END_LPT_EXIT_ID = 15,            // 出口角点足够近即判出环完成; live 调
     CIRCLE_HEADING_FORCE_OUT_DEG10 = 2500,
-    // drive163: 355deg keeps ReadyoutRing fixed-line control after real right-line evidence disappears.
-    CIRCLE_HEADING_READY_OUT_TO_END_DEG10 = 2800,
+    // drive24: 260度可出环, END内guide穿零后交棒; drive25: 250度退环太早, guide仍为负会回起点。
+    CIRCLE_HEADING_READY_OUT_TO_END_DEG10 = 2660,
     CIRCLE_HEADING_FINISH_DEG10 = 3550,
     CIRCLE_REENTRY_SUPPRESS_FRAMES = 150,
 };
@@ -171,6 +175,26 @@ static int circle_heading_abs_ge(int tenth_deg)
     return fabsf(circle_heading_rad) * CIRCLE_RAD_TO_DEG10 >= (float)tenth_deg;
 }
 
+static void print_left_begin_diag(const char *reason)
+{
+    if(!circle_cal_log_enabled())
+    {
+        return;
+    }
+    printf("ATGCircleBeginDiag: side=L reason=%s rpts0=%d Lpt0=%d none_left=%d have_left=%d dist=%d begin_dist=%lld enter_dist=%d enter_gyro=%d\n",
+           reason,
+           rpts0s_num,
+           Lpt0_found ? 1 : 0,
+           none_left_line,
+           have_left_line,
+           total_distence,
+           (long long)atg_reference_circle_begin_dist(),
+           (none_left_line >= CIRCLE_BEGIN_LOST_CONFIRM_FRAMES &&
+            total_distence > circle_in_distance) ? 1 : 0,
+           (none_left_line >= CIRCLE_BEGIN_LOST_CONFIRM_FRAMES &&
+            circle_heading_abs_ge(CIRCLE_HEADING_ENTER_DEG10)) ? 1 : 0);
+}
+
 void check_circle() {
     if (circle_type != CIRCLE_NONE) {
         reset_circle_entry_votes();
@@ -213,11 +237,20 @@ void run_circle() {
         track_type = TRACK_RIGHT;
 
         // 入环口必然出现的内侧(左)线丢失事件：保留，它是进 IN 的真证据来源。
+        // 丢线只作连续证据：当前帧内侧线恢复到足够长度即清零，短丢线瞬态(drive28
+        // frame86、drive30 frame66 恢复)不再粘住历史距离把普通弯道推进 IN。
         if (rpts0s_num < 2 && !Lpt0_found) {
             Count_dis_Flag = 1;
             none_left_line++;
             have_left_line = 0;
         }
+        else if (none_left_line > 0 && rpts0s_num > CIRCLE_BEGIN_LINE_RECOVER_COUNT) {
+            none_left_line = 0;
+            Count_dis_Flag = 0;
+            have_left_line = 0;
+        }
+
+        print_left_begin_diag("state");
 
         /*
          * legacy visual reappear gate:
@@ -382,9 +415,15 @@ void run_circle() {
         track_type = TRACK_LEFT;
 
         // 内侧(右)线丢失事件：保留，右环沿用原来的 <10 阈值。
+        // 对称:内侧线恢复到足够长度即清连续丢线证据,切断短丢线的历史距离推进。
         if (rpts1s_num < 10 && !Lpt1_found) {
             Count_dis_Flag = 1;
             none_right_line++;
+            have_right_line = 0;
+        }
+        else if (none_right_line > 0 && rpts1s_num > CIRCLE_BEGIN_LINE_RECOVER_COUNT) {
+            none_right_line = 0;
+            Count_dis_Flag = 0;
             have_right_line = 0;
         }
 
