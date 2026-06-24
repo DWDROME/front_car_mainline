@@ -56,6 +56,9 @@ struct control_config_t
     float vehicle_raw_ref_x        = 80.0F;
     // 视觉 guide 零点标定(deg)。实车摆在赛道中心时 guide 应为 0。
     float guide_error_bias_deg     = 0.0F;
+    // 直道→弯道过渡段入弯前车身偏置(deg)。左弯(pure_angle<0)加正值→车身偏右，
+    // 右弯(pure_angle>0)加负值→车身偏左。CURVE_NEAR 阶段生效，入弯后自动撤销。
+    float curve_entry_bias_deg     = 0.0F;
 
     // 控制层 duty 输出上限；drive_output.cpp 里仍有 35% 硬件安全上限。
     int   max_duty_percent         = 35;

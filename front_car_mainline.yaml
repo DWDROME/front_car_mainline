@@ -32,6 +32,7 @@ max_yaw_rate_correction: 0.40
 lookahead_time_s: 1.25
 vehicle_raw_ref_x: 80.0
 guide_error_bias_deg: 0.0
+curve_entry_bias_deg: 1.5
 
 rps_filter_alpha: 0.5
 yaw_rate_filter_window: 7

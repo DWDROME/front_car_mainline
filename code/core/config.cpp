@@ -128,6 +128,7 @@ void set_field(const std::string &k, const std::string &v)
     F(lookahead_time_s)
     F(vehicle_raw_ref_x)
     F(guide_error_bias_deg)
+    F(curve_entry_bias_deg)
     I(max_duty_percent)
 #undef I
 #undef F
