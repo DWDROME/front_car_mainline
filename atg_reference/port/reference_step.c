@@ -69,10 +69,13 @@ enum
     RAW_BOTTOM_ANCHOR_Y = MT9V03X_H - 2,
     CIRCLE_FIXED_IN_TARGET_RAW_Y = 70,
     CIRCLE_FIXED_LEFT_IN_TARGET_RAW_X_OFFSET = 35,
-    CIRCLE_FIXED_RIGHT_IN_TARGET_RAW_X_OFFSET = 25,
+    CIRCLE_FIXED_RIGHT_IN_TARGET_RAW_X_OFFSET = 35,  // 阶段1对称化(原25): 与左环 LEFT_OFFSET=35 镜像。原25使右环主拼接线目标(80+25=105)比镜像位115偏内10px -> 右环IN/RUNNING/OUT主选线偏内 -> 贴内圈。待live验证, 若过头(右环偏外)回调到25~35之间。
     CIRCLE_FIXED_LEFT_IN_TARGET_RAW_X = MT9V03X_W / 2 - CIRCLE_FIXED_LEFT_IN_TARGET_RAW_X_OFFSET,
     CIRCLE_FIXED_RIGHT_IN_TARGET_RAW_X = MT9V03X_W / 2 + CIRCLE_FIXED_RIGHT_IN_TARGET_RAW_X_OFFSET,
     CIRCLE_RUNNING_NATURAL_MIN_POINTS = 20,
+    // Near L + far L is cross-half evidence. If no element claims it, do not
+    // let the same bent near segment continue as ordinary line following.
+    CROSS_HALF_CANDIDATE_LPT_ID_MAX = 25,
 };
 
 static void reset_atg_params(void)
@@ -228,6 +231,35 @@ static void choose_track_type_from_near_lines(void)
     else if(rpts1s_num < 10 && rpts0s_num > rpts1s_num)
     {
         track_type = TRACK_LEFT;
+    }
+}
+
+static void truncate_cross_half_candidate_near_lines(void)
+{
+    if(cross_type != CROSS_NONE ||
+       circle_type != CIRCLE_NONE ||
+       round_type != ROUND_NONE ||
+       yroad_type != YROAD_NONE ||
+       ramp_type != RAMP_NONE ||
+       garage_type != GARAGE_NONE)
+    {
+        return;
+    }
+
+    // Current-frame evidence only: check_Half()/check_circle() already had a
+    // chance to claim the element. This just prevents unclaimed cross-half
+    // candidates from leaking into the normal selected line.
+    if(Lpt0_found && far_Lpt0_found && Lpt0_rpts0s_id < CROSS_HALF_CANDIDATE_LPT_ID_MAX)
+    {
+        const int n = range_limit(Lpt0_rpts0s_id - 1, 0, rpts0s_num);
+        rpts0s_num = n;
+        rptsc0_num = n;
+    }
+    if(Lpt1_found && far_Lpt1_found && Lpt1_rpts1s_id < CROSS_HALF_CANDIDATE_LPT_ID_MAX)
+    {
+        const int n = range_limit(Lpt1_rpts1s_id - 1, 0, rpts1s_num);
+        rpts1s_num = n;
+        rptsc1_num = n;
     }
 }
 
@@ -402,59 +434,6 @@ static void build_circle_spliced_lines(void)
     if(circle_type == CIRCLE_RIGHT_IN)
     {
         build_fixed_left_center_for_circle();
-
-        /*
-         * legacy far-line splice for CIRCLE_RIGHT_IN:
-         * if(far_Lpt1_found)
-         * {
-         *     point_Cal_Line(Cal_rot_x(RAW_LEFT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
-         *                    Cal_rot_y(RAW_LEFT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
-         *                    far_rpts1s[far_Lpt1_rpts1s_id][0],
-         *                    far_rpts1s[far_Lpt1_rpts1s_id][1],
-         *                    leftline,
-         *                    &leftline_num);
-         *     Splicing_array(leftline,
-         *                    leftline_num,
-         *                    far_rpts1s,
-         *                    far_Lpt1_rpts1s_id,
-         *                    Splicing_leftline,
-         *                    &Splicing_leftline_num,
-         *                    1);
-         *     Splicing_leftline_s1s_num = MT9V03X_H;
-         *     resample_points(Splicing_leftline,
-         *                     Splicing_leftline_num,
-         *                     Splicing_leftline_s1s,
-         *                     &Splicing_leftline_s1s_num,
-         *                     sample_dist * pixel_per_meter);
-         *     track_leftline(Splicing_leftline_s1s,
-         *                    Splicing_leftline_s1s_num,
-         *                    Splicing_leftline_center,
-         *                    (int)round(2.0),
-         *                    pixel_per_meter * ROAD_WIDTH / 2);
-         *     Splicing_leftline_center_num = Splicing_leftline_s1s_num;
-         * }
-         * else if(far_rpts1s_num > 10 && far_rpts1s[1][1] > 20)
-         * {
-         *     point_Cal_Line(Cal_rot_x(RAW_LEFT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
-         *                    Cal_rot_y(RAW_LEFT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
-         *                    far_rpts1s[1][0],
-         *                    far_rpts1s[1][1],
-         *                    leftline,
-         *                    &leftline_num);
-         *     Splicing_leftline_s1s_num = MT9V03X_H;
-         *     resample_points(leftline,
-         *                     leftline_num,
-         *                     Splicing_leftline_s1s,
-         *                     &Splicing_leftline_s1s_num,
-         *                     sample_dist * pixel_per_meter);
-         *     track_leftline(Splicing_leftline_s1s,
-         *                    Splicing_leftline_s1s_num,
-         *                    Splicing_leftline_center,
-         *                    (int)round(2.0),
-         *                    pixel_per_meter * ROAD_WIDTH / 2);
-         *     Splicing_leftline_center_num = Splicing_leftline_s1s_num;
-         * }
-         */
     }
     else if(circle_type == CIRCLE_RIGHT_RUNNING &&
             !circle_right_running_natural_left_ready())
@@ -468,59 +447,6 @@ static void build_circle_spliced_lines(void)
     else if(circle_type == CIRCLE_LEFT_IN)
     {
         build_fixed_right_center_for_circle();
-
-        /*
-         * legacy far-line splice for CIRCLE_LEFT_IN:
-         * if(far_Lpt0_found)
-         * {
-         *     point_Cal_Line_2(Cal_rot_x(RAW_RIGHT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
-         *                      Cal_rot_y(RAW_RIGHT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
-         *                      far_rpts0s[far_Lpt0_rpts0s_id][0],
-         *                      far_rpts0s[far_Lpt0_rpts0s_id][1],
-         *                      rightline,
-         *                      &rightline_num);
-         *     Splicing_array(rightline,
-         *                    rightline_num,
-         *                    far_rpts0s,
-         *                    far_Lpt0_rpts0s_id,
-         *                    Splicing_rightline,
-         *                    &Splicing_rightline_num,
-         *                    1);
-         *     Splicing_rightline_s0s_num = MT9V03X_H;
-         *     resample_points(Splicing_rightline,
-         *                     Splicing_rightline_num,
-         *                     Splicing_rightline_s0s,
-         *                     &Splicing_rightline_s0s_num,
-         *                     sample_dist * pixel_per_meter);
-         *     track_rightline(Splicing_rightline_s0s,
-         *                     Splicing_rightline_s0s_num,
-         *                     Splicing_rightline_center,
-         *                     (int)round(2.0),
-         *                     pixel_per_meter * ROAD_WIDTH / 2);
-         *     Splicing_rightline_center_num = Splicing_rightline_s0s_num;
-         * }
-         * else if(far_rpts0s_num > 10 && far_rpts0s[1][1] > 20)
-         * {
-         *     point_Cal_Line_2(Cal_rot_x(RAW_RIGHT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
-         *                      Cal_rot_y(RAW_RIGHT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
-         *                      far_rpts0s[1][0],
-         *                      far_rpts0s[1][1],
-         *                      rightline,
-         *                      &rightline_num);
-         *     Splicing_rightline_s0s_num = MT9V03X_H;
-         *     resample_points(rightline,
-         *                     rightline_num,
-         *                     Splicing_rightline_s0s,
-         *                     &Splicing_rightline_s0s_num,
-         *                     sample_dist * pixel_per_meter);
-         *     track_rightline(Splicing_rightline_s0s,
-         *                     Splicing_rightline_s0s_num,
-         *                     Splicing_rightline_center,
-         *                     (int)round(2.0),
-         *                     pixel_per_meter * ROAD_WIDTH / 2);
-         *     Splicing_rightline_center_num = Splicing_rightline_s0s_num;
-         * }
-         */
     }
     else if(circle_type == CIRCLE_LEFT_RUNNING &&
             !circle_left_running_natural_right_ready())
@@ -724,8 +650,8 @@ void atg_reference_reset(void)
 static void reset_circle_to_none(const char *reason)
 {
     printf("ATGCircleReset: %s circle_type=%d -> NONE\n", reason, (int)circle_type);
-        circle_type = CIRCLE_NONE;
-        suppress_circle_reentry_after_exit();
+    circle_type = CIRCLE_NONE;
+    suppress_circle_reentry_after_exit();
     road_type = ROAD_NORMAL;
     begin_y = BEGIN_Y;
     Count_dis_Flag = 0;
@@ -775,22 +701,7 @@ static void exit_circle_after_stall(int line_ok)
     printf("ATGCircleStall: circle_type=%d stalled %d frames without selected line, reset to NONE\n",
            (int)circle_type,
            g_circle_stall_frames);
-    circle_type = CIRCLE_NONE;
-    suppress_circle_reentry_after_exit();
-    road_type = ROAD_NORMAL;
-    begin_y = BEGIN_Y;
-    Count_dis_Flag = 0;
-    aim_distance = aim_distance_far;
-    is_large_circle = 0;
-    is_small_circle = 0;
-    if_lost_left_line = 0;
-    if_lost_right_line = 0;
-    none_left_line = 0;
-    none_right_line = 0;
-    have_left_line = 0;
-    have_right_line = 0;
-    if_clean_pid = 0;
-    g_circle_stall_frames = 0;
+    reset_circle_to_none("stall without selected line,");
 }
 
 int atg_reference_process_frame(uint8_t gray[120][160], int64_t encoder_total)
@@ -808,6 +719,8 @@ int atg_reference_process_frame(uint8_t gray[120][160], int64_t encoder_total)
     find_corners();
     choose_track_type_from_near_lines();
     run_atg_elements();
+    truncate_cross_half_candidate_near_lines();
+    choose_track_type_from_near_lines();
     update_distance_counters(encoder_total);
     revoke_idle_circle_begin();
     select_work_line();
@@ -824,6 +737,30 @@ int atg_reference_process_frame(uint8_t gray[120][160], int64_t encoder_total)
 int atg_reference_track_line_found(void)
 {
     return rptsn_num > 0;
+}
+
+const char *atg_reference_selected_line_source(void)
+{
+    return g_selected_line_source != NULL ? g_selected_line_source : "none";
+}
+
+int atg_reference_selected_line_source_id(void)
+{
+    const char *source = atg_reference_selected_line_source();
+    if(strcmp(source, "circle_running_fixed_left") == 0) return 1;
+    if(strcmp(source, "circle_in_fixed_left") == 0) return 2;
+    if(strcmp(source, "circle_out_fixed_left") == 0) return 3;
+    if(strcmp(source, "circle_running_fixed_right") == 0) return 4;
+    if(strcmp(source, "circle_in_fixed_right") == 0) return 5;
+    if(strcmp(source, "circle_out_fixed_right") == 0) return 6;
+    if(strcmp(source, "circle_end_left_half") == 0) return 7;
+    if(strcmp(source, "circle_end_right_half") == 0) return 8;
+    if(strcmp(source, "out_rptsc1") == 0) return 9;
+    if(strcmp(source, "rptsc0") == 0) return 10;
+    if(strcmp(source, "rptsc1") == 0) return 11;
+    if(strcmp(source, "far_left") == 0) return 12;
+    if(strcmp(source, "far_right") == 0) return 13;
+    return 0;
 }
 
 void atg_reference_set_vehicle_raw_ref_x(float raw_x)

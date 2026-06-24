@@ -1,5 +1,5 @@
 #include "Half_check.h"
-//*´«Í³µÄÊý°ßÂíÏßÌø±äµã¼ì²â³µ¿âÓÃµ½µÄ±äÁ¿*//
+//*ï¿½ï¿½Í³ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½â³µï¿½ï¿½ï¿½Ãµï¿½ï¿½Ä±ï¿½ï¿½ï¿½*//
 float Far_rLine_endpoint_x,Far_rLine_endpoint_y;
 float near_rLine_endpoint_x,near_rLine_endpoint_y;
 float inv_Slope_point_R[2],inv_Slope_point_L[2];
@@ -14,15 +14,15 @@ int find_garage;
 #define MINMAX(input, low, upper) MIN(MAX(input, low), upper)
 void check_Half()
 {
-    if(Lpt0_found&&rpts0s_num>rpts1s_num) check_Half_left();                //Ò»²àÕÒµ½90¡ã¹Õµã¾Í¿ªÆô
+    if(Lpt0_found&&rpts0s_num>rpts1s_num) check_Half_left();                //Ò»ï¿½ï¿½ï¿½Òµï¿½90ï¿½ï¿½Õµï¿½Í¿ï¿½ï¿½ï¿½
     if(Lpt1_found&&rpts1s_num>rpts0s_num) check_Half_right();
 
 }
 void check_Half_left()
 {
-    //Ô¶¶Ë±ßÏßÌáÈ¡
+    //Ô¶ï¿½Ë±ï¿½ï¿½ï¿½ï¿½ï¿½È¡
         cross_farline_L();
-    // Lµã¶þ´Î¼ì²é
+    // Lï¿½ï¿½ï¿½ï¿½Î¼ï¿½ï¿½
         if (far_Lpt0_found && Lpt0_found)
         {
             float dx = far_rpts0s[far_Lpt0_rpts0s_id][0] - rpts0s[Lpt0_rpts0s_id][0];
@@ -31,7 +31,7 @@ void check_Half_left()
             if (fabs(dn - 0.35 * pixel_per_meter) > 0.35 * pixel_per_meter)    far_Lpt0_found = false;
         }
         is_straight_far_0 = far_rpts0s_num> (0.55 / sample_dist);
-    //»Ø»·±êÖ¾¶þ´ÎÅÐ¶¨£¨²»ÓÃ¿´£©
+    //ï¿½Ø»ï¿½ï¿½ï¿½Ö¾ï¿½ï¿½ï¿½ï¿½ï¿½Ð¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ã¿ï¿½ï¿½ï¿½
         if(far_ipts0_num < 6 || far_ipts0[far_ipts0_num-5][0]<130||far_ipts0[5][0]>50||far_ipts0[far_ipts0_num-2][1]>far_ipts0[0][1])is_straight_far_0 = false;//||far_ipts0[5][0]>50
         if (far_rpts0s_num>15 && far_ipts0_num >= 6)
         {
@@ -43,30 +43,20 @@ void check_Half_left()
             }
         }
         if(far_Lpt0_found&&circle_type==CIRCLE_NONE&&!is_straight1&&Lpt0_rpts0s_id<10){
-            //Èç¹ûÕÒµ½ÁËÍ¬Ò»²àµÄ90¡ã¹Õµãµ«ÊÇÃ»ÓÐËÑµ½³¤Ö±µÀµÄÌõ¼þ£¬ÔòÌø×ªÖÁÊ®×Ö´¦Àí
+            //ï¿½ï¿½ï¿½ï¿½Òµï¿½ï¿½ï¿½Í¬Ò»ï¿½ï¿½ï¿½90ï¿½ï¿½Õµãµ«ï¿½ï¿½Ã»ï¿½ï¿½ï¿½Ñµï¿½ï¿½ï¿½Ö±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×ªï¿½ï¿½Ê®ï¿½Ö´ï¿½ï¿½ï¿½
             cross_type = CROSS_HALF;
             garage_type = GARAGE_NONE;
-            //±êÖ¾ÕÒµ½ÁË×óÊ®×Ö»¹ÊÇÓÒÊ®×Ö
+            //ï¿½ï¿½Ö¾ï¿½Òµï¿½ï¿½ï¿½ï¿½ï¿½Ê®ï¿½Ö»ï¿½ï¿½ï¿½ï¿½ï¿½Ê®ï¿½ï¿½
             Lpt0_found_flag = 1;
         }
-        //if(Lpt0_rpts0s_id<10&&!far_Lpt0_found&&cross_type == CROSS_NONE&&round_type ==ROUND_NONE) circle_type = CIRCLE_LEFT_BEGIN;
-        if(Lpt0_rpts0s_id<5&&!far_Lpt0_found&&is_straight1&&cross_type == CROSS_NONE&&round_type ==ROUND_NONE) {
-            // is_straight1 æ˜¯ LS2K ç§»æ¤è¡¥å……çš„å¯¹ä¾§é•¿ç›´é“è¯æ®ï¼Œä¸Ž check_circle() å·¦çŽ¯æ­£é—¨ä¸€è‡´ï¼›
-            // åŽŸä½œè€…æ­¤æ·å¾„ä¾èµ–å…¶èµ›é“å…ˆéªŒ(å•è¿‘L+æ— è¿œLåªå¯èƒ½æ˜¯çŽ¯å²›)ï¼Œå½“å‰èµ›é“æ–œè½¦èº«ä¸¢å³çº¿çš„åå­—ä¼šè¯¯å…¥å·¦çŽ¯ã€‚
-            //Ê×ÏÈ£¬³µ¿â¼ì²éµÄÓÅÏÈ¼¶×î¸ßµ«²¢Ã»ÓÐËÑµ½³µ¿âµÄ±êÖ¾Î»£¬Ôò½øÐÐµ½°ë±ß¼ì²âµÄº¯ÊýÖÐ£¬Æä´ÎÈç¹ûÔÚ°ë±ß¼ì²âÖÐ²»ÊÇÊ®×Ö£¬ÄÇÓÐ¹ÕµãµÄÔªËØÖ»ÄÜÊÇÔ²»·£¨18½ìµÄ¶ÏÂ·ºÍÕÏ°­ÎïÐèÒªÁíÍâµÄ¼ì²â£¡£©
-            //ÔÚÎÒ17½ìµ÷³µµÄ¹ý³ÌÖÐ£¬ÓÃÕâÖÖ·½Ê½»ù±¾ÉÏÔªËØÅÐ¶ÏÊÇ²»»á³ö´íµÄ
-            circle_type = CIRCLE_LEFT_BEGIN;
-            reset_circle_begin_flags();
-            reset_circle_entry_votes();
-            Count_dis_Flag=0;
-        }
+        // Circle entry is owned by check_circle(); Half_check only claims CROSS_HALF.
 
 
 }
-void check_Half_right()//×óÓÒÍ¬Àí
+void check_Half_right()//ï¿½ï¿½ï¿½ï¿½Í¬ï¿½ï¿½
 {
      cross_farline_R();
-     // Lµã¶þ´Î¼ì²é
+     // Lï¿½ï¿½ï¿½ï¿½Î¼ï¿½ï¿½
      if (far_Lpt1_found && Lpt1_found)
      {
          float dx = far_rpts1s[far_Lpt1_rpts1s_id][0] - rpts1s[Lpt1_rpts1s_id][0];
@@ -75,7 +65,7 @@ void check_Half_right()//×óÓÒÍ¬Àí
          if (fabs(dn - 0.35 * pixel_per_meter) > 0.30 * pixel_per_meter)    far_Lpt1_found = false;
      }
      is_straight_far_1 = far_rpts1s_num> (0.45 / sample_dist);
- //»Ø»·±êÖ¾¶þ´ÎÅÐ¶¨
+ //ï¿½Ø»ï¿½ï¿½ï¿½Ö¾ï¿½ï¿½ï¿½ï¿½ï¿½Ð¶ï¿½
      if(far_ipts1_num < 6 || far_ipts1[far_ipts1_num-3][0]>10||far_ipts1[5][0]<50||(far_ipts1[far_ipts1_num-1][1]<far_ipts1[0][1]))is_straight_far_1 = false;
      if (far_rpts1s_num>15 && far_ipts1_num >= 6)
      {
@@ -90,14 +80,8 @@ void check_Half_right()//×óÓÒÍ¬Àí
      if(far_Lpt1_found&&circle_type==CIRCLE_NONE&&!is_straight0&&Lpt1_rpts1s_id<10){//
          cross_type = CROSS_HALF;
          garage_type = GARAGE_NONE;
-         //±êÖ¾ÕÒµ½ÁË×óÊ®×Ö»¹ÊÇÓÒÊ®×Ö
+         //ï¿½ï¿½Ö¾ï¿½Òµï¿½ï¿½ï¿½ï¿½ï¿½Ê®ï¿½Ö»ï¿½ï¿½ï¿½ï¿½ï¿½Ê®ï¿½ï¿½
          Lpt1_found_flag = 1;
      }
-     if(Lpt1_rpts1s_id<5&&!far_Lpt1_found&&is_straight0&&cross_type == CROSS_NONE&&round_type ==ROUND_NONE) {
-         // is_straight0 åŒä¸Šï¼šå¯¹ä¾§é•¿ç›´é“è¯æ®ï¼Œä¸Ž check_circle() å³çŽ¯æ­£é—¨ä¸€è‡´ã€‚
-         circle_type = CIRCLE_RIGHT_BEGIN;
-         reset_circle_begin_flags();
-         reset_circle_entry_votes();
-         Count_dis_Flag=0;
-     }
+     // Circle entry is owned by check_circle(); Half_check only claims CROSS_HALF.
 }

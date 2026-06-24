@@ -122,7 +122,7 @@ void run_cross()
         {
             //若找到了左近处90°拐点，开始搜左远线，后续操作在中线跟踪部分
             cross_farline_L();
-            aim_distance = 0.25;
+            aim_distance = 0.75;  // 斜入对称化: 左半十字前瞻对齐右半 0.75。原 0.25 看太近 -> 左通路抖/过冲(实测左侧更糟); 斜入左右镜像本应一致, 0.75 是右半工作值。待 live, 若左切弯回调 0.5~0.75。
             track_type = TRACK_LEFT;
             if (rpts0s_num < 5) { not_have_line++; }
             if (not_have_line > 2 && rpts1s_num > 20 && rpts0s_num > 20) {
@@ -348,10 +348,12 @@ void cross_farline_R()//左右同理
         {
             if(ipts1_num>12&&!if_lost_right_line){
                 inv_Lpt1_found[0] = ipts1[ipts1_num-3][0]-15;
-                inv_Lpt1_found[1] = ipts1[ipts1_num-3][1]-8;
+                inv_Lpt1_found[1] = ipts1[ipts1_num-3][1]-5;  // 对称化(阶段0): 与左环动态种子 y 偏移 -5 对齐(原 -8); 纵向微调
             }else{
                 if_lost_right_line =1;
-                inv_Lpt1_found[0] = 140;
+                // 对称化(阶段0): 右环 IN 丢线固定种子 x 与左环(cross_farline_L 中 x=40)关于图像中心(MT9V03X_W=160)镜像 => 160-40=120。
+                // 原值 140 偏右于镜像位 20px、距右边界仅 20px, 疑致右环远线搜索偏外 -> 补线偏右 -> 贴内圈。待 live 验证。
+                inv_Lpt1_found[0] = 120;
                 inv_Lpt1_found[1] = begin_y*0.85;
             }
         }

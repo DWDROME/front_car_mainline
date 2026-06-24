@@ -36,6 +36,11 @@ enum
     // 参考陀螺积分圆环：阈值单位是 0.1 度，进 IN 后单次清零，后续累计比较。
     CIRCLE_HEADING_ENTER_DEG10 = 600,
     CIRCLE_HEADING_START_OUT_DEG10 = 2000,
+    // 阶段2(视觉驱动+陀螺门限): RUNNING->OUT 改为"对侧出口角点出现 + 陀螺过门限"为主, 陀螺 START_OUT 兜底。两值待 live 标定。
+    CIRCLE_HEADING_OUT_GATE_DEG10 = 1500,   // 视觉出环的陀螺门限(< START_OUT 2000), 防光干扰/假角点早触发; live 调
+    CIRCLE_OUT_LPT_NEAR_ID = 55,            // 对侧出口角点足够近的 rpts id 阈值, 确认车已到出环口; live 调 (drive02 左环对侧 Lpt 出现在 id=51, 原 25 偏严)
+    // END 视觉退出: 出环口角点很近时趁有线交棒普通巡线, 防右线丢失停车 stall (drive04 出环口 Lpt conf96 id=8, drive02 END Lpt1=1@9 在停车前)
+    CIRCLE_END_LPT_EXIT_ID = 15,            // 出口角点足够近即判出环完成; live 调
     CIRCLE_HEADING_FORCE_OUT_DEG10 = 2500,
     // drive163: 355deg keeps ReadyoutRing fixed-line control after real right-line evidence disappears.
     CIRCLE_HEADING_READY_OUT_TO_END_DEG10 = 2800,
@@ -293,7 +298,17 @@ void run_circle() {
          *
          * RUNNING -> OUT 现在只用累计陀螺正常触发；距离只作陀螺失效兜底。
          */
-        if (circle_heading_abs_ge(CIRCLE_HEADING_START_OUT_DEG10)) {
+        // 阶段2(视觉为主+陀螺门限): 恢复 ATG legacy 的对侧(右)Lpt 出环触发, 加陀螺门限防假角点早触发。
+        // 顺序: 1)对侧出口角点出现且陀螺已过门限 2)陀螺 START_OUT 兜底(视觉失效) 3)距离最后兜底。
+        if (Lpt1_found && Lpt1_rpts1s_id < CIRCLE_OUT_LPT_NEAR_ID &&
+            circle_heading_abs_ge(CIRCLE_HEADING_OUT_GATE_DEG10)) {
+            print_circle_transition(circle_type, CIRCLE_LEFT_OUT, "vision_lpt");
+            circle_type = CIRCLE_LEFT_OUT;
+            Count_dis_Flag = 0;
+            if_lost_right_line = 0;
+            if_clean_pid = 1;
+        }
+        else if (circle_heading_abs_ge(CIRCLE_HEADING_START_OUT_DEG10)) {
             print_circle_transition(circle_type, CIRCLE_LEFT_OUT, "gyro");
             circle_type = CIRCLE_LEFT_OUT;
             Count_dis_Flag = 0;
@@ -341,8 +356,10 @@ void run_circle() {
         broadcast_flag = 1;
         Count_dis_Flag = 1;
 
-        if (total_distence >= 7500) {
-            print_circle_transition(circle_type, CIRCLE_NONE, "distance");
+        // 阶段END(视觉退出): 出口角点(右 Lpt1)很近 -> 出环口在视野且有线, 趁此交棒普通巡线, 避免右线丢失后停车 stall。
+        const int end_lpt_exit_l = Lpt1_found && Lpt1_rpts1s_id < CIRCLE_END_LPT_EXIT_ID;
+        if (end_lpt_exit_l || total_distence >= 7500) {
+            print_circle_transition(circle_type, CIRCLE_NONE, end_lpt_exit_l ? "vision_lpt_exit" : "distance");
             circle_type = CIRCLE_NONE;
             road_type = ROAD_NORMAL;
             begin_y = BEGIN_Y;
@@ -449,7 +466,16 @@ void run_circle() {
          * }
          * if (Lpt0_found && Lpt0_rpts0s_id < 0.7 / sample_dist) ...
          */
-        if (circle_heading_abs_ge(CIRCLE_HEADING_START_OUT_DEG10)) {
+        // 阶段2(视觉为主+陀螺门限): 对称右环, 对侧(左)Lpt0 出环触发 + 陀螺门限。
+        if (Lpt0_found && Lpt0_rpts0s_id < CIRCLE_OUT_LPT_NEAR_ID &&
+            circle_heading_abs_ge(CIRCLE_HEADING_OUT_GATE_DEG10)) {
+            print_circle_transition(circle_type, CIRCLE_RIGHT_OUT, "vision_lpt");
+            circle_type = CIRCLE_RIGHT_OUT;
+            Count_dis_Flag = 0;
+            if_lost_left_line = 0;
+            if_clean_pid = 1;
+        }
+        else if (circle_heading_abs_ge(CIRCLE_HEADING_START_OUT_DEG10)) {
             print_circle_transition(circle_type, CIRCLE_RIGHT_OUT, "gyro");
             circle_type = CIRCLE_RIGHT_OUT;
             Count_dis_Flag = 0;
@@ -498,8 +524,10 @@ void run_circle() {
          * legacy unused line-loss count:
          * if (rpts1s_num < 0.2 / sample_dist) { none_right_line++; Count_dis_Flag = 1; }
          */
-        if (total_distence >= 4000) {
-            print_circle_transition(circle_type, CIRCLE_NONE, "distance");
+        // 阶段END(视觉退出): 对称, 出口角点(左 Lpt0)很近 -> 趁有线交棒普通巡线, 避免左线丢失停车 stall。
+        const int end_lpt_exit_r = Lpt0_found && Lpt0_rpts0s_id < CIRCLE_END_LPT_EXIT_ID;
+        if (end_lpt_exit_r || total_distence >= 4000) {
+            print_circle_transition(circle_type, CIRCLE_NONE, end_lpt_exit_r ? "vision_lpt_exit" : "distance");
             circle_type = CIRCLE_NONE;
             road_type = ROAD_NORMAL;
             begin_y = BEGIN_Y;
