@@ -44,7 +44,6 @@ void run_round()
         if(Lpt0_found&&Lpt0_rpts0s_id<rpts0s_num*0.8)
         {
             round_type=ROUND_RIGHT_END;
-            if_clean_pid = 1;
             aim_distance = AIM_DISTENCE;
         }
 
@@ -75,7 +74,6 @@ void run_round()
             begin_y=BEGIN_Y;
             aim_distance = AIM_DISTENCE;
             //yroad_cnt++;
-            broadcast_flag=1;
             none_left_line= 0 ;
             if_lost_right_line =0;
             if_lost_left_line = 0;
@@ -110,7 +108,6 @@ void run_round()
         if(Lpt1_found&&Lpt1_rpts1s_id<rpts1s_num*0.8)
         {
             round_type=ROUND_LEFT_END;
-            if_clean_pid = 1;
             aim_distance = AIM_DISTENCE;
         }
     }
@@ -137,7 +134,6 @@ void run_round()
             begin_y=BEGIN_Y;
             aim_distance = AIM_DISTENCE;
             yroad_cnt++;
-            broadcast_flag=1;
             none_left_line= 0 ;
             if_lost_right_line =0;
             if_lost_left_line = 0;
@@ -167,7 +163,6 @@ void check_round_L()
         if(Count_Garage_num%2 ==0){
             if(Count_Garage_num==4){
                 garage_type = GARAGE_IN_LEFT;
-                if_clean_pid = 1;
             }
             else if(Count_Garage_num==2){
                 garage_type = GARAGE_FOUND_LEFT;
@@ -178,7 +173,6 @@ void check_round_L()
         else {
             round_type = ROUND_LEFT_BEGIN;
             if_lost_left_line = 0;
-            if_clean_pid = 1;
         }
 
     }
@@ -194,7 +188,6 @@ void check_round_R()
         if(Count_Garage_num%2 ==0){
             if(Count_Garage_num==4){
                 garage_type = GARAGE_IN_RIGHT;
-                if_clean_pid = 1;
             }
             else if(Count_Garage_num==2)garage_type = GARAGE_FOUND_RIGHT;
             if_lost_right_line = 0;
@@ -203,7 +196,6 @@ void check_round_R()
         else {
             round_type = ROUND_RIGHT_BEGIN;
             if_lost_right_line = 0;
-            if_clean_pid = 1;
         }
 
 

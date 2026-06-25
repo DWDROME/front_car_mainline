@@ -66,9 +66,7 @@ float Guide, Guide_up, Guide_up_up;
 float cx, cy;
 float inv_aim_idx[2], inv_aim_idx_up[2], inv_aim_idx_up_up[2];
 float inv_rptsn[MT9V03X_HH][2];
-int broadcast_flag = 1;
 uint8 if_check_ramp;
-uint8 if_clean_pid;
 
 int64_t g_atg_reference_encoder_total;
 

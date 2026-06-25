@@ -95,7 +95,6 @@ void Run_Ramp()
                 aim_distance = AIM_DISTENCE;
                 Count_dis_Flag=0;
                 ramp_type=RAMP_NONE;
-                broadcast_flag=1;
                 ramp_numb ++;
             }
 

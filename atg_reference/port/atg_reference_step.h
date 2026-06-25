@@ -15,6 +15,8 @@ float atg_reference_vehicle_raw_ref_x(void);
 void atg_reference_raw_ref_to_ipm(float raw_x, float raw_y, float *ipm_x, float *ipm_y);
 int64_t atg_reference_circle_begin_dist(void);
 int64_t atg_reference_circle_begin_last_dist(void);
+const char *atg_reference_selected_line_source(void);
+int atg_reference_selected_line_source_id(void);
 
 #ifdef __cplusplus
 }

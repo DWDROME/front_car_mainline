@@ -25,7 +25,7 @@ constexpr const char *k_live_beep_path = "/dev/zf_gpio_beep";
 constexpr int k_live_beep_ms = 35;
 constexpr float k_rad_to_deg = 180.0f / 3.14159265358979323846f;
 
-using live_state_signature_t = std::array<int, 50>;
+using live_state_signature_t = std::array<int, 64>;
 
 template <typename... Values>
 live_state_signature_t live_state_signature(Values... values)
@@ -230,7 +230,7 @@ const char *left_farline_seed_source()
     {
         return "lpt";
     }
-    if(circle_type == CIRCLE_LEFT_IN || circle_type == CIRCLE_RIGHT_OUT || circle_type == CIRCLE_RIGHT_END)
+    if(circle_type == CIRCLE_RIGHT_OUT)
     {
         return "circle";
     }
@@ -247,8 +247,7 @@ const char *right_farline_seed_source()
     {
         return "lpt";
     }
-    if((circle_type == CIRCLE_RIGHT_IN || circle_type == CIRCLE_LEFT_OUT || circle_type == CIRCLE_LEFT_END) &&
-       !garage_type)
+    if(circle_type == CIRCLE_LEFT_OUT && !garage_type)
     {
         return "circle";
     }
@@ -269,10 +268,6 @@ const char *circle_enum_name(int value)
         return "CIRCLE_LEFT_BEGIN";
     case CIRCLE_RIGHT_BEGIN:
         return "CIRCLE_RIGHT_BEGIN";
-    case CIRCLE_LEFT_IN:
-        return "CIRCLE_LEFT_IN";
-    case CIRCLE_RIGHT_IN:
-        return "CIRCLE_RIGHT_IN";
     case CIRCLE_LEFT_RUNNING:
         return "CIRCLE_LEFT_RUNNING";
     case CIRCLE_RIGHT_RUNNING:
@@ -281,10 +276,6 @@ const char *circle_enum_name(int value)
         return "CIRCLE_LEFT_OUT";
     case CIRCLE_RIGHT_OUT:
         return "CIRCLE_RIGHT_OUT";
-    case CIRCLE_LEFT_END:
-        return "CIRCLE_LEFT_END";
-    case CIRCLE_RIGHT_END:
-        return "CIRCLE_RIGHT_END";
     default:
         return "CIRCLE_UNKNOWN";
     }
@@ -330,6 +321,7 @@ live_state_signature_t make_live_state_signature(const runtime_t *rt)
         count_bucket(rpts0s_num),
         count_bucket(rpts1s_num),
         count_bucket(rptsn_num),
+        atg_reference_selected_line_source_id(),
         count_bucket(far_rpts0s_num),
         count_bucket(far_rpts1s_num),
         flag(Lpt0_found),
@@ -361,6 +353,19 @@ live_state_signature_t make_live_state_signature(const runtime_t *rt)
         positive_bucket(not_have_line),
         count_bucket(total_distence),
         count_bucket(Ramp_total_distence),
+        circle_ref_mode,
+        flag(circle_A_point.found),
+        circle_A_point.id / 4,
+        circle_A_point.raw_x / 4,
+        circle_A_point.raw_y / 4,
+        flag(circle_B_point.found),
+        circle_B_point.id / 4,
+        circle_B_point.raw_x / 4,
+        circle_B_point.raw_y / 4,
+        flag(circle_C_point.found),
+        circle_C_point.id / 4,
+        circle_C_point.raw_x / 4,
+        circle_C_point.raw_y / 4,
         positive_bucket(rt != nullptr ? rt->vision.mid.step : 0),
         static_cast<int>(std::lround(rt != nullptr ? rt->vision.guide_error : 0.0)),
         rt != nullptr ? rt->control.input_valid : 0,
@@ -1050,9 +1055,10 @@ void print_live(uint32_t frame_id, const runtime_t *rt, int div)
                           &ml_forward);
 
     std::printf("frame=%u line=%d track=%d cross=%d circle=%d(%s) round=%d yroad=%d ramp=%d road=%d speed=%d "
-                "near=%d/%d raw=%d/%d sel=%d/%d far=%d/%d far_raw=%d/%d "
+                "near=%d/%d raw=%d/%d sel=%d/%d src=%d far=%d/%d far_raw=%d/%d "
                 "l=%d@%d/%d@%d far_l=%d@%d/%d@%d straight=%d/%d far_straight=%d/%d "
-                "circle_cnt=%d/%d/%d/%d lost=%d/%d conf=%.1f/%.1f/%.1f/%.1f dist=%d begin=%lld/%lld "
+                "circle_cnt=%d/%d/%d/%d lost=%d/%d ref=%d A=%d@%d,%d#%d B=%d@%d,%d#%d C=%d@%d,%d#%d "
+                "conf=%.1f/%.1f/%.1f/%.1f dist=%d begin=%lld/%lld "
                 "m0=(%d,%d) ml=(%d,%d) md=%d/%d/%d cxcy=%.1f,%.1f guide=%.2f "
                 "atg=%.1f/%.1f/%.1f pure=%.2f/%.2f yaw=%d cmd=%d actual=%d signed=%d rps=%d/%d:%d/%d "
                 "duty=%d/%d pwm=PWM2:%d/PWM1:%d motor=2:%d/1:%d\n",
@@ -1073,6 +1079,7 @@ void print_live(uint32_t frame_id, const runtime_t *rt, int div)
                 ipts1_num,
                 rpts_num,
                 rptsn_num,
+                atg_reference_selected_line_source_id(),
                 far_rpts0s_num,
                 far_rpts1s_num,
                 far_ipts0_num,
@@ -1095,6 +1102,19 @@ void print_live(uint32_t frame_id, const runtime_t *rt, int div)
                 have_right_line,
                 flag(if_lost_left_line),
                 flag(if_lost_right_line),
+                circle_ref_mode,
+                flag(circle_A_point.found),
+                circle_A_point.found ? circle_A_point.raw_x : -1,
+                circle_A_point.found ? circle_A_point.raw_y : -1,
+                circle_A_point.id,
+                flag(circle_B_point.found),
+                circle_B_point.found ? circle_B_point.raw_x : -1,
+                circle_B_point.found ? circle_B_point.raw_y : -1,
+                circle_B_point.id,
+                flag(circle_C_point.found),
+                circle_C_point.found ? circle_C_point.raw_x : -1,
+                circle_C_point.found ? circle_C_point.raw_y : -1,
+                circle_C_point.id,
                 conf1_max * k_rad_to_deg,
                 conf2_max * k_rad_to_deg,
                 conf3_max * k_rad_to_deg,
@@ -1159,6 +1179,19 @@ int write_report(const runtime_t *rt, const char *report_path)
     out << "atg_track_type=" << track_type << "\n";
     out << "atg_cross_type=" << cross_type << "\n";
     out << "atg_circle_type=" << circle_type << "\n";
+    out << "atg_circle_ref_mode=" << circle_ref_mode << "\n";
+    out << "atg_circle_A=" << flag(circle_A_point.found) << ","
+        << circle_A_point.id << ","
+        << (circle_A_point.found ? circle_A_point.raw_x : -1) << ","
+        << (circle_A_point.found ? circle_A_point.raw_y : -1) << "\n";
+    out << "atg_circle_B=" << flag(circle_B_point.found) << ","
+        << circle_B_point.id << ","
+        << (circle_B_point.found ? circle_B_point.raw_x : -1) << ","
+        << (circle_B_point.found ? circle_B_point.raw_y : -1) << "\n";
+    out << "atg_circle_C=" << flag(circle_C_point.found) << ","
+        << circle_C_point.id << ","
+        << (circle_C_point.found ? circle_C_point.raw_x : -1) << ","
+        << (circle_C_point.found ? circle_C_point.raw_y : -1) << "\n";
     out << "atg_round_type=" << round_type << "\n";
     out << "atg_yroad_type=" << yroad_type << "\n";
     out << "atg_ramp_type=" << ramp_type << "\n";
@@ -1180,6 +1213,8 @@ int write_report(const runtime_t *rt, const char *report_path)
     out << "atg_rptsc1_num=" << rptsc1_num << "\n";
     out << "atg_rpts_num=" << rpts_num << "\n";
     out << "atg_rptsn_num=" << rptsn_num << "\n";
+    out << "atg_selected_line_source=" << atg_reference_selected_line_source() << "\n";
+    out << "atg_selected_line_source_id=" << atg_reference_selected_line_source_id() << "\n";
     out << "atg_far_ipts0_num=" << far_ipts0_num << "\n";
     out << "atg_far_ipts1_num=" << far_ipts1_num << "\n";
     out << "atg_far_rpts0s_num=" << far_rpts0s_num << "\n";

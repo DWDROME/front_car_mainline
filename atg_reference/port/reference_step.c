@@ -17,12 +17,10 @@ static int64_t last_encoder_total;
 static float g_vehicle_raw_ref_x = MT9V03X_W / 2.0f;
 static const char *g_selected_line_source = "none";
 
-// 环岛状态停滞出口：ATG 原工程是舵机车，选线失败帧车仍按旧速度滚动，
-// 状态机靠"继续行驶"满足视觉出口或 total_distence 强制出口（circle.c 的 >4500）。
-// 本车 line_found=0 即停车，编码器不再增长，两类出口都永远无法触发，
-// 误入的环岛状态会把车锁死在原地。连续 ATG_CIRCLE_STALL_FRAMES 帧
-// "环岛状态活跃但无任何选线"时复位环岛状态，显式打日志；
-// 不伪造线、不复用旧帧，复位后若环岛证据真实存在会重新自然触发。
+// 环岛状态停滞出口：本车 line_found=0 即停车，状态机无法继续靠视觉/陀螺
+// 推进。连续 ATG_CIRCLE_STALL_FRAMES 帧"环岛状态活跃但无任何选线"时复位
+// 环岛状态，显式打日志；不伪造线、不复用旧帧，复位后若环岛证据真实存在
+// 会重新自然触发。
 enum
 {
     ATG_CIRCLE_STALL_FRAMES = 30,
@@ -117,6 +115,7 @@ static void reset_element_state(void)
 {
     cross_type = CROSS_NONE;
     circle_type = CIRCLE_NONE;
+    reset_circle_geometry_state();
     reset_circle_entry_votes();
     clear_circle_entry_suppression();
     round_type = ROUND_NONE;
@@ -136,8 +135,6 @@ static void reset_element_state(void)
     none_right_line = 0;
     have_left_line = 0;
     have_right_line = 0;
-    is_large_circle = 0;
-    is_small_circle = 0;
     circle_count = 0;
     Count_dis_Flag = 0;
     total_distence = 0;
@@ -146,8 +143,6 @@ static void reset_element_state(void)
     Ramp_total_distence = 0;
     Clean_Time_count = 0;
     Clean_Time_count_flag = 0;
-    broadcast_flag = 1;
-    if_clean_pid = 0;
 }
 
 static void update_distance_counters(int64_t encoder_total)
@@ -295,15 +290,21 @@ static void run_atg_elements(void)
        !ramp_type &&
        (circle_type == CIRCLE_RIGHT_BEGIN ||
         circle_type == CIRCLE_LEFT_BEGIN ||
-        circle_type == CIRCLE_LEFT_IN ||
-        circle_type == CIRCLE_RIGHT_IN ||
         circle_type == CIRCLE_NONE))
     {
         check_round();
     }
 #endif
+#if ATG_ENABLE_CIRCLE
+    // 真双断点圆环入口比半十字更具体;优先跑 circle,有 AB 候选时抑制 Half 防抢 far_Lpt。
+    if(!cross_type && !yroad_type && !round_type && !ramp_type && !garage_type)
+    {
+        check_circle();
+    }
+#endif
 #if ATG_ENABLE_CROSS
-    if(!yroad_type && !ramp_type && !circle_type && !cross_type && !round_type && !garage_type)
+    if(!yroad_type && !ramp_type && !circle_type && !cross_type && !round_type && !garage_type
+       && !circle_entry_candidate_pending())
     {
         check_Half();
     }
@@ -312,12 +313,6 @@ static void run_atg_elements(void)
     if(!circle_type && !yroad_type && !garage_type && !ramp_type)
     {
         Check_ramp();
-    }
-#endif
-#if ATG_ENABLE_CIRCLE
-    if(!cross_type && !yroad_type && !round_type && !ramp_type && !garage_type)
-    {
-        check_circle();
     }
 #endif
 #if ATG_ENABLE_YROAD
@@ -423,17 +418,114 @@ static void build_fixed_right_center_for_circle(void)
     Splicing_rightline_center_num = Splicing_rightline_s0s_num;
 }
 
+static void build_circle_left_in_center_by_c(void)
+{
+    if(!circle_C_point.found)
+    {
+        return;
+    }
+    // 当前 C 补线是同侧底部 raw anchor -> C, 再右偏半赛宽成中心线;
+    // 不是 C -> 外侧直道的双边融合线。
+    point_Cal_Line(Cal_rot_x(RAW_LEFT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
+                   Cal_rot_y(RAW_LEFT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
+                   Cal_rot_x(circle_C_point.raw_x, circle_C_point.raw_y),
+                   Cal_rot_y(circle_C_point.raw_x, circle_C_point.raw_y),
+                   leftline,
+                   &leftline_num);
+    if(leftline_num <= 1)
+    {
+        return;
+    }
+    Splicing_leftline_s1s_num = MT9V03X_H;
+    resample_points(leftline,
+                    leftline_num,
+                    Splicing_leftline_s1s,
+                    &Splicing_leftline_s1s_num,
+                    sample_dist * pixel_per_meter);
+    if(Splicing_leftline_s1s_num <= 1)
+    {
+        return;
+    }
+    track_leftline(Splicing_leftline_s1s,
+                   Splicing_leftline_s1s_num,
+                   Splicing_leftline_center,
+                   (int)round(2.0),
+                   pixel_per_meter * ROAD_WIDTH / 2);
+    Splicing_leftline_center_num = Splicing_leftline_s1s_num;
+    if(circle_cal_log_enabled())
+    {
+        printf("ATGCircleSpliceDiag: side=L mode=C anchor_raw=%d,%d C_raw=%d,%d edge_num=%d sample_num=%d center_num=%d outer_num=%d half_width=%.1f\n",
+               RAW_LEFT_ANCHOR_X,
+               RAW_BOTTOM_ANCHOR_Y,
+               circle_C_point.raw_x,
+               circle_C_point.raw_y,
+               leftline_num,
+               Splicing_leftline_s1s_num,
+               Splicing_leftline_center_num,
+               rpts1s_num,
+               pixel_per_meter * ROAD_WIDTH / 2);
+    }
+}
+
+static void build_circle_right_in_center_by_c(void)
+{
+    if(!circle_C_point.found)
+    {
+        return;
+    }
+    // 当前 C 补线是同侧底部 raw anchor -> C, 再左偏半赛宽成中心线;
+    // 不是 C -> 外侧直道的双边融合线。
+    point_Cal_Line_2(Cal_rot_x(RAW_RIGHT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
+                     Cal_rot_y(RAW_RIGHT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
+                     Cal_rot_x(circle_C_point.raw_x, circle_C_point.raw_y),
+                     Cal_rot_y(circle_C_point.raw_x, circle_C_point.raw_y),
+                     rightline,
+                     &rightline_num);
+    if(rightline_num <= 1)
+    {
+        return;
+    }
+    Splicing_rightline_s0s_num = MT9V03X_H;
+    resample_points(rightline,
+                    rightline_num,
+                    Splicing_rightline_s0s,
+                    &Splicing_rightline_s0s_num,
+                    sample_dist * pixel_per_meter);
+    if(Splicing_rightline_s0s_num <= 1)
+    {
+        return;
+    }
+    track_rightline(Splicing_rightline_s0s,
+                    Splicing_rightline_s0s_num,
+                    Splicing_rightline_center,
+                    (int)round(2.0),
+                    pixel_per_meter * ROAD_WIDTH / 2);
+    Splicing_rightline_center_num = Splicing_rightline_s0s_num;
+    if(circle_cal_log_enabled())
+    {
+        printf("ATGCircleSpliceDiag: side=R mode=C anchor_raw=%d,%d C_raw=%d,%d edge_num=%d sample_num=%d center_num=%d outer_num=%d half_width=%.1f\n",
+               RAW_RIGHT_ANCHOR_X,
+               RAW_BOTTOM_ANCHOR_Y,
+               circle_C_point.raw_x,
+               circle_C_point.raw_y,
+               rightline_num,
+               Splicing_rightline_s0s_num,
+               Splicing_rightline_center_num,
+               rpts0s_num,
+               pixel_per_meter * ROAD_WIDTH / 2);
+    }
+}
+
 static void build_circle_spliced_lines(void)
 {
-    // 补线中心是环岛 IN/OUT/RUNNING 桥接的控制选线来源。
-    // IN 和 OUT(ReadyoutRing) 使用固定外侧线；END(outRing) 使用当前外侧半宽线。
-    // 不复用旧帧中线，当前状态不能建线时就让选线显式为空。
+    // 补线中心是环岛 BEGIN(IN_C)/OUT/RUNNING 桥接的控制选线来源。
+    // 这里每帧从固定 raw 几何重建，不复用旧帧中线或旧 guide。
     Splicing_leftline_center_num = 0;
     Splicing_rightline_center_num = 0;
 
-    if(circle_type == CIRCLE_RIGHT_IN)
+    if(circle_type == CIRCLE_RIGHT_BEGIN && circle_ref_mode == CIRCLE_REF_IN_C)
     {
-        build_fixed_left_center_for_circle();
+        build_circle_right_in_center_by_c();
     }
     else if(circle_type == CIRCLE_RIGHT_RUNNING &&
             !circle_right_running_natural_left_ready())
@@ -444,9 +536,9 @@ static void build_circle_spliced_lines(void)
     {
         build_fixed_left_center_for_circle();
     }
-    else if(circle_type == CIRCLE_LEFT_IN)
+    else if(circle_type == CIRCLE_LEFT_BEGIN && circle_ref_mode == CIRCLE_REF_IN_C)
     {
-        build_fixed_right_center_for_circle();
+        build_circle_left_in_center_by_c();
     }
     else if(circle_type == CIRCLE_LEFT_RUNNING &&
             !circle_left_running_natural_right_ready())
@@ -468,8 +560,23 @@ static void select_work_line(void)
        garage_type != GARAGE_FOUND_RIGHT)
     {
         build_circle_spliced_lines();
-        if((circle_type == CIRCLE_RIGHT_OUT ||
-            circle_type == CIRCLE_RIGHT_IN ||
+        if(circle_type == CIRCLE_LEFT_BEGIN &&
+           circle_ref_mode == CIRCLE_REF_IN_C &&
+           Splicing_leftline_center_num > 0)
+        {
+            rpts = Splicing_leftline_center;
+            rpts_num = Splicing_leftline_center_num;
+            g_selected_line_source = "circle_in_c_left";
+        }
+        else if(circle_type == CIRCLE_RIGHT_BEGIN &&
+                circle_ref_mode == CIRCLE_REF_IN_C &&
+                Splicing_rightline_center_num > 0)
+        {
+            rpts = Splicing_rightline_center;
+            rpts_num = Splicing_rightline_center_num;
+            g_selected_line_source = "circle_in_c_right";
+        }
+        else if((circle_type == CIRCLE_RIGHT_OUT ||
             circle_type == CIRCLE_RIGHT_RUNNING) &&
            Splicing_leftline_center_num > 0)
         {
@@ -477,10 +584,9 @@ static void select_work_line(void)
             rpts_num = Splicing_leftline_center_num;
             g_selected_line_source =
                 circle_type == CIRCLE_RIGHT_RUNNING ? "circle_running_fixed_left" :
-                (circle_type == CIRCLE_RIGHT_IN ? "circle_in_fixed_left" : "circle_out_fixed_left");
+                "circle_out_fixed_left";
         }
         else if((circle_type == CIRCLE_LEFT_OUT ||
-                 circle_type == CIRCLE_LEFT_IN ||
                  circle_type == CIRCLE_LEFT_RUNNING) &&
                 Splicing_rightline_center_num > 0)
         {
@@ -488,19 +594,7 @@ static void select_work_line(void)
             rpts_num = Splicing_rightline_center_num;
             g_selected_line_source =
                 circle_type == CIRCLE_LEFT_RUNNING ? "circle_running_fixed_right" :
-                (circle_type == CIRCLE_LEFT_IN ? "circle_in_fixed_right" : "circle_out_fixed_right");
-        }
-        else if(circle_type == CIRCLE_RIGHT_END && rptsc0_num > 0)
-        {
-            rpts = rptsc0;
-            rpts_num = rptsc0_num;
-            g_selected_line_source = "circle_end_left_half";
-        }
-        else if(circle_type == CIRCLE_LEFT_END && rptsc1_num > 0)
-        {
-            rpts = rptsc1;
-            rpts_num = rptsc1_num;
-            g_selected_line_source = "circle_end_right_half";
+                "circle_out_fixed_right";
         }
         else if(circle_type == CIRCLE_LEFT_OUT && rptsc1_num > 0)
         {
@@ -550,6 +644,39 @@ static void select_work_line(void)
                         pixel_per_meter * ROAD_WIDTH / 2);
         rpts_num = count;
         g_selected_line_source = "far_right";
+    }
+
+    if(circle_cal_log_enabled() && circle_type != CIRCLE_NONE)
+    {
+        printf("ATGCircleRefDiag: circle=%d ref=%d src=%s(%d) track=%d rpts=%d norm_pre=%d "
+               "spL=%d spR=%d near=%d/%d center=%d/%d far=%d/%d A=%d@%d,%d#%d B=%d@%d,%d#%d C=%d@%d,%d#%d\n",
+               (int)circle_type,
+               (int)circle_ref_mode,
+               atg_reference_selected_line_source(),
+               atg_reference_selected_line_source_id(),
+               track_type,
+               rpts_num,
+               rptsn_num,
+               Splicing_leftline_center_num,
+               Splicing_rightline_center_num,
+               rpts0s_num,
+               rpts1s_num,
+               rptsc0_num,
+               rptsc1_num,
+               far_rpts0s_num,
+               far_rpts1s_num,
+               circle_A_point.found,
+               circle_A_point.found ? circle_A_point.raw_x : -1,
+               circle_A_point.found ? circle_A_point.raw_y : -1,
+               circle_A_point.id,
+               circle_B_point.found,
+               circle_B_point.found ? circle_B_point.raw_x : -1,
+               circle_B_point.found ? circle_B_point.raw_y : -1,
+               circle_B_point.id,
+               circle_C_point.found,
+               circle_C_point.found ? circle_C_point.raw_x : -1,
+               circle_C_point.found ? circle_C_point.raw_y : -1,
+               circle_C_point.id);
     }
 }
 
@@ -646,7 +773,7 @@ void atg_reference_reset(void)
     clear_frame_outputs();
 }
 
-// 复位集对照 circle.c CIRCLE_LEFT_END/RIGHT_END 自然退出时的还原变量。
+// 复位集对照 circle.c OUT->NONE 和异常撤销时的还原变量。
 static void reset_circle_to_none(const char *reason)
 {
     printf("ATGCircleReset: %s circle_type=%d -> NONE\n", reason, (int)circle_type);
@@ -656,15 +783,13 @@ static void reset_circle_to_none(const char *reason)
     begin_y = BEGIN_Y;
     Count_dis_Flag = 0;
     aim_distance = aim_distance_far;
-    is_large_circle = 0;
-    is_small_circle = 0;
     if_lost_left_line = 0;
     if_lost_right_line = 0;
     none_left_line = 0;
     none_right_line = 0;
     have_left_line = 0;
     have_right_line = 0;
-    if_clean_pid = 0;
+    reset_circle_geometry_state();
     g_circle_stall_frames = 0;
     g_circle_begin_dist = 0;
     g_circle_begin_last_dist = 0;
@@ -672,15 +797,17 @@ static void reset_circle_to_none(const char *reason)
 
 static void revoke_idle_circle_begin(void)
 {
-    if(circle_type == CIRCLE_LEFT_BEGIN && none_left_line == 0 &&
-       g_circle_begin_dist > ATG_CIRCLE_BEGIN_MAX_DIST_COUNTS)
+    if(circle_type == CIRCLE_LEFT_BEGIN &&
+       g_circle_begin_dist > ATG_CIRCLE_BEGIN_MAX_DIST_COUNTS &&
+       !circle_heading_enter_ready())
     {
-        reset_circle_to_none("LEFT_BEGIN idle beyond 1.0m without lost-line evidence,");
+        reset_circle_to_none("LEFT_BEGIN timeout before heading enter,");
     }
-    else if(circle_type == CIRCLE_RIGHT_BEGIN && none_right_line == 0 &&
-            g_circle_begin_dist > ATG_CIRCLE_BEGIN_MAX_DIST_COUNTS)
+    else if(circle_type == CIRCLE_RIGHT_BEGIN &&
+            g_circle_begin_dist > ATG_CIRCLE_BEGIN_MAX_DIST_COUNTS &&
+            !circle_heading_enter_ready())
     {
-        reset_circle_to_none("RIGHT_BEGIN idle beyond 1.0m without lost-line evidence,");
+        reset_circle_to_none("RIGHT_BEGIN timeout before heading enter,");
     }
 }
 
@@ -726,6 +853,28 @@ int atg_reference_process_frame(uint8_t gray[120][160], int64_t encoder_total)
     select_work_line();
 
     const int ok = normalize_selected_line();
+    if(circle_cal_log_enabled() && circle_type != CIRCLE_NONE)
+    {
+        printf("ATGCircleNormDiag: circle=%d ref=%d src=%s(%d) ok=%d rpts=%d rptsn=%d aim=%d inv_aim=%.1f,%.1f cxcy=%.1f,%.1f Guide=%.1f/%.1f/%.1f pure=%.2f/%.2f/%.2f\n",
+               (int)circle_type,
+               (int)circle_ref_mode,
+               atg_reference_selected_line_source(),
+               atg_reference_selected_line_source_id(),
+               ok,
+               rpts_num,
+               rptsn_num,
+               aim_idx,
+               inv_aim_idx[0],
+               inv_aim_idx[1],
+               cx,
+               cy,
+               Guide,
+               Guide_up,
+               Guide_up_up,
+               pure_angle,
+               pure_angle_up,
+               pure_angle_up_up);
+    }
     exit_circle_after_stall(ok);
     if(ok)
     {
@@ -753,8 +902,8 @@ int atg_reference_selected_line_source_id(void)
     if(strcmp(source, "circle_running_fixed_right") == 0) return 4;
     if(strcmp(source, "circle_in_fixed_right") == 0) return 5;
     if(strcmp(source, "circle_out_fixed_right") == 0) return 6;
-    if(strcmp(source, "circle_end_left_half") == 0) return 7;
-    if(strcmp(source, "circle_end_right_half") == 0) return 8;
+    if(strcmp(source, "circle_in_c_left") == 0) return 15;
+    if(strcmp(source, "circle_in_c_right") == 0) return 16;
     if(strcmp(source, "out_rptsc1") == 0) return 9;
     if(strcmp(source, "rptsc0") == 0) return 10;
     if(strcmp(source, "rptsc1") == 0) return 11;

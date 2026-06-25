@@ -80,11 +80,9 @@ void run_yroad() {
         yroad_type = YROAD_RIGHT_OUT;//begin_y=MT9V03X_H*0.85;
         Count_dis_Flag=1;
     } else if (yroad_type == YROAD_LEFT_OUT && !Yfound&&total_distence>=4000) {
-        broadcast_flag=1;
         yroad_type = YROAD_NONE;begin_y=BEGIN_Y;
         Count_dis_Flag=0;
     } else if (yroad_type == YROAD_RIGHT_OUT && !Yfound&&total_distence>=4000) {
-        broadcast_flag=1;
         yroad_type = YROAD_NONE;begin_y=BEGIN_Y;
         Count_dis_Flag=0;
     }

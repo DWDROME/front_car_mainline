@@ -130,8 +130,7 @@ extern float Guide, Guide_up, Guide_up_up;
 extern float cx, cy;
 extern float inv_aim_idx[2], inv_aim_idx_up[2], inv_aim_idx_up_up[2];
 extern float inv_rptsn[MT9V03X_HH][2];
-extern int broadcast_flag;
-extern uint8 if_check_ramp, if_clean_pid;
+extern uint8 if_check_ramp;
 extern int not_have_line;
 
 int range_limit(int x, int low, int up);

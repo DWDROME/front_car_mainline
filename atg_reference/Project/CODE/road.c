@@ -43,11 +43,4 @@ void check_road(void)
         }
 
     }
-//    else
-//    {
-//        if(is_large_circle){
-//            road_type = Large_Circle;
-//        }
-//        else road_type = Small_Cirlce;
-//    }
 }

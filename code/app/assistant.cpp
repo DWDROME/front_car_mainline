@@ -21,8 +21,9 @@ extern "C" {
 // 发送图为上下拼接的 160x240：上半是原图，下半是 IPM 俯视图（逐像素 inv_rot 反向采样）。
 //   左/右边线 = ipts0/ipts1 (raw 追线点，画在上半)
 //   中线      = inv_rptsn (port step 每帧已把 rptsn 投回原图，画在上半)
-//   种子行    = 穿过 begin_y 的水平线（独立通道）；左右种子 ipts0[0]/ipts1[0] 画方框叠加在图上
+//   断点扫描线 = 圆环入口 inner-hit 的 Lpt seed 竖向参考线；左右种子 ipts0[0]/ipts1[0] 画方框叠加在图上
 //   角点      = Lpt0/Lpt1 (rpts0s/rpts1s 上的 L 角，经 inv_rot 投回原图画十字)
+//   圆环 B/C  = circle_B_point/circle_C_point (raw 几何点，复用角点 marker 通道并叠加到原图)
 //   环岛补线  = Splicing_*/leftline/rightline 按大佬显示分支的状态条件叠加在上半图
 //               （环岛 IN/OUT 时 rpts 控制选线直接取 Splicing_*_center，补线就是控制输入）
 //   IPM 下半  = rpts0s/rpts1s/rptsn 既作为 boundary 发给上位机，也用灰度像素直接叠加
@@ -44,6 +45,7 @@ constexpr int k_assistant_coord8_limit = 256;         // dot_type 未置 16-bit 
 constexpr int k_assistant_dot_count_limit = UINT16_MAX;
 constexpr int k_marker_radius = 3;                    // L 角十字标记半径
 constexpr uint8_t k_marker_value = 255;               // L 角十字标记亮度
+constexpr uint8_t k_marker_dark_value = 0;             // 几何点外框亮度；配合亮十字保证黑/白底都能看见
 constexpr int k_seed_box_radius = 3;                  // 种子点显示方框半径
 constexpr uint8_t k_seed_box_value = 255;             // 种子点方框亮度
 constexpr uint8_t k_splice_edge_value = 80;           // 环岛拼接边线/几何延长线叠加亮度（暗）
@@ -59,7 +61,7 @@ enum display_channel_t
     DISPLAY_CHANNEL_LEFT = 0,
     DISPLAY_CHANNEL_MID = 1,
     DISPLAY_CHANNEL_RIGHT = 2,
-    DISPLAY_CHANNEL_SEED_ROW = 3,
+    DISPLAY_CHANNEL_ENTRY_SCAN = 3,
     DISPLAY_CHANNEL_IPM_LEFT = 4,
     DISPLAY_CHANNEL_IPM_MID = 5,
     DISPLAY_CHANNEL_IPM_RIGHT = 6,
@@ -67,7 +69,7 @@ enum display_channel_t
     DISPLAY_CHANNEL_COUNT = 8,
 };
 
-constexpr int k_display_boundary_limit = DISPLAY_CHANNEL_COUNT; // raw 左/中/右 / 种子行 / IPM 左/中/右 / L 点十字
+constexpr int k_display_boundary_limit = DISPLAY_CHANNEL_COUNT; // raw 左/中/右 / 断点扫描 / IPM 左/中/右 / L/B/C 标记
 
 static_assert(k_display_boundary_limit <= k_assistant_boundary_capacity,
               "display boundary count exceeds SeekFree assistant protocol capacity");
@@ -308,11 +310,40 @@ void append_lpt_cross(int found, const float pts[][2], int num, int id, uint8_t 
     }
 }
 
-int copy_lpt_crosses(uint8_t *xs, uint8_t *ys)
+void append_raw_cross(int found, int x, int y, uint8_t *xs, uint8_t *ys, int *count)
+{
+    if(!found || xs == nullptr || ys == nullptr || count == nullptr || !raw_point_valid(x, y))
+    {
+        return;
+    }
+
+    for(int dy = -k_marker_radius; dy <= k_marker_radius; ++dy)
+    {
+        if(raw_point_valid(x, y + dy))
+        {
+            append_display_pt(xs, ys, count, x, y + dy);
+        }
+    }
+    for(int dx = -k_marker_radius; dx <= k_marker_radius; ++dx)
+    {
+        if(dx == 0)
+        {
+            continue;
+        }
+        if(raw_point_valid(x + dx, y))
+        {
+            append_display_pt(xs, ys, count, x + dx, y);
+        }
+    }
+}
+
+int copy_marker_crosses(uint8_t *xs, uint8_t *ys)
 {
     int n = 0;
     append_lpt_cross(Lpt0_found ? 1 : 0, rpts0s, rpts0s_num, Lpt0_rpts0s_id, xs, ys, &n);
     append_lpt_cross(Lpt1_found ? 1 : 0, rpts1s, rpts1s_num, Lpt1_rpts1s_id, xs, ys, &n);
+    append_raw_cross(circle_B_point.found, circle_B_point.raw_x, circle_B_point.raw_y, xs, ys, &n);
+    append_raw_cross(circle_C_point.found, circle_C_point.raw_x, circle_C_point.raw_y, xs, ys, &n);
     return n;
 }
 
@@ -492,23 +523,95 @@ void draw_atg_corner(uint8_t image[][RAW_W],
     mark_cross(image, x, y, k_marker_value);
 }
 
-// 种子行：穿过 ATG 起搜行 begin_y 的整条水平线，用独立通道发送。
-// image_handle() 从 (W/2 - begin_x, begin_y) 和 (W/2 + begin_x, begin_y) 分别向左右两侧扫，
-// 这条线告诉上位机"第一步起搜发生在画面哪一行"。
-int seed_row_pts(uint8_t *xs, uint8_t *ys)
+int circle_entry_scan_seed_raw(int *seed_x, int *seed_y)
+{
+    if(seed_x == nullptr || seed_y == nullptr)
+    {
+        return 0;
+    }
+
+    const int left_entry_side =
+        circle_type == CIRCLE_LEFT_BEGIN ||
+        (circle_type == CIRCLE_NONE && Lpt0_found && !Lpt1_found);
+    const int right_entry_side =
+        circle_type == CIRCLE_RIGHT_BEGIN ||
+        (circle_type == CIRCLE_NONE && !Lpt0_found && Lpt1_found);
+
+    if(left_entry_side)
+    {
+        if(!Lpt0_found || rpts0s_num <= 0)
+        {
+            return 0;
+        }
+        const int id = std::clamp(Lpt0_rpts0s_id, 0, rpts0s_num - 1);
+        const float raw_x = Cal_inv_rot_x(rpts0s[id][0], rpts0s[id][1]) - 10.0F;
+        const float raw_y = Cal_inv_rot_y(rpts0s[id][0], rpts0s[id][1]) - 5.0F;
+        *seed_x = std::clamp(static_cast<int>(raw_x), block_size / 2, MT9V03X_W - block_size / 2 - 1);
+        *seed_y = std::clamp(static_cast<int>(raw_y), block_size / 2 + 1, MT9V03X_H - block_size / 2 - 1);
+        return 1;
+    }
+
+    if(right_entry_side)
+    {
+        if(!Lpt1_found || rpts1s_num <= 0)
+        {
+            return 0;
+        }
+        const int id = std::clamp(Lpt1_rpts1s_id, 0, rpts1s_num - 1);
+        const float raw_x = Cal_inv_rot_x(rpts1s[id][0], rpts1s[id][1]) + 5.0F;
+        const float raw_y = Cal_inv_rot_y(rpts1s[id][0], rpts1s[id][1]) - 5.0F;
+        *seed_x = std::clamp(static_cast<int>(raw_x), block_size / 2, MT9V03X_W - block_size / 2 - 1);
+        *seed_y = std::clamp(static_cast<int>(raw_y), block_size / 2 + 1, MT9V03X_H - block_size / 2 - 1);
+        return 1;
+    }
+
+    return 0;
+}
+
+// 圆环入口断点/inner-hit 诊断线：与 circle.c 的 Lpt seed 同源，显示为竖线。
+// 它不是 begin_y 起搜横线；它用来确认入口 inner-hit 正在从哪一列附近找黑点。
+int entry_scan_line_pts(uint8_t *xs, uint8_t *ys)
 {
     if(xs == nullptr || ys == nullptr)
     {
         return 0;
     }
 
-    const int y = std::clamp(static_cast<int>(begin_y), 0, RAW_H - 1);
-    int n = 0;
-    for(int x = 0; x < RAW_W && n < k_point_limit; x += k_display_point_stride)
+    int seed_x = 0;
+    int seed_y = 0;
+    if(!circle_entry_scan_seed_raw(&seed_x, &seed_y))
     {
-        append_display_pt(xs, ys, &n, x, y);
+        return 0;
     }
+
+    int n = 0;
+    for(int y = 0; y < RAW_H && n < k_point_limit; y += k_display_point_stride)
+    {
+        append_display_pt(xs, ys, &n, seed_x, y);
+    }
+    append_raw_cross(1, seed_x, seed_y, xs, ys, &n);
     return n;
+}
+
+void draw_entry_scan_line_on_image(uint8_t image[][RAW_W])
+{
+    if(image == nullptr)
+    {
+        return;
+    }
+
+    int seed_x = 0;
+    int seed_y = 0;
+    if(!circle_entry_scan_seed_raw(&seed_x, &seed_y))
+    {
+        return;
+    }
+
+    for(int y = 0; y < RAW_H; ++y)
+    {
+        image[y][seed_x] = k_marker_value;
+    }
+    mark_cross(image, seed_x, seed_y, k_marker_dark_value);
 }
 
 // 在图上 (x,y) 处画一个空心方框（标种子点用，和角点十字区分）。
@@ -549,6 +652,24 @@ void mark_box(uint8_t image[][RAW_W], int x, int y, uint8_t value)
     }
 }
 
+void draw_circle_anchor_point(uint8_t image[][RAW_W], const circle_anchor_point_t *point)
+{
+    if(image == nullptr || point == nullptr || !point->found ||
+       !raw_point_valid(point->raw_x, point->raw_y))
+    {
+        return;
+    }
+
+    mark_cross(image, point->raw_x, point->raw_y, k_marker_value);
+    mark_box(image, point->raw_x, point->raw_y, k_marker_dark_value);
+}
+
+void draw_circle_anchor_points(uint8_t image[][RAW_W])
+{
+    draw_circle_anchor_point(image, &circle_B_point);
+    draw_circle_anchor_point(image, &circle_C_point);
+}
+
 // 把 ATG 实际找到的左右种子（ipts0[0]/ipts1[0]，即追线起点）画成方框叠加到发送图上。
 // 判断方法：方框应该正好落在左右赛道边线上；缺失或落在别处说明第一步起搜不正确。
 void draw_atg_seeds(uint8_t image[][RAW_W])
@@ -586,7 +707,7 @@ void draw_atg_ipm_line(uint8_t image[][RAW_W], const float pts[][2], int num, ui
 // 暗线 = 拼接边线/几何延长线（补线原料），亮线 = 补线中心（环岛 IN/OUT 它就是 rpts 控制选线来源）。
 void draw_atg_splicing(uint8_t image[][RAW_W])
 {
-    if(circle_type == CIRCLE_RIGHT_IN)
+    if(circle_type == CIRCLE_RIGHT_BEGIN && circle_ref_mode == CIRCLE_REF_IN_C)
     {
         if(far_Lpt1_found)
         {
@@ -594,7 +715,7 @@ void draw_atg_splicing(uint8_t image[][RAW_W])
             draw_atg_ipm_line(image, Splicing_leftline_center, Splicing_leftline_center_num, k_splice_center_value);
         }
     }
-    else if(circle_type == CIRCLE_RIGHT_OUT || circle_type == CIRCLE_RIGHT_END)
+    else if(circle_type == CIRCLE_RIGHT_OUT)
     {
         if((Lpt0_found && far_rpts0s_num > 0) || rpts0s_num < 0.6F / sample_dist)
         {
@@ -602,7 +723,7 @@ void draw_atg_splicing(uint8_t image[][RAW_W])
             draw_atg_ipm_line(image, Splicing_leftline_center, Splicing_leftline_center_num, k_splice_center_value);
         }
     }
-    else if(circle_type == CIRCLE_LEFT_IN)
+    else if(circle_type == CIRCLE_LEFT_BEGIN && circle_ref_mode == CIRCLE_REF_IN_C)
     {
         if(far_Lpt0_found)
         {
@@ -610,7 +731,7 @@ void draw_atg_splicing(uint8_t image[][RAW_W])
             draw_atg_ipm_line(image, Splicing_rightline_center, Splicing_rightline_center_num, k_splice_center_value);
         }
     }
-    else if(circle_type == CIRCLE_LEFT_OUT || circle_type == CIRCLE_LEFT_END)
+    else if(circle_type == CIRCLE_LEFT_OUT)
     {
         if(Lpt1_found || rpts1s_num < 0.6F / sample_dist)
         {
@@ -655,7 +776,7 @@ void draw_ipm_pts(uint8_t image[][RAW_W], const float pts[][2], int num, uint8_t
     }
 }
 
-// 组装并下发一帧上位机数据：左/中/右三条线 + 种子行 + 灰度图 + 角点/种子叠加，全部直读 ATG 当前帧全局。
+// 组装并下发一帧上位机数据：左/中/右三条线 + 断点扫描线 + 灰度图 + 角点/种子叠加，全部直读 ATG 当前帧全局。
 // 显示边界共用一个 dot_num（取 max 后 pad 补齐），不能用最短线长度，否则会裁短边线。
 int config_points(const runtime_t *rt)
 {
@@ -680,9 +801,9 @@ int config_points(const runtime_t *rt)
                          ipts1_num,
                          g_asst.display_x[DISPLAY_CHANNEL_RIGHT],
                          g_asst.display_y[DISPLAY_CHANNEL_RIGHT]);
-    point_count[DISPLAY_CHANNEL_SEED_ROW] =
-        seed_row_pts(g_asst.display_x[DISPLAY_CHANNEL_SEED_ROW],
-                     g_asst.display_y[DISPLAY_CHANNEL_SEED_ROW]);
+    point_count[DISPLAY_CHANNEL_ENTRY_SCAN] =
+        entry_scan_line_pts(g_asst.display_x[DISPLAY_CHANNEL_ENTRY_SCAN],
+                            g_asst.display_y[DISPLAY_CHANNEL_ENTRY_SCAN]);
     point_count[DISPLAY_CHANNEL_IPM_LEFT] =
         copy_atg_ipm_pts(rpts0s,
                          rpts0s_num,
@@ -699,8 +820,8 @@ int config_points(const runtime_t *rt)
                          g_asst.display_x[DISPLAY_CHANNEL_IPM_RIGHT],
                          g_asst.display_y[DISPLAY_CHANNEL_IPM_RIGHT]);
     point_count[DISPLAY_CHANNEL_LPT] =
-        copy_lpt_crosses(g_asst.display_x[DISPLAY_CHANNEL_LPT],
-                         g_asst.display_y[DISPLAY_CHANNEL_LPT]);
+        copy_marker_crosses(g_asst.display_x[DISPLAY_CHANNEL_LPT],
+                            g_asst.display_y[DISPLAY_CHANNEL_LPT]);
 
     // 通道数每帧固定：空通道发一个右下角哨兵点，避免上位机因边界数量跳变而闪屏。
     // 这是显示协议占位，不是算法数据；线丢失时该通道整条收缩到角落一个点，诊断语义保留。
@@ -728,10 +849,12 @@ int config_points(const runtime_t *rt)
 
     std::memcpy(g_asst.image[0], rt->gray[0], RAW_W * RAW_H);
     render_ipm_half(g_asst.image, rt->gray);
+    draw_entry_scan_line_on_image(g_asst.image);
     draw_atg_splicing(g_asst.image);
     draw_atg_seeds(g_asst.image);
     draw_atg_corner(g_asst.image, Lpt0_found ? 1 : 0, rpts0s, rpts0s_num, Lpt0_rpts0s_id);
     draw_atg_corner(g_asst.image, Lpt1_found ? 1 : 0, rpts1s, rpts1s_num, Lpt1_rpts1s_id);
+    draw_circle_anchor_points(g_asst.image);
     draw_ipm_pts(g_asst.image, rpts0s, rpts0s_num, k_ipm_left_value);
     draw_ipm_pts(g_asst.image, rpts1s, rpts1s_num, k_ipm_right_value);
     draw_ipm_pts(g_asst.image, rptsn, rptsn_num, k_ipm_mid_value);

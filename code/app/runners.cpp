@@ -389,7 +389,7 @@ void print_replay_frame(int frame, const runtime_t *rt)
                           &ml_forward);
 
     std::printf("replay frame=%d line=%d track=%d cross=%d circle=%d round=%d yroad=%d ramp=%d road=%d speed=%d "
-                "near=%d/%d raw=%d/%d ipm=%d/%d center=%d/%d sel=%d/%d "
+                "near=%d/%d raw=%d/%d ipm=%d/%d center=%d/%d sel=%d/%d src=%d "
                 "l=%d@%d/%d@%d y=%d@%d/%d@%d far_l=%d@%d/%d@%d far_num=%d/%d "
                 "straight=%d/%d far_straight=%d/%d conf=%.1f/%.1f/%.1f/%.1f "
                 "dist=%d begin=%lld/%lld ramp_dist=%d m0=(%d,%d) ml=(%d,%d) md=%d/%d/%d "
@@ -415,6 +415,7 @@ void print_replay_frame(int frame, const runtime_t *rt)
                 rptsc1_num,
                 rpts_num,
                 rptsn_num,
+                atg_reference_selected_line_source_id(),
                 Lpt0_found ? 1 : 0,
                 Lpt0_found ? Lpt0_rpts0s_id : -1,
                 Lpt1_found ? 1 : 0,

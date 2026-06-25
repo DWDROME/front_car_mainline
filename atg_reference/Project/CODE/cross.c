@@ -105,7 +105,6 @@ void run_cross()
         if (not_have_line > 2 && rpts1s_num > 20 && rpts0s_num > 20) {
             cross_type = CROSS_NONE;
             ramp_type=RAMP_NONE;
-            broadcast_flag=1;
             Clean_Time_count_flag = 0;
             not_have_line = 0;
         }
@@ -131,7 +130,6 @@ void run_cross()
                 if_lost_left_line = 0;
                 Clean_Time_count_flag = 0;
                 ramp_type=RAMP_NONE;
-                broadcast_flag=1;
                 aim_distance = AIM_DISTENCE;
                 not_have_line = 0;
                 Lpt0_found_flag=0;
@@ -149,7 +147,6 @@ void run_cross()
                 if_lost_right_line= 0;
                 ramp_type=RAMP_NONE;
                 Clean_Time_count_flag = 0;
-                broadcast_flag=1;
                 aim_distance = AIM_DISTENCE;
                 not_have_line = 0;
                 Lpt1_found_flag=0;
@@ -166,7 +163,7 @@ void cross_farline_L()
         /*
          * if_lost_left_line表示边线是否曾经丢失过
                         若if_lost_left_line的条件不满足，则说明边线经过了一个先有线后丢线的过程，有可能是某个元素行进到了下一个阶段
-                        比如圆环从CIRCLE_LEFT_BEGIN跳到了CIRCLE_LEFT_IN，从十字路口中间驶离十字元素等情况都会经过这个过程
+                        比如圆环从CIRCLE_LEFT_BEGIN进入入环补线相位，从十字路口中间驶离十字元素等情况都会经过这个过程
                         第一步，当找到左侧拐点，且左侧的拐点边线还在没丢的情况下，将俯视角下的拐点坐标映射回原图坐标
                         利用此坐标作为起始点，可以向上去找同侧远端边线
                         假设*表示边线，&为近处的拐点，#表示远处的拐点，则在这个近处拐点&的坐标基础上进行一定的偏移，用￥表示远端边线搜索的起始点坐标
@@ -201,31 +198,13 @@ void cross_farline_L()
         inv_Lpt0_found[1] = Cal_inv_rot_y(rpts0s[clip(Lpt0_rpts0s_id,0,rpts0s_num-1)][0],rpts0s[clip(Lpt0_rpts0s_id,0,rpts0s_num-1)][1])-17;//-5和-17都是在拐点坐标的基础上进行相对偏移
         rptsc0_num = rpts0s_num = Lpt0_rpts0s_id-1 ;            //截断处理，防止顺着一侧边线划出去
     }
-    else if(circle_type== CIRCLE_LEFT_IN||circle_type== CIRCLE_RIGHT_OUT||circle_type== CIRCLE_RIGHT_END){
+    else if(circle_type== CIRCLE_RIGHT_OUT){
 
         //在这个if条件中主要用于圆环各阶段近处丢线情况下，寻找合适的起始点，从而从远端的边线信息中提取角点，从而进行补线的操作
-        if(circle_type== CIRCLE_LEFT_IN)
-        {
-            //圆环CIRCLE_LEFT_IN阶段原本是利用搜到的内圆边线作为中线，但在R50且车速很快的情况下，会有丢失内侧边线的可能性
-            if(ipts0_num>12&&!if_lost_left_line){
-                //当内侧边线还能搜索到、没丢过线、满足一定的长度时，根据内侧边线末端的一个点的坐标作为基准，向赛道中见方向平移一定的距离作为远端边线搜索的起始点
-                inv_Lpt0_found[0] = ipts0[ipts0_num-3][0]+15;
-                inv_Lpt0_found[1] = ipts0[ipts0_num-3][1]-5;
-            }else{
-                //若丢失时则表明车身此时已经接近圆环的入环口，内侧丢失边线的情况下则可以手动给定一个固定的起始点作为远端边线搜索的起始点
-                //固定点的坐标需要根据你图像的尺寸和摄像头高度修改
-                if_lost_left_line = 1;
-                inv_Lpt0_found[0] = 40;
-                inv_Lpt0_found[1] = begin_y*0.85;
-            }
-        }
-        else {
-            //这是出环阶段的情况下，原本的CIRCLE_RIGHT_OUT是利用内侧边线划出去，但是R50这种小圆也是极容易丢失边线的
-            //因此我选了一个比较靠近图像正中下方的一个点，这样他既不会在向上搜边线的时候碰到外环边线，而且能搜到赛道对侧的长直道，用于出环补线
-            inv_Lpt0_found[0] = 80;
-            inv_Lpt0_found[1] = begin_y*0.85;
-
-        }
+        //这是出环阶段的情况下，原本的CIRCLE_RIGHT_OUT是利用内侧边线划出去，但是R50这种小圆也是极容易丢失边线的
+        //因此我选了一个比较靠近图像正中下方的一个点，这样他既不会在向上搜边线的时候碰到外环边线，而且能搜到赛道对侧的长直道，用于出环补线
+        inv_Lpt0_found[0] = 80;
+        inv_Lpt0_found[1] = begin_y*0.85;
 
 
     }
@@ -343,126 +322,105 @@ void cross_farline_R()//左右同理
         inv_Lpt1_found[1] = Cal_inv_rot_y(rpts1s[clip(Lpt1_rpts1s_id,0,rpts1s_num-1)][0],rpts1s[clip(Lpt1_rpts1s_id,0,rpts1s_num-1)][1])-17;
         rptsc1_num = rpts1s_num = Lpt1_rpts1s_id ;
     }
-    else if((circle_type== CIRCLE_RIGHT_IN||circle_type== CIRCLE_LEFT_OUT||circle_type== CIRCLE_LEFT_END)&&!garage_type){
-        if(circle_type== CIRCLE_RIGHT_IN)
+    else if(circle_type== CIRCLE_LEFT_OUT&&!garage_type){
+        int seed_mode_dynamic = 0;
+        const char *seed_reason = "not_left_out";
+        const int idx_low = rptsc1_num / 3;
+        const int idx_high = rptsc1_num * 2 / 3;
+        if(rptsc1_num > 10)
         {
-            if(ipts1_num>12&&!if_lost_right_line){
-                inv_Lpt1_found[0] = ipts1[ipts1_num-3][0]-15;
-                inv_Lpt1_found[1] = ipts1[ipts1_num-3][1]-5;  // 对称化(阶段0): 与左环动态种子 y 偏移 -5 对齐(原 -8); 纵向微调
-            }else{
-                if_lost_right_line =1;
-                // 对称化(阶段0): 右环 IN 丢线固定种子 x 与左环(cross_farline_L 中 x=40)关于图像中心(MT9V03X_W=160)镜像 => 160-40=120。
-                // 原值 140 偏右于镜像位 20px、距右边界仅 20px, 疑致右环远线搜索偏外 -> 补线偏右 -> 贴内圈。待 live 验证。
-                inv_Lpt1_found[0] = 120;
-                inv_Lpt1_found[1] = begin_y*0.85;
-            }
-        }
-        else {
-            int seed_mode_dynamic = 0;
-            const char *seed_reason = "not_left_out";
+            const float raw_low_x = Cal_inv_rot_x(rptsc1[idx_low][0], rptsc1[idx_low][1]);
+            const float raw_low_y = Cal_inv_rot_y(rptsc1[idx_low][0], rptsc1[idx_low][1]);
+            const float raw_high_x = Cal_inv_rot_x(rptsc1[idx_high][0], rptsc1[idx_high][1]);
+            const float raw_high_y = Cal_inv_rot_y(rptsc1[idx_high][0], rptsc1[idx_high][1]);
+            const float dx_raw = raw_high_x - raw_low_x;
+            const float dy_raw = raw_high_y - raw_low_y;
+            const float len = sqrtf(dx_raw * dx_raw + dy_raw * dy_raw);
 
-            if(circle_type == CIRCLE_LEFT_OUT)
+            /*
+             * Left-circle OUT should see the right boundary trend from
+             * lower-right toward upper-left in raw coordinates. Use that
+             * current-frame trend only when both axes agree.
+             */
+            if(len > 1.0f && dx_raw < -1.0f && dy_raw < -1.0f)
             {
-                const int idx_low = rptsc1_num / 3;
-                const int idx_high = rptsc1_num * 2 / 3;
-                if(rptsc1_num > 10)
+                const float proj = 20.0f;
+                const float sx = raw_high_x + dx_raw / len * proj;
+                const float sy = raw_high_y + dy_raw / len * proj;
+                const float min_dynamic_x = MT9V03X_W * 0.5f;
+                const float max_dynamic_x = MT9V03X_W - block_size / 2 - 1;
+                const float min_dynamic_y = block_size / 2 + 1;
+                const float max_dynamic_y = MT9V03X_H - block_size / 2 - 1;
+                if(sx >= min_dynamic_x && sx <= max_dynamic_x &&
+                   sy >= min_dynamic_y && sy <= max_dynamic_y)
                 {
-                    const float raw_low_x = Cal_inv_rot_x(rptsc1[idx_low][0], rptsc1[idx_low][1]);
-                    const float raw_low_y = Cal_inv_rot_y(rptsc1[idx_low][0], rptsc1[idx_low][1]);
-                    const float raw_high_x = Cal_inv_rot_x(rptsc1[idx_high][0], rptsc1[idx_high][1]);
-                    const float raw_high_y = Cal_inv_rot_y(rptsc1[idx_high][0], rptsc1[idx_high][1]);
-                    const float dx_raw = raw_high_x - raw_low_x;
-                    const float dy_raw = raw_high_y - raw_low_y;
-                    const float len = sqrtf(dx_raw * dx_raw + dy_raw * dy_raw);
-
-                    /*
-                     * Left-circle OUT should see the right boundary trend from
-                     * lower-right toward upper-left in raw coordinates. Use that
-                     * current-frame trend only when both axes agree.
-                     */
-                    if(len > 1.0f && dx_raw < -1.0f && dy_raw < -1.0f)
+                    inv_Lpt1_found[0] = sx;
+                    inv_Lpt1_found[1] = sy;
+                    seed_mode_dynamic = 1;
+                    seed_reason = "ok";
+                    if(circle_cal_log_enabled())
                     {
-                        const float proj = 20.0f;
-                        const float sx = raw_high_x + dx_raw / len * proj;
-                        const float sy = raw_high_y + dy_raw / len * proj;
-                        const float min_dynamic_x = MT9V03X_W * 0.5f;
-                        const float max_dynamic_x = MT9V03X_W - block_size / 2 - 1;
-                        const float min_dynamic_y = block_size / 2 + 1;
-                        const float max_dynamic_y = MT9V03X_H - block_size / 2 - 1;
-                        if(sx >= min_dynamic_x && sx <= max_dynamic_x &&
-                           sy >= min_dynamic_y && sy <= max_dynamic_y)
-                        {
-                            inv_Lpt1_found[0] = sx;
-                            inv_Lpt1_found[1] = sy;
-                            seed_mode_dynamic = 1;
-                            seed_reason = "ok";
-                            if(circle_cal_log_enabled())
-                            {
-                                printf("ATGCircleOutSeed: mode=dynamic circle=%s rptsc1=%d "
-                                       "idx=%d/%d ipm=%.1f,%.1f -> %.1f,%.1f "
-                                       "raw_seg=%.1f,%.1f -> %.1f,%.1f "
-                                       "delta=%.1f,%.1f raw=%.1f,%.1f proj=%.1f reason=%s\n",
-                                       circle_type_name[circle_type], rptsc1_num,
-                                       idx_low, idx_high,
-                                       rptsc1[idx_low][0], rptsc1[idx_low][1],
-                                       rptsc1[idx_high][0], rptsc1[idx_high][1],
-                                       raw_low_x, raw_low_y,
-                                       raw_high_x, raw_high_y,
-                                       dx_raw, dy_raw,
-                                       inv_Lpt1_found[0], inv_Lpt1_found[1], proj,
-                                       seed_reason);
-                            }
-                        }
-                        else
-                        {
-                            seed_reason = "out_of_band";
-                            if(circle_cal_log_enabled())
-                            {
-                                printf("ATGCircleOutSeed: mode=rejected_dynamic circle=%s rptsc1=%d "
-                                       "idx=%d/%d raw=%.1f,%.1f bounds=%.1f..%.1f,%.1f..%.1f "
-                                       "reason=%s\n",
-                                       circle_type_name[circle_type], rptsc1_num,
-                                       idx_low, idx_high,
-                                       sx, sy,
-                                       min_dynamic_x, max_dynamic_x,
-                                       min_dynamic_y, max_dynamic_y,
-                                       seed_reason);
-                            }
-                        }
-                    }
-                    else
-                    {
-                        seed_reason = len <= 1.0f ? "degenerate" : "bad_slope";
+                        printf("ATGCircleOutSeed: mode=dynamic circle=%s rptsc1=%d "
+                               "idx=%d/%d ipm=%.1f,%.1f -> %.1f,%.1f "
+                               "raw_seg=%.1f,%.1f -> %.1f,%.1f "
+                               "delta=%.1f,%.1f raw=%.1f,%.1f proj=%.1f reason=%s\n",
+                               circle_type_name[circle_type], rptsc1_num,
+                               idx_low, idx_high,
+                               rptsc1[idx_low][0], rptsc1[idx_low][1],
+                               rptsc1[idx_high][0], rptsc1[idx_high][1],
+                               raw_low_x, raw_low_y,
+                               raw_high_x, raw_high_y,
+                               dx_raw, dy_raw,
+                               inv_Lpt1_found[0], inv_Lpt1_found[1], proj,
+                               seed_reason);
                     }
                 }
                 else
                 {
-                    seed_reason = "few_rptsc1";
+                    seed_reason = "out_of_band";
+                    if(circle_cal_log_enabled())
+                    {
+                        printf("ATGCircleOutSeed: mode=rejected_dynamic circle=%s rptsc1=%d "
+                               "idx=%d/%d raw=%.1f,%.1f bounds=%.1f..%.1f,%.1f..%.1f "
+                               "reason=%s\n",
+                               circle_type_name[circle_type], rptsc1_num,
+                               idx_low, idx_high,
+                               sx, sy,
+                               min_dynamic_x, max_dynamic_x,
+                               min_dynamic_y, max_dynamic_y,
+                               seed_reason);
+                    }
                 }
             }
-
-            if(!seed_mode_dynamic)
+            else
             {
-                if(rpts1s_num > 10){
-                    inv_Lpt1_found[0] = 80;
-                    inv_Lpt1_found[1] = 105;
-                }
-                else{
-                    inv_Lpt1_found[0] = 110;
-                    inv_Lpt1_found[1] = 105;
-                }
-                if(circle_cal_log_enabled())
-                {
-                    printf("ATGCircleOutSeed: mode=fixed circle=%s rptsc1=%d rpts1s=%d "
-                           "raw=%.1f,%.1f reason=%s\n",
-                           circle_type_name[circle_type], rptsc1_num, rpts1s_num,
-                           inv_Lpt1_found[0], inv_Lpt1_found[1],
-                           seed_reason);
-                }
+                seed_reason = len <= 1.0f ? "degenerate" : "bad_slope";
             }
         }
+        else
+        {
+            seed_reason = "few_rptsc1";
+        }
 
-
+        if(!seed_mode_dynamic)
+        {
+            if(rpts1s_num > 10){
+                inv_Lpt1_found[0] = 80;
+                inv_Lpt1_found[1] = 105;
+            }
+            else{
+                inv_Lpt1_found[0] = 110;
+                inv_Lpt1_found[1] = 105;
+            }
+            if(circle_cal_log_enabled())
+            {
+                printf("ATGCircleOutSeed: mode=fixed circle=%s rptsc1=%d rpts1s=%d "
+                       "raw=%.1f,%.1f reason=%s\n",
+                       circle_type_name[circle_type], rptsc1_num, rpts1s_num,
+                       inv_Lpt1_found[0], inv_Lpt1_found[1],
+                       seed_reason);
+            }
+        }
     }
     else if(rpts1s_num<2){
         if_lost_right_line = 1;

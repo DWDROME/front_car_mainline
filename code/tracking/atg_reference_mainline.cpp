@@ -215,7 +215,8 @@ int tracking_process_frame(runtime_t *rt)
         const double curve_sign = (pure_angle < 0) ? 1.0 : ((pure_angle > 0) ? -1.0 : 0.0);
         rt->vision.guide_error += curve_sign * static_cast<double>(control_config().curve_entry_bias_deg);
     }
-    if(circle_type == CIRCLE_LEFT_IN || circle_type == CIRCLE_RIGHT_IN)
+    if((circle_type == CIRCLE_LEFT_BEGIN || circle_type == CIRCLE_RIGHT_BEGIN) &&
+       circle_ref_mode == CIRCLE_REF_IN_C)
     {
         rt->vision.guide_error *= kCircleInGuideScale;
     }
