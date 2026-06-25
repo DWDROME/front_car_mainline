@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/quality/index.md", "reason": "embedded tracking quality index and validation expectations"}
+{"file": ".trellis/spec/quality/embedded-tracking-guidelines.md", "reason": "tracking C/C++ evidence, fallback, and validation rules for safe cleanup"}
+{"file": ".trellis/spec/tracking/index.md", "reason": "tracking audit layer index for circle/line behavior work"}
+{"file": ".trellis/spec/tracking/critical-audit-guide.md", "reason": "control boundary, reference contract, and behavior-change audit constraints"}
+{"file": ".trellis/tasks/06-25-circle-weak-bp-mainline-cleanup/research/circle-deepdive-1-7.md", "reason": "task-specific circle.c 1->7 deepdive summary and zero-behavior cleanup boundary"}

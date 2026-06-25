@@ -1,0 +1,38 @@
+{
+  "id": "cross-begin-state-contract",
+  "name": "cross-begin-state-contract",
+  "title": "Tracking Reference Alignment + Workflow Norms",
+  "description": "Audit and minimally fix tracking behavior against the RT1064 main reference chain, including cross BEGIN state, ring entrance, straight tracking regressions, and the Trellis-coordinated workflow norms required for critical tracking edits. Unity CD.cpp is archived old comparison evidence only.",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "DWDROME",
+  "assignee": "DWDROME",
+  "createdAt": "2026-06-07",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "Critical tracking edits require reference comparison, current-code evidence, git regression review, Trellis/spec/check context alignment, simple direct C/C++ edits, and no fallback-style stale geometry.",
+  "meta": {
+    "workflow_norms": {
+      "local_semantic_search": "Prefer fast_context_search when available; retry if MCP is slow before downgrading to rg.",
+      "external_research": "Use smart-search-cli for current/documentation/URL-backed facts.",
+      "fixed_audit_roles": [
+        "reference contract",
+        "current implementation",
+        "git regression",
+        "Trellis/spec/check gate"
+      ],
+      "highest_code_rule": "Keep tracking C/C++ simple and direct; no hidden fallback geometry."
+    }
+  }
+}

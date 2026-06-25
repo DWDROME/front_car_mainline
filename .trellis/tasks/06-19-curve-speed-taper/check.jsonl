@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/tracking/critical-audit-guide.md", "reason": "验证 control 行为变更：默认 0 时输出与原版一致、无第二速度源、无隐藏 fallback"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "校验 yaml→config.hpp→config.cpp→control.cpp 字段流一致，无遗漏更新点"}

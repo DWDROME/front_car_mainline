@@ -1,0 +1,187 @@
+{
+  "ok": true,
+  "error_type": "",
+  "error": "",
+  "session_id": "fb00483f4bce",
+  "query": "line following robot smart car left right boundary tracing seed crossing opposite side identity rejection single side line tracking",
+  "platform": "",
+  "model": "grok-4.20-multi-agent-xhigh",
+  "primary_api_mode": "chat-completions",
+  "content": "**These keywords describe advanced computer vision techniques for camera-based line-following “smart cars” (智能车) in Chinese university robotics competitions** (e.g. 全国大学生智能车竞赛 camera/vision groups). They enable robust track following on complex courses with curves, crossroads (十字路口), branches, noise, shadows, and situations where only one edge is visible.[[1]](https://blog.csdn.net/longqiu_LQ/article/details/160896921)\n\nUnlike simple IR-sensor line followers (which compare a few discrete sensors), these methods process camera images (typically low-resolution grayscale → binarized) to extract **left and right boundaries** of a black line on a white background (or vice versa), compute a centerline or single-side error, and apply special logic for reliability.\n\n### Term Breakdown\n\n- **Left/Right Boundary Tracing (左右边界循迹/边界提取)**: In a binarized image, scan each row (often bottom-up in a ROI) to find the exact column where the pixel color jumps (black ↔ white transition). Record `LeftBorder[row]` and `RightBorder[row]`. The centerline is usually `(Left + Right) / 2`. This gives precise deviation for PID control. Scanning often starts from the image center or previous known position.[[2]](https://patents.google.com/patent/CN114863387A/zh)\n\n- **Seed Crossing / Seed Method (种子法 + 十字处理)**: After finding an edge point in one row, use its column position as a **“seed”** for the next row. Search only in a small window around that seed (or use 8-neighborhood / 八邻域 traversal) to find the next transition point efficiently and continuously. This is faster and more robust than full-row scans. “Crossing” refers to handling **十字 (crossroads/intersections)**: when both boundaries suddenly widen or disappear then reappear with four transition points, the algorithm detects the cross, goes straight (or follows rules), interpolates missing data, and re-seeds after the intersection.[[2]](https://patents.google.com/patent/CN114863387A/zh)\n\n- **Opposite Side Identity Rejection (对侧身份拒绝 / 对边拒判)**: A validation/filtering step. When searching for the left boundary, the algorithm rejects candidate points that are too far on the right side of the expected center, or that have the “wrong identity” (e.g., wrong transition direction: white-to-black vs. black-to-white). This prevents the car from mistakenly locking onto a parallel line, shadow, branch on the opposite side, or the far edge during sharp curves or at intersections. It is a key noise-rejection technique.[[3]](http://mpc.zsup.com.cn/downloads/19_2022%E5%B9%B410%E6%9C%8810%E6%97%A5%E7%AC%AC19%E6%9C%9F%E7%AC%AC28%E5%8D%B7%E6%80%BB%E7%AC%AC763%E6%9C%9F.pdf)\n\n- **Single Side Line Tracking (单边循迹 / 单边循线)**: Instead of always using both left and right boundaries to compute the center, the robot follows **only one reliable boundary** (left or right). This is useful on sharp turns (where one edge leaves the camera FOV), near track edges, or when ignoring branches on one side (e.g., many right branches but you want to go straight on the left boundary). When one side is lost, use historical track width, slope, or interpolation to estimate the missing side or directly compute error from the visible boundary to a desired offset. Many competition technical manuals have dedicated sections on this.[[1]](https://blog.csdn.net/longqiu_LQ/article/details/160896921)\n\n### How They Integrate: Typical Algorithm Flow\n\n1. **Image Acquisition & Preprocessing**: Capture frame → grayscale → ROI (focus on lower half) → binarization (adaptive threshold or fixed).\n2. **Boundary Extraction with Seed**: Start from bottom row near image center. Find initial left/right edges. Propagate upward row-by-row using previous edge as seed + limited search or 8-neighborhood. Apply **opposite-side rejection** during search.\n3. **Element Detection**: Check for special cases — wide gap between L and R, sudden loss of both, four transition points, etc. → flag as **cross (十字)**, roundabout, or branch.\n4. **Mode Selection**: Normal = use `(L+R)/2` for center error. Sharp curve or one side lost = switch to **single-side mode** with width/slope compensation.\n5. **Error Calculation & Control**: Compute deviation from image vertical center. Feed into PID (or cascade PID) for servo steering or motor differential speed.\n6. **Post-processing**: Least-squares line fitting on the extracted points, slope prediction for next frame, lost-line recovery (keep last steering briefly).\n\nThis combination makes the system robust to lighting changes, dashed lines, and complex track elements.\n\n### High-Level Pseudocode (C-like / Python-like)\n\n```python\n# Per frame, after binarization (0=white, 1=black line)\nLeft = [-1] * HEIGHT\nRight = [-1] * HEIGHT\n\n# Start from bottom row, seed from center or last known\nseed_col = IMAGE_WIDTH // 2\nfor row in range(BOTTOM_ROW, TOP_ROW, -1):   # bottom-up\n    # Find left edge using seed\n    l = find_edge(row, seed_col, direction=\"left\", reject_opposite=True)\n    # Find right edge similarly\n    r = find_edge(row, seed_col, direction=\"right\", reject_opposite=True)\n\nif l != -1 and r != -1 and (r - l) > MIN_WIDTH and (r - l) < MAX_WIDTH:\n        Left[row] = l\n        Right[row] = r\n        seed_col = (l + r) // 2          # new seed for next row\n    else:\n        # Single side or cross handling\n        if is_cross(row, Left, Right):   # wide gap or 4 transitions\n            handle_cross()               # go straight, interpolate\n            break\n        # Single-side fallback with width compensation\n        if l != -1:\n            Right[row] = l + historical_width(row)\n        elif r != -1:\n            Left[row] = r - historical_width(row)\n\n# Compute error (multiple modes)\nif single_side_mode == \"left\":\n    error = Left[bottom_few_rows_avg] - desired_left_col\nelif single_side_mode == \"right\":\n    error = Right[bottom_few_rows_avg] - desired_right_col\nelse:\n    center = average_center(Left, Right, bottom_rows)\n    error = center - IMAGE_WIDTH//2\n\nsteering = pid.compute(error)\n```\n\n**Notes on `find_edge`**: Scans near seed, looks for transition, checks that the point is on the correct side of current center and has expected edge “identity” (transition polarity).\n\n### Practical Implementation Tips\n\n- **Hardware**: Common setups use OV7725/OV2640 camera + STM32, NXP RT1064, K66, or OpenMV. Low resolution (e.g. 80×60 effective after ROI) is sufficient and fast.\n- **Stability tricks**: Use only the bottom 5–15 rows for control (closest to car = most accurate perspective). Apply perspective transform or weighted averaging. Use slope from previous frame to predict seeds.\n- **Tuning**: Thresholds for width, max jump between rows (`|col_n - col_{n-1}| < THR`), cross detection width, single-side offset.\n- **Testing**: Start with dual-boundary center tracking, add single-side mode, then add cross detection and rejection logic. Many teams share code on CSDN, Bilibili, or Guyue Lab (古月居).\n- **Analogy**: Think of the line as a road with painted edges. The “seed” is like following the curb continuously instead of looking at the whole road every time. Rejection is like ignoring the opposite curb or a sidewalk on the far side. Single-side is like driving by keeping the right wheels a fixed distance from the right curb.\n\nThese techniques are well-documented in competition technical manuals, patents (e.g. boundary extraction with 8-neighborhood seed traversal), and team blogs.[[2]](https://patents.google.com/patent/CN114863387A/zh)\n\nIf you need sample code (MicroPython for OpenMV, C for STM32, or Python+OpenCV demo), a specific track element solution (e.g. detailed 十字 handling), PID tuning advice, or hardware recommendations, provide more details such as your platform (OpenMV, STM32, Arduino, etc.) or exact goal.",
+  "sources": [
+    {
+      "title": "1",
+      "url": "https://blog.csdn.net/longqiu_LQ/article/details/160896921"
+    },
+    {
+      "title": "2",
+      "url": "https://patents.google.com/patent/CN114863387A/zh"
+    },
+    {
+      "title": "3",
+      "url": "http://mpc.zsup.com.cn/downloads/19_2022%E5%B9%B410%E6%9C%8810%E6%97%A5%E7%AC%AC19%E6%9C%9F%E7%AC%AC28%E5%8D%B7%E6%80%BB%E7%AC%AC763%E6%9C%9F.pdf"
+    },
+    {
+      "url": "https://forum.arduino.cc/t/line-following-robot-car/1441045",
+      "provider": "firecrawl",
+      "title": "Line following robot car - Programming - Arduino Forum",
+      "description": "If only the left sensor detects the line, drive the right wheel forward and stop/reverse the left wheel to swing the nose left. If only the ..."
+    },
+    {
+      "url": "https://www.youtube.com/watch?v=5jh-5HGvC-I",
+      "provider": "tavily",
+      "title": "Line Follower Robot using Arduino   - YouTube",
+      "description": "How to Make DIY Arduino Line Follower Robot Car with Arduino UNO, L298N Motor Driver, IR Sensor. Make DIY•437K views · 18:57. Go to channel Bot"
+    },
+    {
+      "url": "https://seedalliance.org/publications/a-guide-to-seed-intellectual-property-rights",
+      "provider": "tavily",
+      "title": "A Guide to Seed Intellectual Property Rights - Organic Seed Alliance",
+      "description": "As a part of the trademark licensing agreement, Kernza growers also commit to an “identity preserve program,” meant to ensure certain characteristics of the variety are upheld throughout the growing, harvesting, and marketing process. Kernza’s Identity Preserve Program is mainly used to control the specific quality of the seed, but theoretically, it could also be used to advocate for social goals that align with the Institute’s values.  \n   \n“For example, we could say that in order to use the trademark, you have to have a sustainability plan, or you have to meet certain goals in terms of diversity, equity, and inclusion,” Tessa said. “You have so much leeway in terms of being able to include social issues, which is something that a PVP doesn’t really give you.” [...] In addition, the publication must be enabling; in other words, it must include a description of the method for producing the variety as specific as that which is claimed in the patent application. For example, if the application claims the crossing of two specific parent lines, the defensive publication must include the same. If the claim is so broad as to describe any plant displaying a certain phenotype, then the prior art can be equally broad, including examples of plants that exist in nature. Robin Kelson, an intellectual property attorney and the founder of the Free the Seeds! fair, encourages people to be as specific as possible when crafting defensive publications. However, she acknowledged, one potential pitfall for this strategy is that for some, if the publication were to truly [...] In the case of Indigenous corns, he noted, collections like those held by NS/S and other preservationists contain some of the very last deeply original corns to Indigenous communities, and that means that oftentimes they were some of the most sacred. Preserving the identity of those varieties requires deep conversation with traditional seed keepers and understanding of the spiritual significance of the variety and its phenotypes. Even roguing what may be seen by an outsider as an “off-type” could lead to the loss of traits that make up the identity of a particular variety of corn."
+    }
+  ],
+  "sources_count": 6,
+  "primary_sources": [
+    {
+      "title": "1",
+      "url": "https://blog.csdn.net/longqiu_LQ/article/details/160896921"
+    },
+    {
+      "title": "2",
+      "url": "https://patents.google.com/patent/CN114863387A/zh"
+    },
+    {
+      "title": "3",
+      "url": "http://mpc.zsup.com.cn/downloads/19_2022%E5%B9%B410%E6%9C%8810%E6%97%A5%E7%AC%AC19%E6%9C%9F%E7%AC%AC28%E5%8D%B7%E6%80%BB%E7%AC%AC763%E6%9C%9F.pdf"
+    }
+  ],
+  "primary_sources_count": 3,
+  "extra_sources": [
+    {
+      "url": "https://forum.arduino.cc/t/line-following-robot-car/1441045",
+      "provider": "firecrawl",
+      "title": "Line following robot car - Programming - Arduino Forum",
+      "description": "If only the left sensor detects the line, drive the right wheel forward and stop/reverse the left wheel to swing the nose left. If only the ..."
+    },
+    {
+      "url": "https://www.youtube.com/watch?v=5jh-5HGvC-I",
+      "provider": "tavily",
+      "title": "Line Follower Robot using Arduino   - YouTube",
+      "description": "How to Make DIY Arduino Line Follower Robot Car with Arduino UNO, L298N Motor Driver, IR Sensor. Make DIY•437K views · 18:57. Go to channel Bot"
+    },
+    {
+      "url": "https://seedalliance.org/publications/a-guide-to-seed-intellectual-property-rights",
+      "provider": "tavily",
+      "title": "A Guide to Seed Intellectual Property Rights - Organic Seed Alliance",
+      "description": "As a part of the trademark licensing agreement, Kernza growers also commit to an “identity preserve program,” meant to ensure certain characteristics of the variety are upheld throughout the growing, harvesting, and marketing process. Kernza’s Identity Preserve Program is mainly used to control the specific quality of the seed, but theoretically, it could also be used to advocate for social goals that align with the Institute’s values.  \n   \n“For example, we could say that in order to use the trademark, you have to have a sustainability plan, or you have to meet certain goals in terms of diversity, equity, and inclusion,” Tessa said. “You have so much leeway in terms of being able to include social issues, which is something that a PVP doesn’t really give you.” [...] In addition, the publication must be enabling; in other words, it must include a description of the method for producing the variety as specific as that which is claimed in the patent application. For example, if the application claims the crossing of two specific parent lines, the defensive publication must include the same. If the claim is so broad as to describe any plant displaying a certain phenotype, then the prior art can be equally broad, including examples of plants that exist in nature. Robin Kelson, an intellectual property attorney and the founder of the Free the Seeds! fair, encourages people to be as specific as possible when crafting defensive publications. However, she acknowledged, one potential pitfall for this strategy is that for some, if the publication were to truly [...] In the case of Indigenous corns, he noted, collections like those held by NS/S and other preservationists contain some of the very last deeply original corns to Indigenous communities, and that means that oftentimes they were some of the most sacred. Preserving the identity of those varieties requires deep conversation with traditional seed keepers and understanding of the spiritual significance of the variety and its phenotypes. Even roguing what may be seen by an outsider as an “off-type” could lead to the loss of traits that make up the identity of a particular variety of corn."
+    }
+  ],
+  "extra_sources_count": 3,
+  "source_warning": "extra_sources are retrieved in parallel and are not automatically used to verify generated content; use fetch on key URLs for claim-level evidence.",
+  "routing_decision": {
+    "docs_intent": false,
+    "zh_current_intent": false,
+    "web_current_intent": false,
+    "fetch_intent": false,
+    "supplemental_paths": [],
+    "validation_level": "balanced",
+    "fallback_mode": "auto",
+    "providers": "auto",
+    "main_search_chain": [
+      "openai-compatible"
+    ],
+    "openai_compatible_stream": true
+  },
+  "providers_used": [
+    "OpenAI-compatible",
+    "tavily",
+    "firecrawl"
+  ],
+  "provider_attempts": [
+    {
+      "capability": "main_search",
+      "provider": "OpenAI-compatible",
+      "status": "ok",
+      "error_type": "",
+      "error": "",
+      "elapsed_ms": 36429.62,
+      "result_count": 1
+    },
+    {
+      "capability": "web_search",
+      "provider": "tavily",
+      "status": "ok",
+      "error_type": "",
+      "error": "",
+      "elapsed_ms": 49163.93,
+      "result_count": 2
+    },
+    {
+      "capability": "web_search",
+      "provider": "firecrawl",
+      "status": "ok",
+      "error_type": "",
+      "error": "",
+      "elapsed_ms": 49163.94,
+      "result_count": 1
+    }
+  ],
+  "fallback_used": true,
+  "validation_level": "balanced",
+  "minimum_profile_ok": true,
+  "capability_status": {
+    "main_search": {
+      "configured": [
+        "openai-compatible"
+      ],
+      "fallback_chain": [
+        "xai-responses",
+        "openai-compatible"
+      ],
+      "ok": true
+    },
+    "web_search": {
+      "configured": [
+        "tavily",
+        "firecrawl"
+      ],
+      "fallback_chain": [
+        "zhipu",
+        "tavily",
+        "firecrawl"
+      ],
+      "ok": true
+    },
+    "docs_search": {
+      "configured": [
+        "context7",
+        "exa"
+      ],
+      "fallback_chain": [
+        "context7",
+        "exa"
+      ],
+      "ok": true
+    },
+    "web_fetch": {
+      "configured": [
+        "tavily",
+        "firecrawl"
+      ],
+      "fallback_chain": [
+        "tavily",
+        "firecrawl"
+      ],
+      "ok": true
+    },
+    "vertical_search": {
+      "configured": [],
+      "fallback_chain": [
+        "anysearch"
+      ],
+      "experimental": true,
+      "ok": false
+    }
+  },
+  "elapsed_ms": 49163.95
+}

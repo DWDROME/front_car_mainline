@@ -1,0 +1,4 @@
+{"type":"spec","path":".trellis/spec/circle-detection-coordinate-system.md","reason":"验证坐标系假设"}
+{"type":"spec","path":".trellis/spec/circle-b-c-search-direction.md","reason":"验证搜索方向符合预期"}
+{"type":"file","path":"code/atg.c","reason":"检查 B/C 搜索循环方向和 dy 计算"}
+{"type":"file","path":"code/atg.h","reason":"检查常量定义与坐标系一致"}

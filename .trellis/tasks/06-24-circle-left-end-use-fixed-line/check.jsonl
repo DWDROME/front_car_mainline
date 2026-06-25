@@ -1,0 +1,3 @@
+{"file": ".trellis/tasks/06-24-circle-left-end-use-fixed-line/prd.md", "reason": "PRD定义验证条件：左环跑一圈，确认 LEFT_RUNNING→OUT→END 完整退出不 stall"}
+{"file": ".trellis/spec/quality/embedded-tracking-guidelines.md", "reason": "嵌入式 tracking 质量检查：行为变更后的运行验证和 git diff 确认"}
+{"file": ".trellis/tasks/06-24-circle-left-end-use-fixed-line/research/drive28-entry-false-positive-analysis.md", "reason": "检查依据:确认修复=BEGIN 连续丢线证据和恢复清场,删除被 drive30 证伪的 300 early revoke,rationale table 完整"}

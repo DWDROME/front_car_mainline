@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/tracking/critical-audit-guide.md", "reason": "改 control 层、按 tracking 衍生的 target_yaw 连续调速 center_rps，属 tracking-derived control input 变更，需按此指南审慎处理"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "新增 config 字段并修改唯一速度源 center_rps，按修改 config/保持单一真相的原则先搜索复用、避免第二速度源"}

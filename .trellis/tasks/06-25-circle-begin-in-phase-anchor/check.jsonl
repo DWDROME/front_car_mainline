@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/quality/embedded-tracking-guidelines.md", "reason": "verify no stale fallback, hidden state masking, or evidence-free threshold change in BEGIN→IN"}
+{"file": ".trellis/spec/tracking/critical-audit-guide.md", "reason": "check behavior-change boundary: only BEGIN→IN touched, control chain + OUT/END untouched"}
+{"file": ".trellis/tasks/06-25-circle-begin-in-phase-anchor/research/begin-dist-distribution.md", "reason": "confirm begin_dist@IN lands ~1200 and 600 lower-bound is data-backed, not guessed"}
+{"file": ".trellis/tasks/06-25-circle-begin-in-phase-anchor/research/geometry-entry-rationale.md", "reason": "verify current A/B/C geometry entry and C-ref selected-line behavior"}

@@ -1,0 +1,4 @@
+{"type":"spec","path":".trellis/spec/circle-detection-coordinate-system.md","reason":"确认坐标系映射关系"}
+{"type":"spec","path":".trellis/spec/circle-b-c-search-direction.md","reason":"当前 B/C 搜索方向定义"}
+{"type":"file","path":"code/atg.c","reason":"find_circle_B_vertical 和 find_circle_C 实现"}
+{"type":"file","path":"code/atg.h","reason":"CIRCLE_B_UP_MIN/MAX 等常量定义"}

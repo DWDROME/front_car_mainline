@@ -1,0 +1,229 @@
+{
+  "ok": true,
+  "error_type": "",
+  "error": "",
+  "session_id": "3efa6d5baaf4",
+  "query": "391252945 上交智能车 迷宫法 逆透视 点集 重采样 补线",
+  "platform": "",
+  "model": "grok-4.3-high",
+  "primary_api_mode": "chat-completions",
+  "content": "**This query references the open-source algorithms from Shanghai Jiao Tong University (SJTU) AuTop team's entry in the 16th National Intelligent Car Competition (Intelligent Vision group).** The number 391252945 is the ID of their main Zhihu summary post, which links to a series of detailed articles on vision-based track navigation techniques.[[1]](https://zhuanlan.zhihu.com/p/391252945)[[1]](https://zhuanlan.zhihu.com/p/391252945)\n\nTheir approach focuses on robust real-time road edge (boundary line) detection and control for the competition track using a camera. The listed terms describe core components of their pipeline: **迷宫法** (maze/wall-following method) for edge extraction, **逆透视** (inverse perspective mapping/IPM) for view transformation, handling of **点集** (point sets), **重采样** (resampling), and **补线** (line completion/supplementation).\n\n### 迷宫法 (Maze Method / Wall-Following Line Extraction)\nThis is their primary method for extracting track boundary lines. It draws inspiration from the classic “right-hand rule” or “left-hand rule” maze-solving algorithm (keep one hand on the wall to guarantee exiting a simply connected maze).[[2]](https://zhuanlan.zhihu.com/p/391392970)[[2]](https://zhuanlan.zhihu.com/p/391392970)\n\n- In practice: Starting from the bottom of the image (near the car), the algorithm searches outward or along expected directions to locate and follow continuous black/white edge points, treating the track boundary like a “wall.”\n- Advantages: Efficient for continuous curved boundaries typical in smart car tracks; avoids full-image processing overhead.\n- Optimization noted in their work: Perform adaptive binarization (thresholding) on-the-fly only for queried points during the search, rather than binarizing the entire image upfront. This improves speed significantly.[[2]](https://zhuanlan.zhihu.com/p/391392970)[[3]](https://devpress.csdn.net/v1/article/detail/128009180)\n\nIt is often contrasted with other methods like eight-neighborhood search or sliding-window approaches in competition discussions.\n\n### 逆透视 (Inverse Perspective Mapping / IPM)\nAlso called perspective transformation or bird’s-eye-view (BEV) conversion. The camera’s forward-looking view distorts the track (lines converge due to perspective). IPM corrects this to a top-down orthographic-like view.[[4]](https://guyuehome.com/wap/detail?id=1825476565513629697)\n\n- Process: \n  1. Camera calibration (commonly Zhang’s method with a printed checkerboard pattern, capturing multiple angled images to compute intrinsic/extrinsic parameters).\n  2. Compute a homography/perspective transformation matrix.\n  3. Apply the warp to remap image pixels.\n- Benefits: Makes parallel track lines appear parallel, simplifies distance/curvature measurements, and improves accuracy for point detection and control. Their part 3 article covers calibration and this transformation in detail.\n- Related techniques in literature include improved IPM variants for varying lighting or dynamic pitch.[[5]](http://computing.hit.edu.cn/_upload/article/files/50/69/7113148c447aa34724178d6e3f3c/5c468354-3347-42e8-beb4-92b9abb83a8e.pdf)[[6]](https://blog.csdn.net/qq_39380230/article/details/106268459)\n\n### 点集 (Point Set)\nAfter binarization or edge search (via maze method or otherwise), the algorithm collects discrete pixel coordinates representing the detected left and/or right track boundaries. These form one or more ordered sets of points along the lines.\n\nThese raw points are noisy or irregularly spaced, so further processing (resampling, fitting) is applied before steering decisions.\n\n### 重采样 (Resampling)\nRaw detected points are often unevenly distributed (denser near the camera, sparser farther away due to perspective or detection density). Resampling creates a more uniform or reduced set of points:\n\n- Common goals: Even spacing along the line (e.g., fixed interval in image or world coordinates), noise reduction, or preparing data for polynomial/curve fitting.\n- Methods: Linear interpolation, spline resampling, or geometric-moment-based sampling in related algorithms.[[7]](http://humnetlab.berkeley.edu/~yxu/doc/SCSI_song_2017.pdf)\n- Purpose: Improves efficiency for real-time control and enables better curve modeling (e.g., for predicting track curvature ahead of the car).\n\n### 补线 (Line Completion / Supplementation)\nDetection can fail or produce gaps due to lighting variations, shadows, track elements (crossings, rings), or partial occlusion.补线 fills these gaps to produce continuous, usable lines:\n\n- Techniques: Linear or polynomial interpolation between known points, extrapolation beyond the last reliable point, or connecting left/right boundaries in special cases.\n- Often combined with the point set after resampling.\n- Critical for robustness in competition scenarios with complex track features.[[8]](https://www.bilibili.com/video/BV1kT411T71N/)\n\n### Overall Pipeline Context (from AuTop series)\nTheir articles break it down roughly as:\n- Binarization tricks + maze method for edge extraction (part 2).\n- Calibration + IPM (part 3).\n- Edge/point processing, resampling, completion, and direction/steering control (part 4).\n- Element recognition (part 5, e.g., intersections, Apriltags).\n\nThey also share related code on GitHub (e.g., SJTU-AuTop/RT1064-Code references the Zhihu series).[[9]](https://github.com/SJTU-AuTop/RT1064-Code)\n\nThese techniques are classic in Chinese university smart car competitions for vision-only navigation on indoor/outdoor tracks. Similar approaches appear in other teams’ implementations and academic papers on lane detection.\n\nFor the full original explanations and any code, refer directly to the Zhihu series starting at https://zhuanlan.zhihu.com/p/391252945 (parts linked from the summary). Other teams have ported or referenced the “上交迷宫法” (SJTU maze method) in forums and GitHub repos.",
+  "sources": [
+    {
+      "title": "1",
+      "url": "https://zhuanlan.zhihu.com/p/391252945"
+    },
+    {
+      "title": "2",
+      "url": "https://zhuanlan.zhihu.com/p/391392970"
+    },
+    {
+      "title": "3",
+      "url": "https://devpress.csdn.net/v1/article/detail/128009180"
+    },
+    {
+      "title": "4",
+      "url": "https://guyuehome.com/wap/detail?id=1825476565513629697"
+    },
+    {
+      "title": "5",
+      "url": "http://computing.hit.edu.cn/_upload/article/files/50/69/7113148c447aa34724178d6e3f3c/5c468354-3347-42e8-beb4-92b9abb83a8e.pdf"
+    },
+    {
+      "title": "6",
+      "url": "https://blog.csdn.net/qq_39380230/article/details/106268459"
+    },
+    {
+      "title": "7",
+      "url": "http://humnetlab.berkeley.edu/~yxu/doc/SCSI_song_2017.pdf"
+    },
+    {
+      "title": "8",
+      "url": "https://www.bilibili.com/video/BV1kT411T71N/"
+    },
+    {
+      "title": "9",
+      "url": "https://github.com/SJTU-AuTop/RT1064-Code"
+    },
+    {
+      "url": "https://www.cnblogs.com/SkyXZ/p/18919993",
+      "provider": "tavily",
+      "title": "机器人/智能车纯视觉巡线经典策略—滑动窗口+直方图法 - SkyXZ - 博客园",
+      "description": "# 更新显示\ncv.imshow('选择四个点', img_display)\ndef reset_points():\n\"\"\"重置选择的点\"\"\"\nglobal points, img_display\npoints = []\nimg_display = img_original.copy()\ncv.imshow('选择四个点', img_display)\nprint(\"重新选择点...\")\ndef main():\n\"\"\"主函数\"\"\"\nglobal img_original, img_display\n# 读取图像\nimg_original = cv.imread('road.png')\nif img_original is None:\nprint(\"无法读取图像 'road.png'，请确保文件存在\")\nreturn\n# 创建显示用的图像副本\nimg_display = img_original.copy()\n# 创建窗口并设置大小\ncv.namedWindow('选择四个点', cv.WINDOW_NORMAL)\ncv.resizeWindow('选择四个点', 800, 600)\n# 设置鼠标回调函数\ncv.setMouseCallback('选择四个点', mouse_callback)\n# 显示图像\ncv.imshow('选择四个点', img_display)\nprint(\"=== 透视变换点选择工具 ===\")\nprint(\"请用鼠标左键点击选择4个点\")\nprint(\"建议按顺序选择：左下 -> 左上 -> 右上 -> 右下\")\nprint(\"操作说明：\")\nprint(\" - 鼠标左键：选择点\")\nprint(\" - r键：重新选择点\")\nprint(\" - ESC键：退出程序\")\n# 主循环\nwhile True: [...] `M`\n`warped`\n`Minv`\n`import cv2 as cv\nimport numpy as np\nimg = cv.imread(\"road.png\")\nimg_height, img_width = img.shape[:2]\nsrc_points = np.float32([\n[0,522],\n[234,39],\n[900,52],\n[1136,538]\n])\ndst_points = np.float32([\n[img_width  0.25, img_height], # 左下\n[img_width  0.25, 0], # 左上\n[img_width  0.75, 0], # 右上\n[img_width  0.75, img_height] # 右下\n])\nM = cv.getPerspectiveTransform(src_points, dst_points)\nwarped = cv.warpPerspective(img, M, (img_width, img_height))\ncv.imshow(\"img\",img)\ncv.imshow(\"warped\",warped)\ncv.waitKey(0)\ncv.destroyAllWindows()`\n\n特别注意的是，如果我们在后续通过图像中心点以及车道中心点来计算偏差的话，我们在这里可以获取一下透视变换后的车道线宽度，如果我们不对选取的车道线进行外延处理的话，那么车道线宽度就是变换后的图像宽度，如果我们进行了延拓的话，那么车道线宽度就是图像宽度减去两边外延宽度之和，在这里即：\n\n`line_width = int(img_width  0.75 - img_width  0.25) # 透视变换后车道线宽度`\n\n### （2）获取并预处理图像 [...] `def process_frame(frame):\nsrc_points = np.float32([\n[0, 522],\n[234, 39],\n[900, 52],\n[1136, 538]\n])\ndst_points = np.float32([\n[frame.shape  0.25, frame.shape], # 左下\n[frame.shape  0.25, 0], # 左上\n[frame.shape  0.75, 0], # 右上\n[frame.shape  0.75, frame.shape] # 右下\n])\n# 完成透视变换\nM = cv.getPerspectiveTransform(src_points, dst_points)\nwarped = cv.warpPerspective(frame, M, (frame.shape, frame.shape))\n# 转换为HSV并提取黄色车道线\nhsv_warped = cv.cvtColor(warped, cv.COLOR_BGR2HSV)\nyellow_low = [20, 100, 100]\nyellow_up = [30, 255, 255]\nmask = cv.inRange(hsv_warped, np.array(yellow_low), np.array(yellow_up))\n# 形态学操作处理噪点\nkernel = np.ones((5, 5), np.uint8)\neroded = cv.erode(mask, kernel, iterations=1)\ndilated = cv.dilate(eroded, kernel, iterations=1)\ncv.imshow(\"dsad\",dilated)\nreturn dilated`"
+    },
+    {
+      "url": "https://bj.bcebos.com/cdstm-hyetecforthesmartcar-bucket/49132edc8d7d43128a5809e78dfa777b.pdf",
+      "provider": "tavily",
+      "title": "[PDF] 第十二届“恩智浦”杯全国大学生智能汽车竞赛",
+      "description": "或者增加开环D 原因：开环D 参数过大，系统抗干扰性降低 解决方法：减小开环D，或者适当增加开环P 原因：倾角值为0 时刻，车身重心不在轴线上 第十二届全国大学生智能汽车竞赛技术报告 28 解决方法：微调加速度计零偏置，使得角度为0 时，重心落在轴线上。也可能 是陀螺仪零偏置错误，同理，微调即可。 原因：陀螺仪积分速度过慢，导致卡尔曼滤波相位滞后 解决方法：适当增加dt 原因：速度闭环对系统整体的控制程度过小 解决方法：适当增加速度闭环的各个参数 原因：速度闭环调节速度过慢 第十二届全国大学生智能汽车竞赛技术报告 29 解决方法：适当增加闭环P 参数 原因：速度闭环存在静态误差 解决方法：适当增加闭环I 参数 原因：速度闭环调节速度过慢 解决方法：适当增加闭环P 参数，或者也可以使用PID（而非PI）进行速度闭 环的控制 原因：速度控制对于阶跃响应存在超调 第十二届全国大学生智能汽车竞赛技术报告 30 解决方法：减小闭环P 参数，或者加入闭环D 参数，也可以不用阶跃信号，而 是通过斜波信号慢慢将速度提升。 原因：陀螺仪漂移之后和加速度传感器之间的关系发生了变化，导致滤波角度 出现比较大的问题。 解决方法：增大Kg。 5.4 图像采集与处理 摄像头是智能车的眼睛，我们采用数字摄像头OV7725 进行赛道采集，其场中 断信号频率为75Hz，在采集时，我们利用场中断进行数据采集，当场中断信号到 来时，开启K60 的DMA 传输通道，采集硬件二值化后的信息。 5.4.1 边沿提取与中线推算 得到了赛道的二值图像信息之后，要从其中得到有用的赛道信息，就必须首先 寻找赛道的边沿，首先分析离车头最近的那一行的信息，之后的边沿都根据上一行 的情况寻找，若有跳变就进行特殊补线处理，以下是赛道中几种不同元素的处理： 第十二届全国大学生智能汽车竞赛技术报告 31 图 5.4.1 十字补线处理 [...] 第十二届全国大学生智能汽车竞赛技术报告 31 图 5.4.1 十字补线处理 图 5.4.2 环岛补线处理 图 5.4.3 障碍补线处理 第十二届全国大学生智能汽车竞赛技术报告 32 第六章 开发工具、调试系统说明 6.1 基于MATLAB 的参数计算及仿真 MATLAB 是矩阵实验室（Matrix Laboratory）的简称，是美国MathWorks 公司 出品的商业数学软件，用于算法开发、数据可视化、数据分析以及数值计算的高级 技术计算语言和交互式环境，主要包括MATLAB 和Simulink 两大部分。 在本项目中，我们主要使用MATLAB 完成数据的可视化处理以及算法仿真。 6.1.1 数据可视化处理 使用MATLAB 方便的绘图能力，我们通过串口回传数据，并在MATLAB 上 进行绘图，观测信号的质量和变化规律。 图6.1.1 使用MATLAB 观测加速度计信号 第十二届全国大学生智能汽车竞赛技术报告 33 图6.1.2 使用MATLAB 观测陀螺仪信号 图6.1.3 使用MATLAB 观测测速编码器信号 6.2 上位机调试 为了便于程序参数调试，减少下载次数，我们组利用QT 作为上位机开发平 台，并通过串口配合蓝牙的通信，实现上下位机的控制调试。 图6.2.1 使用上位机处理图像 第十二届全国大学生智能汽车竞赛技术报告 34 参考文献 冯智勇,曾瀚,张力,赵亦欣,黄伟.基于陀螺仪及加速度计信号融合的姿态角 度测量[J].西南师范大学学报，2011,36（4）:137-141 陆芳,刘俊.卡尔曼滤波在陀螺仪随机漂移中的应用[J]. 微计算机信 息,2007,23(8-2):222-224 陈静.两轮自平衡机器人模型及控制方法研究[D].北京工业大学硕士学位论 文,2008. [...] s T 为 系统采样周期，得到离散系统的状态方程和测量方程： ( ) 1 ( ) ( 1) ( 1) 0 1 0 0 ( ) [1 0] ( ) ( ) g s s s gyro i a k T T T X k X k k V k X k k                                   同时，要估算k时刻的实际角度，就必须根据k-1时刻的角度值，再根据预测得 到的k时刻的角度值得到k时刻的高斯噪声的方差，在此基础之上卡尔曼滤波器进行 第十二届全国大学生智能汽车竞赛技术报告 20 递归运算直至估算出最优的角度值。在此,须知道系统过程噪声协方差阵Q 以及测 量误差的协方差矩阵R, 对卡尔曼滤波器进行校正，Q与R矩阵的形式如下： _ _ 0 0 acce gyro q Q q       _ [ ] acce R r  式中。 acce q _ 和 gyro q _ 分别是加速度传感器和陀螺仪测量的协方差，其数 值代表卡尔曼滤波器对其传感器数据的信任程度，数值越小表明信任程度越高。在 该系统中陀螺仪的值更为接近准确值，因此取 gyro q _ 的值小于 acce q _ 的值。当 前状态: ) ( ) 1 | 1 ( ) 1 | ( k BU k k AX k k X      （1） 式中， 1 0 1 s T A        ， 0 s T B       ， ( | 1) X k k  是利用k 预测的结果， ( 1| 1) X k k   是k - 1 时刻的最优结果。 则有对应于 ) 1 | (  k k X 的协方差为： Q A k k AP k k P T      ) 1 | 1 ( ) 1 |"
+    }
+  ],
+  "sources_count": 11,
+  "primary_sources": [
+    {
+      "title": "1",
+      "url": "https://zhuanlan.zhihu.com/p/391252945"
+    },
+    {
+      "title": "2",
+      "url": "https://zhuanlan.zhihu.com/p/391392970"
+    },
+    {
+      "title": "3",
+      "url": "https://devpress.csdn.net/v1/article/detail/128009180"
+    },
+    {
+      "title": "4",
+      "url": "https://guyuehome.com/wap/detail?id=1825476565513629697"
+    },
+    {
+      "title": "5",
+      "url": "http://computing.hit.edu.cn/_upload/article/files/50/69/7113148c447aa34724178d6e3f3c/5c468354-3347-42e8-beb4-92b9abb83a8e.pdf"
+    },
+    {
+      "title": "6",
+      "url": "https://blog.csdn.net/qq_39380230/article/details/106268459"
+    },
+    {
+      "title": "7",
+      "url": "http://humnetlab.berkeley.edu/~yxu/doc/SCSI_song_2017.pdf"
+    },
+    {
+      "title": "8",
+      "url": "https://www.bilibili.com/video/BV1kT411T71N/"
+    },
+    {
+      "title": "9",
+      "url": "https://github.com/SJTU-AuTop/RT1064-Code"
+    }
+  ],
+  "primary_sources_count": 9,
+  "extra_sources": [
+    {
+      "url": "https://zhuanlan.zhihu.com/p/391392970",
+      "provider": "firecrawl",
+      "title": "上海交通大学AuTop战队开源算法讲解(二)边线提取 - 知乎专栏",
+      "description": "即进行“迷宫法”巡线时，直接输入原始灰度图像，当需要某个点的二值化结果时，才对其进行一次自适应二值化。 这样一个简单的优化，直接使得我们的算法运行速度 ..."
+    },
+    {
+      "url": "https://www.cnblogs.com/SkyXZ/p/18919993",
+      "provider": "tavily",
+      "title": "机器人/智能车纯视觉巡线经典策略—滑动窗口+直方图法 - SkyXZ - 博客园",
+      "description": "# 更新显示\ncv.imshow('选择四个点', img_display)\ndef reset_points():\n\"\"\"重置选择的点\"\"\"\nglobal points, img_display\npoints = []\nimg_display = img_original.copy()\ncv.imshow('选择四个点', img_display)\nprint(\"重新选择点...\")\ndef main():\n\"\"\"主函数\"\"\"\nglobal img_original, img_display\n# 读取图像\nimg_original = cv.imread('road.png')\nif img_original is None:\nprint(\"无法读取图像 'road.png'，请确保文件存在\")\nreturn\n# 创建显示用的图像副本\nimg_display = img_original.copy()\n# 创建窗口并设置大小\ncv.namedWindow('选择四个点', cv.WINDOW_NORMAL)\ncv.resizeWindow('选择四个点', 800, 600)\n# 设置鼠标回调函数\ncv.setMouseCallback('选择四个点', mouse_callback)\n# 显示图像\ncv.imshow('选择四个点', img_display)\nprint(\"=== 透视变换点选择工具 ===\")\nprint(\"请用鼠标左键点击选择4个点\")\nprint(\"建议按顺序选择：左下 -> 左上 -> 右上 -> 右下\")\nprint(\"操作说明：\")\nprint(\" - 鼠标左键：选择点\")\nprint(\" - r键：重新选择点\")\nprint(\" - ESC键：退出程序\")\n# 主循环\nwhile True: [...] `M`\n`warped`\n`Minv`\n`import cv2 as cv\nimport numpy as np\nimg = cv.imread(\"road.png\")\nimg_height, img_width = img.shape[:2]\nsrc_points = np.float32([\n[0,522],\n[234,39],\n[900,52],\n[1136,538]\n])\ndst_points = np.float32([\n[img_width  0.25, img_height], # 左下\n[img_width  0.25, 0], # 左上\n[img_width  0.75, 0], # 右上\n[img_width  0.75, img_height] # 右下\n])\nM = cv.getPerspectiveTransform(src_points, dst_points)\nwarped = cv.warpPerspective(img, M, (img_width, img_height))\ncv.imshow(\"img\",img)\ncv.imshow(\"warped\",warped)\ncv.waitKey(0)\ncv.destroyAllWindows()`\n\n特别注意的是，如果我们在后续通过图像中心点以及车道中心点来计算偏差的话，我们在这里可以获取一下透视变换后的车道线宽度，如果我们不对选取的车道线进行外延处理的话，那么车道线宽度就是变换后的图像宽度，如果我们进行了延拓的话，那么车道线宽度就是图像宽度减去两边外延宽度之和，在这里即：\n\n`line_width = int(img_width  0.75 - img_width  0.25) # 透视变换后车道线宽度`\n\n### （2）获取并预处理图像 [...] `def process_frame(frame):\nsrc_points = np.float32([\n[0, 522],\n[234, 39],\n[900, 52],\n[1136, 538]\n])\ndst_points = np.float32([\n[frame.shape  0.25, frame.shape], # 左下\n[frame.shape  0.25, 0], # 左上\n[frame.shape  0.75, 0], # 右上\n[frame.shape  0.75, frame.shape] # 右下\n])\n# 完成透视变换\nM = cv.getPerspectiveTransform(src_points, dst_points)\nwarped = cv.warpPerspective(frame, M, (frame.shape, frame.shape))\n# 转换为HSV并提取黄色车道线\nhsv_warped = cv.cvtColor(warped, cv.COLOR_BGR2HSV)\nyellow_low = [20, 100, 100]\nyellow_up = [30, 255, 255]\nmask = cv.inRange(hsv_warped, np.array(yellow_low), np.array(yellow_up))\n# 形态学操作处理噪点\nkernel = np.ones((5, 5), np.uint8)\neroded = cv.erode(mask, kernel, iterations=1)\ndilated = cv.dilate(eroded, kernel, iterations=1)\ncv.imshow(\"dsad\",dilated)\nreturn dilated`"
+    },
+    {
+      "url": "https://bj.bcebos.com/cdstm-hyetecforthesmartcar-bucket/49132edc8d7d43128a5809e78dfa777b.pdf",
+      "provider": "tavily",
+      "title": "[PDF] 第十二届“恩智浦”杯全国大学生智能汽车竞赛",
+      "description": "或者增加开环D 原因：开环D 参数过大，系统抗干扰性降低 解决方法：减小开环D，或者适当增加开环P 原因：倾角值为0 时刻，车身重心不在轴线上 第十二届全国大学生智能汽车竞赛技术报告 28 解决方法：微调加速度计零偏置，使得角度为0 时，重心落在轴线上。也可能 是陀螺仪零偏置错误，同理，微调即可。 原因：陀螺仪积分速度过慢，导致卡尔曼滤波相位滞后 解决方法：适当增加dt 原因：速度闭环对系统整体的控制程度过小 解决方法：适当增加速度闭环的各个参数 原因：速度闭环调节速度过慢 第十二届全国大学生智能汽车竞赛技术报告 29 解决方法：适当增加闭环P 参数 原因：速度闭环存在静态误差 解决方法：适当增加闭环I 参数 原因：速度闭环调节速度过慢 解决方法：适当增加闭环P 参数，或者也可以使用PID（而非PI）进行速度闭 环的控制 原因：速度控制对于阶跃响应存在超调 第十二届全国大学生智能汽车竞赛技术报告 30 解决方法：减小闭环P 参数，或者加入闭环D 参数，也可以不用阶跃信号，而 是通过斜波信号慢慢将速度提升。 原因：陀螺仪漂移之后和加速度传感器之间的关系发生了变化，导致滤波角度 出现比较大的问题。 解决方法：增大Kg。 5.4 图像采集与处理 摄像头是智能车的眼睛，我们采用数字摄像头OV7725 进行赛道采集，其场中 断信号频率为75Hz，在采集时，我们利用场中断进行数据采集，当场中断信号到 来时，开启K60 的DMA 传输通道，采集硬件二值化后的信息。 5.4.1 边沿提取与中线推算 得到了赛道的二值图像信息之后，要从其中得到有用的赛道信息，就必须首先 寻找赛道的边沿，首先分析离车头最近的那一行的信息，之后的边沿都根据上一行 的情况寻找，若有跳变就进行特殊补线处理，以下是赛道中几种不同元素的处理： 第十二届全国大学生智能汽车竞赛技术报告 31 图 5.4.1 十字补线处理 [...] 第十二届全国大学生智能汽车竞赛技术报告 31 图 5.4.1 十字补线处理 图 5.4.2 环岛补线处理 图 5.4.3 障碍补线处理 第十二届全国大学生智能汽车竞赛技术报告 32 第六章 开发工具、调试系统说明 6.1 基于MATLAB 的参数计算及仿真 MATLAB 是矩阵实验室（Matrix Laboratory）的简称，是美国MathWorks 公司 出品的商业数学软件，用于算法开发、数据可视化、数据分析以及数值计算的高级 技术计算语言和交互式环境，主要包括MATLAB 和Simulink 两大部分。 在本项目中，我们主要使用MATLAB 完成数据的可视化处理以及算法仿真。 6.1.1 数据可视化处理 使用MATLAB 方便的绘图能力，我们通过串口回传数据，并在MATLAB 上 进行绘图，观测信号的质量和变化规律。 图6.1.1 使用MATLAB 观测加速度计信号 第十二届全国大学生智能汽车竞赛技术报告 33 图6.1.2 使用MATLAB 观测陀螺仪信号 图6.1.3 使用MATLAB 观测测速编码器信号 6.2 上位机调试 为了便于程序参数调试，减少下载次数，我们组利用QT 作为上位机开发平 台，并通过串口配合蓝牙的通信，实现上下位机的控制调试。 图6.2.1 使用上位机处理图像 第十二届全国大学生智能汽车竞赛技术报告 34 参考文献 冯智勇,曾瀚,张力,赵亦欣,黄伟.基于陀螺仪及加速度计信号融合的姿态角 度测量[J].西南师范大学学报，2011,36（4）:137-141 陆芳,刘俊.卡尔曼滤波在陀螺仪随机漂移中的应用[J]. 微计算机信 息,2007,23(8-2):222-224 陈静.两轮自平衡机器人模型及控制方法研究[D].北京工业大学硕士学位论 文,2008. [...] s T 为 系统采样周期，得到离散系统的状态方程和测量方程： ( ) 1 ( ) ( 1) ( 1) 0 1 0 0 ( ) [1 0] ( ) ( ) g s s s gyro i a k T T T X k X k k V k X k k                                   同时，要估算k时刻的实际角度，就必须根据k-1时刻的角度值，再根据预测得 到的k时刻的角度值得到k时刻的高斯噪声的方差，在此基础之上卡尔曼滤波器进行 第十二届全国大学生智能汽车竞赛技术报告 20 递归运算直至估算出最优的角度值。在此,须知道系统过程噪声协方差阵Q 以及测 量误差的协方差矩阵R, 对卡尔曼滤波器进行校正，Q与R矩阵的形式如下： _ _ 0 0 acce gyro q Q q       _ [ ] acce R r  式中。 acce q _ 和 gyro q _ 分别是加速度传感器和陀螺仪测量的协方差，其数 值代表卡尔曼滤波器对其传感器数据的信任程度，数值越小表明信任程度越高。在 该系统中陀螺仪的值更为接近准确值，因此取 gyro q _ 的值小于 acce q _ 的值。当 前状态: ) ( ) 1 | 1 ( ) 1 | ( k BU k k AX k k X      （1） 式中， 1 0 1 s T A        ， 0 s T B       ， ( | 1) X k k  是利用k 预测的结果， ( 1| 1) X k k   是k - 1 时刻的最优结果。 则有对应于 ) 1 | (  k k X 的协方差为： Q A k k AP k k P T      ) 1 | 1 ( ) 1 |"
+    }
+  ],
+  "extra_sources_count": 3,
+  "source_warning": "extra_sources are retrieved in parallel and are not automatically used to verify generated content; use fetch on key URLs for claim-level evidence.",
+  "routing_decision": {
+    "docs_intent": false,
+    "zh_current_intent": false,
+    "web_current_intent": false,
+    "fetch_intent": false,
+    "supplemental_paths": [],
+    "validation_level": "balanced",
+    "fallback_mode": "auto",
+    "providers": "auto",
+    "main_search_chain": [
+      "openai-compatible"
+    ],
+    "openai_compatible_stream": true
+  },
+  "providers_used": [
+    "OpenAI-compatible",
+    "tavily",
+    "firecrawl"
+  ],
+  "provider_attempts": [
+    {
+      "capability": "main_search",
+      "provider": "OpenAI-compatible",
+      "status": "ok",
+      "error_type": "",
+      "error": "",
+      "elapsed_ms": 87786.19,
+      "result_count": 1
+    },
+    {
+      "capability": "web_search",
+      "provider": "tavily",
+      "status": "ok",
+      "error_type": "",
+      "error": "",
+      "elapsed_ms": 91120.68,
+      "result_count": 2
+    },
+    {
+      "capability": "web_search",
+      "provider": "firecrawl",
+      "status": "ok",
+      "error_type": "",
+      "error": "",
+      "elapsed_ms": 91120.69,
+      "result_count": 1
+    }
+  ],
+  "fallback_used": true,
+  "validation_level": "balanced",
+  "minimum_profile_ok": true,
+  "capability_status": {
+    "main_search": {
+      "configured": [
+        "openai-compatible"
+      ],
+      "fallback_chain": [
+        "xai-responses",
+        "openai-compatible"
+      ],
+      "ok": true
+    },
+    "web_search": {
+      "configured": [
+        "tavily",
+        "firecrawl"
+      ],
+      "fallback_chain": [
+        "zhipu",
+        "tavily",
+        "firecrawl"
+      ],
+      "ok": true
+    },
+    "docs_search": {
+      "configured": [
+        "context7",
+        "exa"
+      ],
+      "fallback_chain": [
+        "context7",
+        "exa"
+      ],
+      "ok": true
+    },
+    "web_fetch": {
+      "configured": [
+        "tavily",
+        "firecrawl"
+      ],
+      "fallback_chain": [
+        "tavily",
+        "firecrawl"
+      ],
+      "ok": true
+    },
+    "vertical_search": {
+      "configured": [],
+      "fallback_chain": [
+        "anysearch"
+      ],
+      "experimental": true,
+      "ok": false
+    }
+  },
+  "elapsed_ms": 91120.71
+}

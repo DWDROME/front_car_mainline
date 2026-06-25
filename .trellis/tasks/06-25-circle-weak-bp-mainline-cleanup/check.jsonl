@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/quality/index.md", "reason": "quality check entrypoint for embedded tracking changes"}
+{"file": ".trellis/spec/quality/embedded-tracking-guidelines.md", "reason": "verify no stale fallback, hidden state masking, broad rewrite, or evidence-free threshold change"}
+{"file": ".trellis/spec/tracking/index.md", "reason": "tracking check entrypoint for circle diagnostic and state-machine changes"}
+{"file": ".trellis/spec/tracking/critical-audit-guide.md", "reason": "check behavior-change boundaries, control chain, and validation requirements"}
+{"file": ".trellis/tasks/06-25-circle-weak-bp-mainline-cleanup/research/circle-deepdive-1-7.md", "reason": "verify implementation stays inside the documented zero-behavior cleanup boundary"}

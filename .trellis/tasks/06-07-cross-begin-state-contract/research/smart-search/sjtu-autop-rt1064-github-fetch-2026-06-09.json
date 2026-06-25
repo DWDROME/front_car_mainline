@@ -1,0 +1,19 @@
+{
+  "ok": true,
+  "url": "https://github.com/SJTU-AuTop/RT1064-Code",
+  "provider": "tavily",
+  "content": "## Navigation Menu\n\n# Search code, repositories, users, issues, pull requests...\n\n# Provide feedback\n\nWe read every piece of feedback, and take your input very seriously.\n\n# Saved searches\n\n## Use saved searches to filter your results more quickly\n\nTo see all available qualifiers, see our [documentation](https://docs.github.com/search-github/github-code-search/understanding-github-code-search-syntax).\n\n# SJTU-AuTop/RT1064-Code\n\n## Folders and files\n\n| Name | | Name | Last commit message | Last commit date |\n| --- | --- | --- | --- | --- |\n| Latest commit   History[57 Commits](/SJTU-AuTop/RT1064-Code/commits/master/)   57 Commits | | |\n| [Libraries](/SJTU-AuTop/RT1064-Code/tree/master/Libraries \"Libraries\") | | [Libraries](/SJTU-AuTop/RT1064-Code/tree/master/Libraries \"Libraries\") |  |  |\n| [Project](/SJTU-AuTop/RT1064-Code/tree/master/Project \"Project\") | | [Project](/SJTU-AuTop/RT1064-Code/tree/master/Project \"Project\") |  |  |\n| [.gitignore](/SJTU-AuTop/RT1064-Code/blob/master/.gitignore \".gitignore\") | | [.gitignore](/SJTU-AuTop/RT1064-Code/blob/master/.gitignore \".gitignore\") |  |  |\n| [README.md](/SJTU-AuTop/RT1064-Code/blob/master/README.md \"README.md\") | | [README.md](/SJTU-AuTop/RT1064-Code/blob/master/README.md \"README.md\") |  |  |\n| View all files | | |\n\n## Latest commit\n\n## History\n\n## Repository files navigation\n\n# 第16届全国大学生智能车大赛-智能视觉组\n\n上海交通大学 AuTop战队 RT1064主控代码（整理完毕）\n\n欢迎看开源汇总中的算法讲解：[AuTop开源汇总](https://zhuanlan.zhihu.com/p/391252945)\n\n上位机链接：<https://github.com/SJTU-AuTop/LiveViewer>\n\n注：由于自制主板和逐飞提供的主板在引脚连接上有所不同，故代码中修改了部分引脚定义\n\n**不定期查看issue，有问题建议知乎私信。**\n\n如果您觉得我们的算法框架思路有帮助，请帮忙点个STAR哦!\n\n## About\n\nRT1064主控代码\n\n### Resources\n\n### Uh oh!\n\nThere was an error while loading. Please reload this page.\n\nThere was an error while loading. Please reload this page.\n\n### Stars\n\n### Watchers\n\n### Forks\n\n## [Releases](/SJTU-AuTop/RT1064-Code/releases)\n\n## [Packages 0](/orgs/SJTU-AuTop/packages?repo_name=RT1064-Code)\n\n### Uh oh!\n\nThere was an error while loading. Please reload this page.\n\nThere was an error while loading. Please reload this page.\n\n## [Contributors](/SJTU-AuTop/RT1064-Code/graphs/contributors)\n\n### Uh oh!\n\nThere was an error while loading. Please reload this page.\n\nThere was an error while loading. Please reload this page.\n\n## Languages\n\n## Footer\n\n### Footer navigation",
+  "provider_attempts": [
+    {
+      "capability": "web_fetch",
+      "provider": "tavily",
+      "status": "ok",
+      "error_type": "",
+      "error": "",
+      "elapsed_ms": 15093.28,
+      "result_count": 1
+    }
+  ],
+  "fallback_used": false,
+  "elapsed_ms": 15093.28
+}

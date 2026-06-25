@@ -1,0 +1,13 @@
+{"file": ".trellis/tasks/archive/2026-06/06-06-align-midline-pipeline-to-autop/research/current-stage-summary.md", "reason": "Current tracking pipeline contract and stage status"}
+{"file": ".trellis/tasks/archive/2026-06/06-06-align-midline-pipeline-to-autop/research/stage3-cross-in-review.md", "reason": "CROSS_IN farline continuation contract"}
+{"file": "docs/13_mainline_pipeline_map.md", "reason": "Current one-frame mainline owner and element timing contract"}
+{"file": "docs/archive/old-mainline/阈值笔记_boundary_ring.md", "reason": "Strict double-L semantics and boundary thresholds"}
+{"file": ".trellis/tasks/06-07-cross-begin-state-contract/research/tracking-reference-audit-checklist.md", "reason": "Active tracking reference audit checklist and known issues"}
+{"file": ".trellis/tasks/06-07-cross-begin-state-contract/research/current-learning-order-brief-cn.md", "reason": "Chinese handoff for the latest single-side and learning-order contract"}
+{"file": ".trellis/tasks/06-07-cross-begin-state-contract/research/current-completion-audit-cn.md", "reason": "Current completion audit; prevents treating analysis as full runtime resolution"}
+{"file": ".trellis/tasks/06-07-cross-begin-state-contract/research/diagnostic-proof-design-cn.md", "reason": "Diagnostic-only proof design for single-side/no-opposite-anchor cases"}
+{"file": ".trellis/tasks/06-07-cross-begin-state-contract/research/trace-identity-gain-relaxation-decision-cn.md", "reason": "Do not reintroduce trace identity gain-based relaxation without sequence-level evidence"}
+{"file": ".trellis/spec/quality/embedded-tracking-guidelines.md", "reason": "Tracking modification contract, forbidden fallbacks, ring/reference requirements"}
+{"file": ".trellis/spec/guides/index.md", "reason": "Guide routing and tracking-risk trigger"}
+{"file": ".trellis/spec/tracking/critical-audit-guide.md", "reason": "fast_context/smart-search routing and four fixed audit role checklist"}
+{"file": ".trellis/tasks/06-07-cross-begin-state-contract/research/element-learning-order-audit-cn.md", "reason": "Current element-frame search-center learning gate and xlearn diagnostics"}

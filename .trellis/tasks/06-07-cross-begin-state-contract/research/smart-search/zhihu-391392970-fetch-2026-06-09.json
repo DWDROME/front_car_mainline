@@ -1,0 +1,28 @@
+{
+  "ok": true,
+  "url": "https://zhuanlan.zhihu.com/p/391392970",
+  "provider": "firecrawl",
+  "content": "![](https://www.zhihu.com/account/unhuman?type=U4E3Z1&need_login=true&session=2be2ff1916adc554f2fa45804f696568&next=%2Fsignin)\n\n[知乎](https://www.zhihu.com/)\n\n请您登录后查看更多专业优质内容。\n\n_想来知乎工作？请发送邮件到 jobs@zhihu.com_",
+  "provider_attempts": [
+    {
+      "capability": "web_fetch",
+      "provider": "tavily",
+      "status": "empty",
+      "error_type": "",
+      "error": "",
+      "elapsed_ms": 7225.26,
+      "result_count": 0
+    },
+    {
+      "capability": "web_fetch",
+      "provider": "firecrawl",
+      "status": "ok",
+      "error_type": "",
+      "error": "",
+      "elapsed_ms": 1001.42,
+      "result_count": 1
+    }
+  ],
+  "fallback_used": true,
+  "elapsed_ms": 8226.69
+}

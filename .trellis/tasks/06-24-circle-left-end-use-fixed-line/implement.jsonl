@@ -1,0 +1,4 @@
+{"file": ".trellis/tasks/06-24-circle-left-end-use-fixed-line/prd.md", "reason": "任务PRD：左环 END 阶段使用固定拼接线，定义问题、改动方案和验证条件"}
+{"file": ".trellis/spec/tracking/critical-audit-guide.md", "reason": "关键审计指南：tracking 行为变更（circle state machine）需要参考合同、当前实现和 git 回归分析"}
+{"file": ".trellis/spec/quality/embedded-tracking-guidelines.md", "reason": "嵌入式 tracking 质量指南：修改 circle state machine 行为时的代码质量和验证约束"}
+{"file": ".trellis/tasks/06-24-circle-left-end-use-fixed-line/research/drive28-entry-false-positive-analysis.md", "reason": "drive28/drive30 入口误触分析:300 early revoke 已被 drive30 证伪;修复落点改为 circle.c BEGIN 连续丢线证据 + 恢复清场,reference_step.c 仅保留 idle revoke"}
