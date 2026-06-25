@@ -44,7 +44,7 @@ enum
     CIRCLE_ENTRY_AB_Y_MIN = 8,        // 纵向分离像素(圆弧B近,满足此值即可)
     CIRCLE_ENTRY_AB_X_MIN = 6,        // B 必须向对侧弧面展开,不能只是 A 同列上方黑边
     CIRCLE_ENTRY_B_SKIP_EDGE_X = 20,  // 跳过近端线边缘假目标,再找对侧弧面 B
-    CIRCLE_ENTRY_B_SCAN_SPAN_X = 60,  // B 只在口门横向窗口内找,避免扫到远侧普通边线
+    CIRCLE_ENTRY_B_SCAN_SPAN_X = 45,  // B 只在口门横向窗口内找,避免扫到远侧普通边线
     CIRCLE_ENTRY_B_MIN_HITS = 1,  // 远点内圆边界仅1-2行可见,降低门槛(AB约束(dy/dist/dx)已防噪)
     // B 必须在 A 上方高度窗口中:A_raw_y - B_raw_y ∈ [UP_MIN, UP_MAX]
     // 坐标系:y=0 在图像顶部(远处), y=120 在底部(车身)。A_y≈80(近), B_y≈41(远弧顶)。窗口靠实测定。
