@@ -42,7 +42,8 @@ enum
     CIRCLE_ENTRY_A_ID_MAX = 35,
     CIRCLE_ENTRY_AB_DIST_MIN = 23,     // IPM 欧氏距离,≈ 0.20m * 116px/m
     CIRCLE_ENTRY_AB_Y_MIN = 8,        // 纵向分离像素(圆弧B近,满足此值即可)
-    CIRCLE_ENTRY_AB_X_MIN = 6,        // B 必须沿 inner-hit 方向展开,不能只是 A 同列上方黑边
+    CIRCLE_ENTRY_AB_X_MIN = 6,        // B 必须向对侧弧面展开,不能只是 A 同列上方黑边
+    CIRCLE_ENTRY_B_SKIP_EDGE_X = 20,  // 跳过近端线边缘假目标,再找对侧弧面 B
     CIRCLE_ENTRY_B_MIN_HITS = 1,  // 远点内圆边界仅1-2行可见,降低门槛(AB约束(dy/dist/dx)已防噪)
     // B 必须在 A 上方高度窗口中:A_raw_y - B_raw_y ∈ [UP_MIN, UP_MAX]
     // 坐标系:y=0 在图像顶部(远处), y=120 在底部(车身)。A_y≈80(近), B_y≈41(远弧顶)。窗口靠实测定。
@@ -681,8 +682,8 @@ static int circle_entry_check_angle_variance(int left_side, int a_id, float *out
     return var >= (float)CIRCLE_ENTRY_MIN_ANGLE_VAR;
 }
 
-// 同向扫 B:从角点 A 的 raw 坐标往上取窗口,逐行沿 inner-hit 同向扫到口门黑边界。
-// 左环向左取最小 x,右环向右取最大 x。
+// 对侧扫 B:从角点 A 的 raw 坐标往上取窗口,先跳过近端线边缘,再扫到对侧弧面黑边界。
+// 左环向右取最大 x,右环向左取最小 x。
 // 若存在尖锐远角点(far_Lpt)→那是十字,不是圆环;返回区分。
 // 返回值:1=找到 B 且是非尖锐(圆环),-1=找到尖锐 B(十字),0=没找到。
 static int find_circle_B_vertical(int left_side)
@@ -717,23 +718,27 @@ static int find_circle_B_vertical(int left_side)
         return 0;
     }
 
-    int best_x = left_side ? 9999 : -1, best_y = -1;
+    int best_x = left_side ? -1 : 9999, best_y = -1;
     int valid_hits = 0;
     int rise_hits = 0;
     int jump_bad = 0;
     int last_candidate_x = -1;
-    // 从 A 的 raw 坐标向上逐行沿 inner-hit 同向扫描,找口门黑边界。
-    // 左环向左扫,右环向右扫。
+    // 从 A 的 raw 坐标向上逐行扫描,先跳过近端线边缘假目标,找对侧弧面黑边界。
+    // 左环向右扫,右环向左扫。
     const int y_min = clip(seed_raw_y - CIRCLE_B_UP_MAX, block_size / 2 + 1, MT9V03X_H - block_size / 2 - 1);
     const int y_max = clip(seed_raw_y - CIRCLE_B_UP_MIN, block_size / 2 + 1, MT9V03X_H - block_size / 2 - 1);
+    const int scan_start_x = clip(left_side ? (seed_raw_x + CIRCLE_ENTRY_B_SKIP_EDGE_X) :
+                                               (seed_raw_x - CIRCLE_ENTRY_B_SKIP_EDGE_X),
+                                  block_size / 2,
+                                  MT9V03X_W - block_size / 2 - 1);
     circle_B_search_start = y_max;
     circle_B_search_end = -1;
 
     for(int y = y_max; y >= y_min; y--)
     {
         int hit = 0;
-        for(int x = seed_raw_x; left_side ? (x >= block_size / 2) : (x < MT9V03X_W - block_size / 2);
-            left_side ? x-- : x++)
+        for(int x = scan_start_x; left_side ? (x < MT9V03X_W - block_size / 2) : (x >= block_size / 2);
+            left_side ? x++ : x--)
         {
             if(x < block_size / 2 || x >= MT9V03X_W - block_size / 2) continue;
             int lt = 0;
@@ -743,7 +748,7 @@ static int find_circle_B_vertical(int left_side)
             lt = lt / (block_size * block_size) - clip_value;
             if(AT_IMAGE(&img_raw, x, y) < lt)
             {
-                const int inner_dx = left_side ? (seed_raw_x - x) : (x - seed_raw_x);
+                const int inner_dx = left_side ? (x - seed_raw_x) : (seed_raw_x - x);
                 if(inner_dx <= 0) continue;
 
                 valid_hits++;
@@ -755,7 +760,7 @@ static int find_circle_B_vertical(int left_side)
                     rise_hits++;
                 last_candidate_x = x;
 
-                if(left_side ? (x < best_x) : (x > best_x))
+                if(left_side ? (x > best_x) : (x < best_x))
                 {
                     best_x = x;
                     best_y = y;
@@ -795,7 +800,7 @@ static int find_circle_B_vertical(int left_side)
     // y 坐标减小 = 往上，所以 dy_ab = seed_raw_y - best_y
     const int dy_ab = seed_raw_y - best_y;
     const int dx_ab = best_x - seed_raw_x;
-    const int inner_dx_ab = left_side ? -dx_ab : dx_ab;
+    const int inner_dx_ab = left_side ? dx_ab : -dx_ab;
     const int dist2_ab = dx_ab * dx_ab + dy_ab * dy_ab;
     const int up_dy = seed_raw_y - best_y;
 
@@ -878,7 +883,7 @@ static int find_circle_B_vertical(int left_side)
     return 1;
 }
 
-// 真双断点:左环 A=Lpt0,沿 inner-hit 同向扫找到口门 B(非尖锐=圆环);尖锐 B 是十字,不放行。
+// 真双断点:左环 A=Lpt0,跳过近端线边缘后扫到对侧弧面 B(非尖锐=圆环);尖锐 B 是十字,不放行。
 static int circle_entry_find_double_breakpoint(int left_side)
 {
     // 先满足圆环基本条件:对侧直道+对侧无近 Lpt+内侧黑块
