@@ -44,6 +44,7 @@ enum
     CIRCLE_ENTRY_AB_Y_MIN = 8,        // 纵向分离像素(圆弧B近,满足此值即可)
     CIRCLE_ENTRY_AB_X_MIN = 6,        // B 必须向对侧弧面展开,不能只是 A 同列上方黑边
     CIRCLE_ENTRY_B_SKIP_EDGE_X = 20,  // 跳过近端线边缘假目标,再找对侧弧面 B
+    CIRCLE_ENTRY_B_SCAN_SPAN_X = 60,  // B 只在口门横向窗口内找,避免扫到远侧普通边线
     CIRCLE_ENTRY_B_MIN_HITS = 1,  // 远点内圆边界仅1-2行可见,降低门槛(AB约束(dy/dist/dx)已防噪)
     // B 必须在 A 上方高度窗口中:A_raw_y - B_raw_y ∈ [UP_MIN, UP_MAX]
     // 坐标系:y=0 在图像顶部(远处), y=120 在底部(车身)。A_y≈80(近), B_y≈41(远弧顶)。窗口靠实测定。
@@ -96,6 +97,7 @@ static int circle_B_search_start;
 static int circle_B_search_end;
 static const char *circle_B_search_detail;
 static int circle_B_search_scan_x;
+static int circle_B_search_scan_end_x;
 static int circle_B_search_best_x;
 static int circle_B_search_best_y;
 static int circle_B_search_rise_hits;
@@ -190,7 +192,7 @@ static void print_circle_entry_probe_diag(int left_side,
         return;
     }
     printf("ATGCircleEntryProbe: side=%c A=1@%d(raw=%d,%d) B=0 ret=%d reason=%s detail=%s "
-           "hits=%d rise=%d range=%d..%d scan_x=%d best=%d,%d dx=%d inner_dx=%d "
+           "hits=%d rise=%d range=%d..%d scan_x=%d..%d best=%d,%d dx=%d inner_dx=%d "
            "dy=%d up_dy=%d dist2=%d jump=%d sharp_far=%d\n",
            left_side ? 'L' : 'R',
            a_id,
@@ -204,6 +206,7 @@ static void print_circle_entry_probe_diag(int left_side,
            circle_B_search_start,
            circle_B_search_end,
            circle_B_search_scan_x,
+           circle_B_search_scan_end_x,
            circle_B_search_best_x,
            circle_B_search_best_y,
            circle_B_search_dx,
@@ -750,6 +753,7 @@ static int find_circle_B_vertical(int left_side)
     circle_B_search_end = -1;
     circle_B_search_detail = "start";
     circle_B_search_scan_x = -1;
+    circle_B_search_scan_end_x = -1;
     circle_B_search_best_x = -1;
     circle_B_search_best_y = -1;
     circle_B_search_rise_hits = 0;
@@ -794,14 +798,19 @@ static int find_circle_B_vertical(int left_side)
                                                (seed_raw_x - CIRCLE_ENTRY_B_SKIP_EDGE_X),
                                   block_size / 2,
                                   MT9V03X_W - block_size / 2 - 1);
+    const int scan_end_x = clip(left_side ? (seed_raw_x + CIRCLE_ENTRY_B_SCAN_SPAN_X) :
+                                             (seed_raw_x - CIRCLE_ENTRY_B_SCAN_SPAN_X),
+                                block_size / 2,
+                                MT9V03X_W - block_size / 2 - 1);
     circle_B_search_scan_x = scan_start_x;
+    circle_B_search_scan_end_x = scan_end_x;
     circle_B_search_start = y_max;
     circle_B_search_end = -1;
 
     for(int y = y_max; y >= y_min; y--)
     {
         int hit = 0;
-        for(int x = scan_start_x; left_side ? (x < MT9V03X_W - block_size / 2) : (x >= block_size / 2);
+        for(int x = scan_start_x; left_side ? (x <= scan_end_x) : (x >= scan_end_x);
             left_side ? x++ : x--)
         {
             if(x < block_size / 2 || x >= MT9V03X_W - block_size / 2) continue;
