@@ -34,6 +34,11 @@ set(DIR_SRCS
     app/assistant.cpp
     app/options.cpp
     app/report.cpp
+    app/camera_config.cpp
+    app/control_input_builder.cpp
+    app/frame_pipeline.cpp
+    app/live_profile.cpp
+    app/replay_log.cpp
     app/runners.cpp
     drivers/device.cpp
     drivers/drive_output.cpp

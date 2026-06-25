@@ -60,6 +60,11 @@ int circle_heading_enter_ready(void);
 
 int circle_cal_log_enabled(void);
 
+// 圆环入口 inner-hit 种子(left_side: 1=左环,0=右环)。公式唯一来源在 circle.c,
+// 供 assistant 显示线复用,确保上位机扫描线与算法扫描线同源。返回 1=有效。
+int circle_entry_inner_seed(int left_side, int *seed_x, int *seed_y,
+                            float *seed_raw_x, float *seed_raw_y);
+
 void run_circle();
 
 void draw_circle();

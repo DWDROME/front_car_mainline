@@ -530,6 +530,8 @@ int circle_entry_scan_seed_raw(int *seed_x, int *seed_y)
         return 0;
     }
 
+    // 入口侧判定为上位机显示用。种子公式(左 +2/-5、右 +5/-5)单一来源在
+    // circle.c::circle_entry_inner_seed,这里只复用,避免重复公式造成显示线与算法扫描线漂移。
     const int left_entry_side =
         circle_type == CIRCLE_LEFT_BEGIN ||
         (circle_type == CIRCLE_NONE && Lpt0_found && !Lpt1_found);
@@ -537,35 +539,23 @@ int circle_entry_scan_seed_raw(int *seed_x, int *seed_y)
         circle_type == CIRCLE_RIGHT_BEGIN ||
         (circle_type == CIRCLE_NONE && !Lpt0_found && Lpt1_found);
 
+    int left_side = -1;
     if(left_entry_side)
     {
-        if(!Lpt0_found || rpts0s_num <= 0)
-        {
-            return 0;
-        }
-        const int id = std::clamp(Lpt0_rpts0s_id, 0, rpts0s_num - 1);
-        const float raw_x = Cal_inv_rot_x(rpts0s[id][0], rpts0s[id][1]) - 10.0F;
-        const float raw_y = Cal_inv_rot_y(rpts0s[id][0], rpts0s[id][1]) - 5.0F;
-        *seed_x = std::clamp(static_cast<int>(raw_x), block_size / 2, MT9V03X_W - block_size / 2 - 1);
-        *seed_y = std::clamp(static_cast<int>(raw_y), block_size / 2 + 1, MT9V03X_H - block_size / 2 - 1);
-        return 1;
+        left_side = 1;
     }
-
-    if(right_entry_side)
+    else if(right_entry_side)
     {
-        if(!Lpt1_found || rpts1s_num <= 0)
-        {
-            return 0;
-        }
-        const int id = std::clamp(Lpt1_rpts1s_id, 0, rpts1s_num - 1);
-        const float raw_x = Cal_inv_rot_x(rpts1s[id][0], rpts1s[id][1]) + 5.0F;
-        const float raw_y = Cal_inv_rot_y(rpts1s[id][0], rpts1s[id][1]) - 5.0F;
-        *seed_x = std::clamp(static_cast<int>(raw_x), block_size / 2, MT9V03X_W - block_size / 2 - 1);
-        *seed_y = std::clamp(static_cast<int>(raw_y), block_size / 2 + 1, MT9V03X_H - block_size / 2 - 1);
-        return 1;
+        left_side = 0;
+    }
+    else
+    {
+        return 0;
     }
 
-    return 0;
+    float seed_raw_x = 0.0F;
+    float seed_raw_y = 0.0F;
+    return circle_entry_inner_seed(left_side, seed_x, seed_y, &seed_raw_x, &seed_raw_y);
 }
 
 // 圆环入口断点/inner-hit 诊断线：与 circle.c 的 Lpt seed 同源，显示为竖线。

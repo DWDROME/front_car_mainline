@@ -1,0 +1,824 @@
+ConfigInfo: loaded /root/front_car_mainline.yaml
+front_car_mainline: ipm=atg rot/inv_rot
+find uvc camera Successfully. path=/dev/video0
+get uvc width = 160
+get uvc height = 120
+get uvc fps = 120
+get uvc auto exposure mode = 3
+IMU init success, type: 4 (DEV_IMU963RA)
+ImuReady: type=IMU963RA bias_x=-2 bias_y=-7 bias_z=4 samples=48/48/48 min=-4/-9/4 max=-1/-6/6 scale=0.001277562_rad_s_per_count
+front_car_mainline: live /dev/video0 160x120@30 process_fps=30 drive=off
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.3,80.8 th=0
+frame=0 line=1 track=1 cross=0 circle=0(CIRCLE_NONE) round=0 yroad=0 ramp=0 road=7 speed=0 near=8/124 raw=44/105 sel=124/126 src=11 far=0/0 far_raw=0/0 l=1@3/0@-1 far_l=0@-1/0@-1 straight=0/1 far_straight=0/0 circle_cnt=0/0/0/0 lost=0/0 ref=0 A=0@-1,-1#0 B=0@-1,-1#0 C=0@-1,-1#0 conf=90.5/3.3/0.0/0.0 dist=0 begin=0/0 m0=(84,119) ml=(81,79) md=41/1/127 cxcy=84.0,119.6 guide=2.72 atg=0.0/0.0/0.0 pure=0.13/-0.05 yaw=-92 cmd=-277 actual=0 signed=0 rps=5319/4558:0/0 duty=19/19 pwm=PWM2:19/PWM1:19 motor=2:19/1:19
+CrossDiag: type=CROSS_NONE track=1 half_lr=0/0 nearL=1@3/0@-1 nearNum=8/124 centerNum=8/124 farL=0@-1/0@-1 farNum=0/0 farRaw=0/0 lost=0/0 not_have=0 final=124/126 flags=0/0
+LineErr: aim=41 cxcy=84.0,119.6 left=1:23.85@60,88 dx=-24.3 idx=0/7 dist=14/14 right=1:2.47@81,76 dx=-2.9 idx=0/17 dist=40/253 sel=1:2.34@81,74 dx=-2.8 idx=0/20 dist=40/250 edge=1:7.05@77.5,90.0 dx=-6.5 width=72.9 l=47,110 r=108,70
+CxScan: raw_ref=80.0 edge=77.5,90.0 best_raw_x=65 best_err=0.84 best_cxcy=78.3,119.5 scan=0:-24.7,10:-21.2,20:-17.4,30:-13.5,40:-9.5,50:-5.4,60:-1.2,70:2.9,80:7.1,90:11.1,100:15.0,110:18.8,120:22.4,130:25.9,140:29.1
+ATGSeedDiag: seed=1@13,108/1@133,108 begin=7,108 block=5 clip=8
+ATGLptDiag: best=3(90.5) imip=0/7 pass=11111 acc=3 ipm=55.6,109.2 inv=22.3,85.8 | 32(3.3) imip=22/42 pass=10111 acc=-1 ipm=110.5,42.5 inv=93.1,26.3
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+frame=8 line=1 track=1 cross=0 circle=0(CIRCLE_NONE) round=0 yroad=0 ramp=0 road=7 speed=0 near=7/124 raw=42/105 sel=124/126 src=11 far=0/0 far_raw=0/0 l=1@3/0@-1 far_l=0@-1/0@-1 straight=0/1 far_straight=0/0 circle_cnt=0/0/0/0 lost=0/0 ref=0 A=0@-1,-1#0 B=0@-1,-1#0 C=0@-1,-1#0 conf=82.9/3.3/0.0/0.0 dist=0 begin=0/0 m0=(84,119) ml=(81,79) md=41/1/127 cxcy=84.0,119.6 guide=2.72 atg=0.0/0.0/0.0 pure=0.14/-0.05 yaw=-92 cmd=-277 actual=0 signed=0 rps=5319/4558:0/0 duty=20/19 pwm=PWM2:20/PWM1:19 motor=2:20/1:19
+CrossDiag: type=CROSS_NONE track=1 half_lr=0/0 nearL=1@3/0@-1 nearNum=7/124 centerNum=7/124 farL=0@-1/0@-1 farNum=0/0 farRaw=0/0 lost=0/0 not_have=0 final=124/126 flags=0/0
+LineErr: aim=41 cxcy=84.0,119.6 left=1:19.90@65,89 dx=-19.3 idx=0/6 dist=12/12 right=1:2.47@81,76 dx=-2.9 idx=0/17 dist=40/253 sel=1:2.34@81,74 dx=-2.8 idx=0/20 dist=40/250 edge=1:6.52@78.0,90.0 dx=-6.0 width=72.1 l=48,110 r=108,70
+CxScan: raw_ref=80.0 edge=78.0,90.0 best_raw_x=65 best_err=0.30 best_cxcy=78.3,119.5 scan=0:-25.2,10:-21.6,20:-17.9,30:-14.1,40:-10.0,50:-5.9,60:-1.8,70:2.4,80:6.5,90:10.6,100:14.5,110:18.3,120:22.0,130:25.4,140:28.7
+ATGSeedDiag: seed=1@13,108/1@133,108 begin=7,108 block=5 clip=8
+ATGLptDiag: best=3(82.9) imip=0/6 pass=11111 acc=3 ipm=55.2,109.4 inv=21.3,86.2 | 32(3.3) imip=22/42 pass=10111 acc=-1 ipm=110.5,42.5 inv=93.1,26.3
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.3,80.8 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=13,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=13.3,80.7 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=13,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=13.3,80.7 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=13,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=13.3,80.7 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.9,80.7 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=13,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=13.3,80.7 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=13,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=13.1,80.7 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=13,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=13.3,80.7 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+frame=88 line=1 track=1 cross=0 circle=0(CIRCLE_NONE) round=0 yroad=0 ramp=0 road=7 speed=0 near=7/124 raw=42/105 sel=124/126 src=11 far=0/0 far_raw=0/0 l=1@3/0@-1 far_l=0@-1/0@-1 straight=0/1 far_straight=0/0 circle_cnt=0/0/0/0 lost=0/0 ref=0 A=0@-1,-1#0 B=0@-1,-1#0 C=0@-1,-1#0 conf=82.9/4.1/0.0/0.0 dist=0 begin=0/0 m0=(84,119) ml=(81,79) md=41/1/127 cxcy=84.0,119.6 guide=2.71 atg=0.0/0.0/0.0 pure=0.13/-0.05 yaw=-92 cmd=-276 actual=0 signed=0 rps=5317/4560:0/0 duty=25/23 pwm=PWM2:25/PWM1:23 motor=2:25/1:23
+CrossDiag: type=CROSS_NONE track=1 half_lr=0/0 nearL=1@3/0@-1 nearNum=7/124 centerNum=7/124 farL=0@-1/0@-1 farNum=0/0 farRaw=0/0 lost=0/0 not_have=0 final=124/126 flags=0/0
+LineErr: aim=41 cxcy=84.0,119.6 left=1:19.90@65,89 dx=-19.3 idx=0/6 dist=12/12 right=1:2.47@81,76 dx=-2.9 idx=0/17 dist=40/253 sel=1:2.33@81,74 dx=-2.8 idx=0/20 dist=40/250 edge=1:6.52@78.0,90.0 dx=-6.0 width=72.1 l=48,110 r=108,70
+CxScan: raw_ref=80.0 edge=78.0,90.0 best_raw_x=65 best_err=0.30 best_cxcy=78.3,119.5 scan=0:-25.2,10:-21.6,20:-17.9,30:-14.1,40:-10.0,50:-5.9,60:-1.8,70:2.4,80:6.5,90:10.6,100:14.5,110:18.3,120:22.0,130:25.4,140:28.7
+ATGSeedDiag: seed=1@13,108/1@133,108 begin=7,108 block=5 clip=8
+ATGLptDiag: best=3(82.9) imip=0/6 pass=11111 acc=3 ipm=55.2,109.4 inv=21.3,86.2 | 1(4.1) imip=0/11 pass=10111 acc=-1 ipm=106.5,114.2 inv=128.2,98.0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+frame=96 line=1 track=1 cross=0 circle=0(CIRCLE_NONE) round=0 yroad=0 ramp=0 road=7 speed=0 near=7/124 raw=42/105 sel=124/126 src=11 far=0/0 far_raw=0/0 l=1@3/0@-1 far_l=0@-1/0@-1 straight=0/1 far_straight=0/0 circle_cnt=0/0/0/0 lost=0/0 ref=0 A=0@-1,-1#0 B=0@-1,-1#0 C=0@-1,-1#0 conf=82.9/3.3/0.0/0.0 dist=0 begin=0/0 m0=(84,119) ml=(81,79) md=41/1/127 cxcy=84.0,119.6 guide=2.72 atg=0.0/0.0/0.0 pure=0.14/-0.05 yaw=-92 cmd=-277 actual=0 signed=0 rps=5318/4559:0/0 duty=25/24 pwm=PWM2:25/PWM1:24 motor=2:25/1:24
+CrossDiag: type=CROSS_NONE track=1 half_lr=0/0 nearL=1@3/0@-1 nearNum=7/124 centerNum=7/124 farL=0@-1/0@-1 farNum=0/0 farRaw=0/0 lost=0/0 not_have=0 final=124/126 flags=0/0
+LineErr: aim=41 cxcy=84.0,119.6 left=1:19.91@65,89 dx=-19.3 idx=0/6 dist=12/12 right=1:2.47@81,76 dx=-2.9 idx=0/17 dist=40/253 sel=1:2.34@81,74 dx=-2.8 idx=0/20 dist=40/250 edge=1:6.52@78.0,90.0 dx=-6.0 width=72.1 l=48,110 r=108,70
+CxScan: raw_ref=80.0 edge=78.0,90.0 best_raw_x=65 best_err=0.30 best_cxcy=78.3,119.5 scan=0:-25.2,10:-21.6,20:-17.9,30:-14.1,40:-10.0,50:-5.9,60:-1.8,70:2.4,80:6.5,90:10.6,100:14.5,110:18.3,120:22.0,130:25.4,140:28.7
+ATGSeedDiag: seed=1@13,108/1@133,108 begin=7,108 block=5 clip=8
+ATGLptDiag: best=3(82.9) imip=0/6 pass=11111 acc=3 ipm=55.2,109.4 inv=21.3,86.2 | 32(3.3) imip=22/42 pass=10111 acc=-1 ipm=110.5,42.5 inv=93.1,26.3
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+frame=104 line=1 track=1 cross=0 circle=0(CIRCLE_NONE) round=0 yroad=0 ramp=0 road=7 speed=0 near=7/124 raw=42/105 sel=124/126 src=11 far=0/0 far_raw=0/0 l=1@3/0@-1 far_l=0@-1/0@-1 straight=0/1 far_straight=0/0 circle_cnt=0/0/0/0 lost=0/0 ref=0 A=0@-1,-1#0 B=0@-1,-1#0 C=0@-1,-1#0 conf=82.9/4.1/0.0/0.0 dist=0 begin=0/0 m0=(84,119) ml=(81,79) md=41/1/127 cxcy=84.0,119.6 guide=2.71 atg=0.0/0.0/0.0 pure=0.13/-0.05 yaw=-92 cmd=-277 actual=0 signed=0 rps=5318/4559:0/0 duty=26/24 pwm=PWM2:26/PWM1:24 motor=2:26/1:24
+CrossDiag: type=CROSS_NONE track=1 half_lr=0/0 nearL=1@3/0@-1 nearNum=7/124 centerNum=7/124 farL=0@-1/0@-1 farNum=0/0 farRaw=0/0 lost=0/0 not_have=0 final=124/126 flags=0/0
+LineErr: aim=41 cxcy=84.0,119.6 left=1:19.91@65,89 dx=-19.3 idx=0/6 dist=12/12 right=1:2.47@81,76 dx=-2.9 idx=0/17 dist=40/253 sel=1:2.33@81,74 dx=-2.8 idx=0/20 dist=40/250 edge=1:6.52@78.0,90.0 dx=-6.0 width=72.1 l=48,110 r=108,70
+CxScan: raw_ref=80.0 edge=78.0,90.0 best_raw_x=65 best_err=0.30 best_cxcy=78.3,119.5 scan=0:-25.2,10:-21.6,20:-17.9,30:-14.1,40:-10.0,50:-5.9,60:-1.8,70:2.4,80:6.5,90:10.6,100:14.5,110:18.3,120:22.0,130:25.4,140:28.7
+ATGSeedDiag: seed=1@13,108/1@133,108 begin=7,108 block=5 clip=8
+ATGLptDiag: best=3(82.9) imip=0/6 pass=11111 acc=3 ipm=55.2,109.4 inv=21.3,86.2 | 1(4.1) imip=0/11 pass=10111 acc=-1 ipm=106.5,114.2 inv=128.2,98.0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+frame=112 line=1 track=1 cross=0 circle=0(CIRCLE_NONE) round=0 yroad=0 ramp=0 road=7 speed=0 near=7/124 raw=42/105 sel=124/126 src=11 far=0/0 far_raw=0/0 l=1@3/0@-1 far_l=0@-1/0@-1 straight=0/1 far_straight=0/0 circle_cnt=0/0/0/0 lost=0/0 ref=0 A=0@-1,-1#0 B=0@-1,-1#0 C=0@-1,-1#0 conf=82.9/3.3/0.0/0.0 dist=0 begin=0/0 m0=(84,119) ml=(81,79) md=41/1/127 cxcy=84.0,119.6 guide=2.72 atg=0.0/0.0/0.0 pure=0.13/-0.05 yaw=-92 cmd=-278 actual=0 signed=0 rps=5319/4558:0/0 duty=26/25 pwm=PWM2:26/PWM1:25 motor=2:26/1:25
+CrossDiag: type=CROSS_NONE track=1 half_lr=0/0 nearL=1@3/0@-1 nearNum=7/124 centerNum=7/124 farL=0@-1/0@-1 farNum=0/0 farRaw=0/0 lost=0/0 not_have=0 final=124/126 flags=0/0
+LineErr: aim=41 cxcy=84.0,119.6 left=1:19.90@65,89 dx=-19.3 idx=0/6 dist=12/12 right=1:2.47@81,76 dx=-2.9 idx=0/17 dist=40/253 sel=1:2.34@81,74 dx=-2.8 idx=0/20 dist=40/250 edge=1:6.52@78.0,90.0 dx=-6.0 width=72.1 l=48,110 r=108,70
+CxScan: raw_ref=80.0 edge=78.0,90.0 best_raw_x=65 best_err=0.30 best_cxcy=78.3,119.5 scan=0:-25.2,10:-21.6,20:-17.9,30:-14.1,40:-10.0,50:-5.9,60:-1.8,70:2.4,80:6.5,90:10.6,100:14.5,110:18.3,120:22.0,130:25.4,140:28.7
+ATGSeedDiag: seed=1@13,108/1@133,108 begin=7,108 block=5 clip=8
+ATGLptDiag: best=3(82.9) imip=0/6 pass=11111 acc=3 ipm=55.2,109.4 inv=21.3,86.2 | 32(3.3) imip=22/42 pass=10111 acc=-1 ipm=110.5,42.5 inv=93.1,26.3
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.9,80.7 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.3,80.8 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.9,80.7 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=13,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=13.3,80.7 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.3,80.8 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.9,80.7 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.9,80.7 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+frame=216 line=1 track=1 cross=0 circle=0(CIRCLE_NONE) round=0 yroad=0 ramp=0 road=7 speed=0 near=7/124 raw=42/105 sel=124/126 src=11 far=0/0 far_raw=0/0 l=1@3/0@-1 far_l=0@-1/0@-1 straight=0/1 far_straight=0/0 circle_cnt=0/0/0/0 lost=0/0 ref=0 A=0@-1,-1#0 B=0@-1,-1#0 C=0@-1,-1#0 conf=82.9/4.1/0.0/0.0 dist=0 begin=0/0 m0=(84,119) ml=(81,79) md=41/1/127 cxcy=84.0,119.6 guide=2.71 atg=0.0/0.0/0.0 pure=0.13/-0.05 yaw=-92 cmd=-277 actual=0 signed=0 rps=5318/4559:0/0 duty=26/25 pwm=PWM2:26/PWM1:25 motor=2:26/1:25
+CrossDiag: type=CROSS_NONE track=1 half_lr=0/0 nearL=1@3/0@-1 nearNum=7/124 centerNum=7/124 farL=0@-1/0@-1 farNum=0/0 farRaw=0/0 lost=0/0 not_have=0 final=124/126 flags=0/0
+LineErr: aim=41 cxcy=84.0,119.6 left=1:19.91@65,89 dx=-19.3 idx=0/6 dist=12/12 right=1:2.47@81,76 dx=-2.9 idx=0/17 dist=40/253 sel=1:2.33@81,74 dx=-2.8 idx=0/20 dist=40/250 edge=1:6.52@78.0,90.0 dx=-6.0 width=72.1 l=48,110 r=108,70
+CxScan: raw_ref=80.0 edge=78.0,90.0 best_raw_x=65 best_err=0.30 best_cxcy=78.3,119.5 scan=0:-25.2,10:-21.6,20:-17.9,30:-14.1,40:-10.0,50:-5.9,60:-1.8,70:2.4,80:6.5,90:10.6,100:14.5,110:18.3,120:22.0,130:25.4,140:28.7
+ATGSeedDiag: seed=1@13,108/1@133,108 begin=7,108 block=5 clip=8
+ATGLptDiag: best=3(82.9) imip=0/6 pass=11111 acc=3 ipm=55.2,109.4 inv=21.3,86.2 | 1(4.1) imip=0/11 pass=10111 acc=-1 ipm=106.5,114.2 inv=128.2,98.0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+frame=224 line=1 track=1 cross=0 circle=0(CIRCLE_NONE) round=0 yroad=0 ramp=0 road=7 speed=0 near=7/124 raw=42/105 sel=124/126 src=11 far=0/0 far_raw=0/0 l=1@3/0@-1 far_l=0@-1/0@-1 straight=0/1 far_straight=0/0 circle_cnt=0/0/0/0 lost=0/0 ref=0 A=0@-1,-1#0 B=0@-1,-1#0 C=0@-1,-1#0 conf=82.9/3.3/0.0/0.0 dist=0 begin=0/0 m0=(84,119) ml=(81,79) md=41/1/127 cxcy=84.0,119.6 guide=2.72 atg=0.0/0.0/0.0 pure=0.13/-0.05 yaw=-92 cmd=-277 actual=0 signed=0 rps=5318/4559:0/0 duty=26/25 pwm=PWM2:26/PWM1:25 motor=2:26/1:25
+CrossDiag: type=CROSS_NONE track=1 half_lr=0/0 nearL=1@3/0@-1 nearNum=7/124 centerNum=7/124 farL=0@-1/0@-1 farNum=0/0 farRaw=0/0 lost=0/0 not_have=0 final=124/126 flags=0/0
+LineErr: aim=41 cxcy=84.0,119.6 left=1:19.91@65,89 dx=-19.3 idx=0/6 dist=12/12 right=1:2.47@81,76 dx=-2.9 idx=0/17 dist=40/253 sel=1:2.34@81,74 dx=-2.8 idx=0/20 dist=40/250 edge=1:6.52@78.0,90.0 dx=-6.0 width=72.1 l=48,110 r=108,70
+CxScan: raw_ref=80.0 edge=78.0,90.0 best_raw_x=65 best_err=0.30 best_cxcy=78.3,119.5 scan=0:-25.2,10:-21.6,20:-17.9,30:-14.1,40:-10.0,50:-5.9,60:-1.8,70:2.4,80:6.5,90:10.6,100:14.5,110:18.3,120:22.0,130:25.4,140:28.7
+ATGSeedDiag: seed=1@13,108/1@133,108 begin=7,108 block=5 clip=8
+ATGLptDiag: best=3(82.9) imip=0/6 pass=11111 acc=3 ipm=55.2,109.4 inv=21.3,86.2 | 32(3.3) imip=22/42 pass=10111 acc=-1 ipm=110.5,42.5 inv=93.1,26.3
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=13,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=13.3,80.7 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.9,80.7 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.9,80.7 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=13,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=13.3,80.7 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.3,80.8 th=0
+frame=296 line=1 track=1 cross=0 circle=0(CIRCLE_NONE) round=0 yroad=0 ramp=0 road=7 speed=0 near=8/124 raw=44/105 sel=124/126 src=11 far=0/0 far_raw=0/0 l=1@3/0@-1 far_l=0@-1/0@-1 straight=0/1 far_straight=0/0 circle_cnt=0/0/0/0 lost=0/0 ref=0 A=0@-1,-1#0 B=0@-1,-1#0 C=0@-1,-1#0 conf=90.5/3.3/0.0/0.0 dist=0 begin=0/0 m0=(84,119) ml=(81,79) md=41/1/127 cxcy=84.0,119.6 guide=2.72 atg=0.0/0.0/0.0 pure=0.14/-0.05 yaw=-92 cmd=-277 actual=0 signed=0 rps=5319/4558:0/0 duty=26/25 pwm=PWM2:26/PWM1:25 motor=2:26/1:25
+CrossDiag: type=CROSS_NONE track=1 half_lr=0/0 nearL=1@3/0@-1 nearNum=8/124 centerNum=8/124 farL=0@-1/0@-1 farNum=0/0 farRaw=0/0 lost=0/0 not_have=0 final=124/126 flags=0/0
+LineErr: aim=41 cxcy=84.0,119.6 left=1:23.85@60,88 dx=-24.3 idx=0/7 dist=14/14 right=1:2.47@81,76 dx=-2.9 idx=0/17 dist=40/253 sel=1:2.34@81,74 dx=-2.8 idx=0/20 dist=40/250 edge=1:7.05@77.5,90.0 dx=-6.5 width=72.9 l=47,110 r=108,70
+CxScan: raw_ref=80.0 edge=77.5,90.0 best_raw_x=65 best_err=0.84 best_cxcy=78.3,119.5 scan=0:-24.7,10:-21.2,20:-17.4,30:-13.5,40:-9.5,50:-5.4,60:-1.2,70:2.9,80:7.1,90:11.1,100:15.0,110:18.8,120:22.4,130:25.9,140:29.1
+ATGSeedDiag: seed=1@13,108/1@133,108 begin=7,108 block=5 clip=8
+ATGLptDiag: best=3(90.5) imip=0/7 pass=11111 acc=3 ipm=55.6,109.2 inv=22.3,85.8 | 32(3.3) imip=22/42 pass=10111 acc=-1 ipm=110.5,42.5 inv=93.1,26.3
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.9,80.7 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+frame=304 line=1 track=1 cross=0 circle=0(CIRCLE_NONE) round=0 yroad=0 ramp=0 road=7 speed=0 near=7/124 raw=42/105 sel=124/126 src=11 far=0/0 far_raw=0/0 l=1@3/0@-1 far_l=0@-1/0@-1 straight=0/1 far_straight=0/0 circle_cnt=0/0/0/0 lost=0/0 ref=0 A=0@-1,-1#0 B=0@-1,-1#0 C=0@-1,-1#0 conf=82.9/3.3/0.0/0.0 dist=0 begin=0/0 m0=(84,119) ml=(81,79) md=41/1/127 cxcy=84.0,119.6 guide=2.72 atg=0.0/0.0/0.0 pure=0.14/-0.05 yaw=-92 cmd=-277 actual=0 signed=0 rps=5319/4558:0/0 duty=26/25 pwm=PWM2:26/PWM1:25 motor=2:26/1:25
+CrossDiag: type=CROSS_NONE track=1 half_lr=0/0 nearL=1@3/0@-1 nearNum=7/124 centerNum=7/124 farL=0@-1/0@-1 farNum=0/0 farRaw=0/0 lost=0/0 not_have=0 final=124/126 flags=0/0
+LineErr: aim=41 cxcy=84.0,119.6 left=1:19.91@65,89 dx=-19.3 idx=0/6 dist=12/12 right=1:2.47@81,76 dx=-2.9 idx=0/17 dist=41/254 sel=1:2.34@81,74 dx=-2.8 idx=0/20 dist=40/250 edge=1:6.52@78.0,90.0 dx=-6.0 width=72.1 l=48,110 r=108,70
+CxScan: raw_ref=80.0 edge=78.0,90.0 best_raw_x=65 best_err=0.30 best_cxcy=78.3,119.5 scan=0:-25.2,10:-21.6,20:-17.9,30:-14.1,40:-10.0,50:-5.9,60:-1.8,70:2.4,80:6.5,90:10.6,100:14.5,110:18.3,120:22.0,130:25.4,140:28.7
+ATGSeedDiag: seed=1@13,108/1@133,108 begin=7,108 block=5 clip=8
+ATGLptDiag: best=3(82.9) imip=0/6 pass=11111 acc=3 ipm=55.2,109.4 inv=21.3,86.2 | 32(3.3) imip=22/42 pass=10111 acc=-1 ipm=110.5,42.5 inv=93.1,26.3
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.9,80.7 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.3,80.8 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=13,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=13.3,80.7 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.9,80.7 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.9,80.7 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.9,80.7 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+frame=648 line=1 track=1 cross=0 circle=0(CIRCLE_NONE) round=0 yroad=0 ramp=0 road=7 speed=0 near=7/124 raw=42/105 sel=124/126 src=11 far=0/0 far_raw=0/0 l=1@3/0@-1 far_l=0@-1/0@-1 straight=0/1 far_straight=0/0 circle_cnt=0/0/0/0 lost=0/0 ref=0 A=0@-1,-1#0 B=0@-1,-1#0 C=0@-1,-1#0 conf=82.9/3.1/0.0/0.0 dist=0 begin=0/0 m0=(84,119) ml=(81,79) md=41/1/127 cxcy=84.0,119.6 guide=2.72 atg=0.0/0.0/0.0 pure=0.14/-0.05 yaw=-92 cmd=-278 actual=0 signed=0 rps=5319/4557:0/0 duty=26/25 pwm=PWM2:26/PWM1:25 motor=2:26/1:25
+CrossDiag: type=CROSS_NONE track=1 half_lr=0/0 nearL=1@3/0@-1 nearNum=7/124 centerNum=7/124 farL=0@-1/0@-1 farNum=0/0 farRaw=0/0 lost=0/0 not_have=0 final=124/126 flags=0/0
+LineErr: aim=41 cxcy=84.0,119.6 left=1:19.90@65,89 dx=-19.3 idx=0/6 dist=12/12 right=1:2.48@81,76 dx=-2.9 idx=0/17 dist=41/254 sel=1:2.35@81,74 dx=-2.8 idx=0/20 dist=40/250 edge=1:6.52@78.0,90.0 dx=-6.0 width=72.1 l=48,110 r=108,70
+CxScan: raw_ref=80.0 edge=78.0,90.0 best_raw_x=65 best_err=0.30 best_cxcy=78.3,119.5 scan=0:-25.2,10:-21.6,20:-17.9,30:-14.1,40:-10.0,50:-5.9,60:-1.8,70:2.4,80:6.5,90:10.6,100:14.5,110:18.3,120:22.0,130:25.4,140:28.7
+ATGSeedDiag: seed=1@13,108/1@133,108 begin=7,108 block=5 clip=8
+ATGLptDiag: best=3(82.9) imip=0/6 pass=11111 acc=3 ipm=55.2,109.4 inv=21.3,86.2 | 2(3.1) imip=0/12 pass=10111 acc=-1 ipm=106.6,111.9 inv=125.0,91.4
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=12,80 hit=0@-1,-1 ray=0,0 sharp=0 raw=12.1,80.9 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+frame=656 line=1 track=1 cross=0 circle=0(CIRCLE_NONE) round=0 yroad=0 ramp=0 road=7 speed=0 near=7/124 raw=42/105 sel=124/126 src=11 far=0/0 far_raw=0/0 l=1@3/0@-1 far_l=0@-1/0@-1 straight=0/1 far_straight=0/0 circle_cnt=0/0/0/0 lost=0/0 ref=0 A=0@-1,-1#0 B=0@-1,-1#0 C=0@-1,-1#0 conf=82.9/3.3/0.0/0.0 dist=0 begin=0/0 m0=(84,119) ml=(81,79) md=41/1/127 cxcy=84.0,119.6 guide=2.72 atg=0.0/0.0/0.0 pure=0.13/-0.05 yaw=-92 cmd=-276 actual=-1 signed=0 rps=5317/4560:0/0 duty=26/25 pwm=PWM2:26/PWM1:25 motor=2:26/1:25
+CrossDiag: type=CROSS_NONE track=1 half_lr=0/0 nearL=1@3/0@-1 nearNum=7/124 centerNum=7/124 farL=0@-1/0@-1 farNum=0/0 farRaw=0/0 lost=0/0 not_have=0 final=124/126 flags=0/0
+LineErr: aim=41 cxcy=84.0,119.6 left=1:19.91@65,89 dx=-19.3 idx=0/6 dist=12/12 right=1:2.47@81,76 dx=-2.9 idx=0/17 dist=40/253 sel=1:2.35@81,74 dx=-2.8 idx=0/20 dist=40/250 edge=1:6.52@78.0,90.0 dx=-6.0 width=72.1 l=48,110 r=108,70
+CxScan: raw_ref=80.0 edge=78.0,90.0 best_raw_x=65 best_err=0.30 best_cxcy=78.3,119.5 scan=0:-25.2,10:-21.6,20:-17.9,30:-14.1,40:-10.0,50:-5.9,60:-1.8,70:2.4,80:6.5,90:10.6,100:14.5,110:18.3,120:22.0,130:25.4,140:28.7
+ATGSeedDiag: seed=1@13,108/1@133,108 begin=7,108 block=5 clip=8
+ATGLptDiag: best=3(82.9) imip=0/6 pass=11111 acc=3 ipm=55.2,109.4 inv=21.3,86.2 | 32(3.3) imip=22/42 pass=10111 acc=-1 ipm=110.5,42.5 inv=93.1,26.3
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+frame=672 line=1 track=1 cross=0 circle=0(CIRCLE_NONE) round=0 yroad=0 ramp=0 road=7 speed=0 near=7/124 raw=42/105 sel=124/126 src=11 far=0/0 far_raw=0/0 l=1@3/0@-1 far_l=0@-1/0@-1 straight=0/1 far_straight=0/0 circle_cnt=0/0/0/0 lost=0/0 ref=0 A=0@-1,-1#0 B=0@-1,-1#0 C=0@-1,-1#0 conf=82.9/17.9/0.0/0.0 dist=0 begin=0/0 m0=(84,119) ml=(81,79) md=41/1/127 cxcy=84.0,119.6 guide=2.72 atg=0.0/0.0/0.0 pure=0.13/-0.05 yaw=-92 cmd=-277 actual=0 signed=0 rps=5318/4559:0/0 duty=26/25 pwm=PWM2:26/PWM1:25 motor=2:26/1:25
+CrossDiag: type=CROSS_NONE track=1 half_lr=0/0 nearL=1@3/0@-1 nearNum=7/124 centerNum=7/124 farL=0@-1/0@-1 farNum=0/0 farRaw=0/0 lost=0/0 not_have=0 final=124/126 flags=0/0
+LineErr: aim=41 cxcy=84.0,119.6 left=1:19.91@65,89 dx=-19.3 idx=0/6 dist=12/12 right=1:2.50@81,76 dx=-2.9 idx=0/17 dist=40/254 sel=1:2.34@81,74 dx=-2.8 idx=0/20 dist=40/250 edge=1:6.52@78.0,90.0 dx=-6.0 width=72.1 l=48,110 r=108,70
+CxScan: raw_ref=80.0 edge=78.0,90.0 best_raw_x=65 best_err=0.30 best_cxcy=78.3,119.5 scan=0:-25.2,10:-21.6,20:-17.9,30:-14.1,40:-10.0,50:-5.9,60:-1.8,70:2.4,80:6.5,90:10.6,100:14.5,110:18.3,120:22.0,130:25.4,140:28.7
+ATGSeedDiag: seed=1@13,108/1@130,108 begin=7,108 block=5 clip=8
+ATGLptDiag: best=3(82.9) imip=0/6 pass=11111 acc=3 ipm=55.2,109.4 inv=21.3,86.2 | 1(17.9) imip=0/11 pass=10111 acc=-1 ipm=105.9,114.3 inv=127.1,98.3
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.2,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+ATGCircleEntryInnerHit: side=L near=1@3 seed=11,81 hit=0@-1,-1 ray=0,0 sharp=0 raw=11.3,81.2 th=0
+frame=688 line=1 track=1 cross=0 circle=0(CIRCLE_NONE) round=0 yroad=0 ramp=0 road=7 speed=0 near=7/13 raw=42/170 sel=13/12 src=11 far=0/0 far_raw=0/0 l=1@3/0@-1 far_l=0@-1/0@-1 straight=0/0 far_straight=0/0 circle_cnt=0/0/0/0 lost=0/0 ref=0 A=0@-1,-1#0 B=0@-1,-1#0 C=0@-1,-1#0 conf=82.9/25.3/0.0/0.0 dist=0 begin=0/0 m0=(84,119) ml=(76,96) md=25/0/25 cxcy=84.0,119.6 guide=9.76 atg=-30.0/-12.0/-12.0 pure=3.80/3.80 yaw=-781 cmd=-1181 actual=0 signed=0 rps=6098/2862:0/0 duty=28/18 pwm=PWM2:28/PWM1:18 motor=2:28/1:18
+CrossDiag: type=CROSS_NONE track=1 half_lr=0/0 nearL=1@3/0@-1 nearNum=7/13 centerNum=7/13 farL=0@-1/0@-1 farNum=0/0 farRaw=0/0 lost=0/0 not_have=0 final=13/12 flags=0/0
+LineErr: aim=41 cxcy=84.0,119.6 left=1:19.90@65,89 dx=-19.3 idx=0/6 dist=12/12 right=1:8.88@77,95 dx=-7.4 idx=1/12 dist=24/24 sel=1:9.35@76,96 dx=-7.6 idx=0/11 dist=22/22 edge=1:11.92@75.0,100.0 dx=-9.0 width=57.6 l=48,110 r=102,90
+CxScan: raw_ref=80.0 edge=75.0,100.0 best_raw_x=55 best_err=-0.76 best_cxcy=74.4,119.5 scan=0:-27.0,10:-22.8,20:-18.2,30:-13.4,40:-8.4,50:-3.3,60:1.8,70:6.9,80:11.9,90:16.7,100:21.3,110:25.6,120:29.6,130:33.3,140:36.7
+ATGSeedDiag: seed=1@13,108/1@130,108 begin=7,108 block=5 clip=8
+ATGLptDiag: best=3(82.9) imip=0/6 pass=11111 acc=3 ipm=55.2,109.4 inv=21.3,86.2 | 1(25.3) imip=0/11 pass=10111 acc=-1 ipm=105.8,114.3 inv=127.0,98.4
+frame=696 line=1 track=1 cross=0 circle=0(CIRCLE_NONE) round=0 yroad=0 ramp=0 road=7 speed=0 near=1/6 raw=42/170 sel=6/15 src=11 far=0/0 far_raw=0/0 l=1@3/1@6 far_l=0@-1/0@-1 straight=0/0 far_straight=0/0 circle_cnt=0/0/0/0 lost=0/0 ref=0 A=0@-1,-1#0 B=0@-1,-1#0 C=0@-1,-1#0 conf=82.9/119.3/0.0/0.0 dist=0 begin=0/0 m0=(84,119) ml=(105,119) md=21/0/21 cxcy=84.0,119.6 guide=-41.55 atg=60.0/60.0/60.0 pure=-25.44/-25.44 yaw=3324 cmd=3724 actual=-101 signed=0 rps=0/7888:0/0 duty=0/35 pwm=PWM2:0/PWM1:35 motor=2:0/1:35
+CrossDiag: type=CROSS_NONE track=1 half_lr=0/0 nearL=1@3/1@6 nearNum=1/6 centerNum=1/6 farL=0@-1/0@-1 farNum=0/0 farRaw=0/0 lost=0/0 not_have=0 final=6/15 flags=0/0
+LineErr: aim=41 cxcy=84.0,119.6 left=0:0.00@-1,-1 dx=0.0 idx=-1/-1 dist=-1/-1 right=1:-61.53@105,131 dx=21.3 idx=0/5 dist=34/34 sel=1:-64.82@105,133 dx=21.0 idx=0/14 dist=28/28 edge=0:0.00@-1.0,-1.0 dx=0.0 width=0.0 l=-1,-1 r=107,105
+ATGSeedDiag: seed=1@13,108/1@130,108 begin=7,108 block=5 clip=8
+ATGLptDiag: best=3(82.9) imip=0/6 pass=11111 acc=3 ipm=55.2,109.4 inv=21.3,86.2 | 6(119.3) imip=0/16 pass=11111 acc=6 ipm=104.9,103.6 inv=112.4,73.4
+frame=704 line=1 track=1 cross=0 circle=0(CIRCLE_NONE) round=0 yroad=0 ramp=0 road=7 speed=0 near=1/5 raw=4/76 sel=5/16 src=11 far=0/0 far_raw=0/0 l=0@-1/1@5 far_l=0@-1/0@-1 straight=0/0 far_straight=0/0 circle_cnt=0/0/0/0 lost=0/0 ref=0 A=0@-1,-1#0 B=0@-1,-1#0 C=0@-1,-1#0 conf=0.0/129.9/0.0/0.0 dist=0 begin=0/0 m0=(84,119) ml=(107,119) md=23/0/23 cxcy=84.0,119.6 guide=-44.15 atg=60.0/60.0/60.0 pure=-25.16/-25.16 yaw=3532 cmd=3932 actual=254 signed=0 rps=0/8034:0/0 duty=0/32 pwm=PWM2:0/PWM1:32 motor=2:0/1:32
+CrossDiag: type=CROSS_NONE track=1 half_lr=0/0 nearL=0@-1/1@5 nearNum=1/5 centerNum=1/5 farL=0@-1/0@-1 farNum=0/0 farRaw=0/0 lost=0/0 not_have=0 final=5/16 flags=0/0
+LineErr: aim=41 cxcy=84.0,119.6 left=0:0.00@-1,-1 dx=0.0 idx=-1/-1 dist=-1/-1 right=1:-69.59@107,134 dx=23.2 idx=0/4 dist=36/36 sel=1:-69.64@107,134 dx=23.2 idx=0/15 dist=30/30 edge=0:0.00@-1.0,-1.0 dx=0.0 width=0.0 l=-1,-1 r=108,108
+ATGSeedDiag: seed=1@68,108/1@134,108 begin=7,108 block=5 clip=8
+ATGLptDiag: best=-1(-57295.8) imip=-1/-1 pass=00000 acc=-1 ipm=-1.0,-1.0 inv=-1.0,-1.0 | 5(129.9) imip=0/15 pass=11111 acc=5 ipm=107.6,105.7 inv=119.3,77.3
+frame=712 line=1 track=1 cross=0 circle=0(CIRCLE_NONE) round=0 yroad=0 ramp=0 road=7 speed=0 near=1/8 raw=1/103 sel=8/9 src=11 far=0/0 far_raw=0/0 l=0@-1/1@8 far_l=0@-1/0@-1 straight=0/0 far_straight=0/0 circle_cnt=0/0/0/0 lost=0/0 ref=0 A=0@-1,-1#0 B=0@-1,-1#0 C=0@-1,-1#0 conf=0.0/126.8/0.0/0.0 dist=0 begin=0/0 m0=(84,119) ml=(96,119) md=14/0/14 cxcy=84.0,119.6 guide=-26.84 atg=60.0/60.0/60.0 pure=-22.06/-22.06 yaw=2147 cmd=2547 actual=40 signed=0 rps=78/7059:0/0 duty=0/29 pwm=PWM2:0/PWM1:29 motor=2:0/1:29
+CrossDiag: type=CROSS_NONE track=1 half_lr=0/0 nearL=0@-1/1@8 nearNum=1/8 centerNum=1/8 farL=0@-1/0@-1 farNum=0/0 farRaw=0/0 lost=0/0 not_have=0 final=8/9 flags=0/0
+LineErr: aim=41 cxcy=84.0,119.6 left=0:0.00@-1,-1 dx=0.0 idx=-1/-1 dist=-1/-1 right=1:-38.37@97,126 dx=13.4 idx=1/7 dist=20/20 sel=1:-35.03@96,126 dx=11.5 idx=0/8 dist=16/16 edge=0:0.00@-1.0,-1.0 dx=0.0 width=0.0 l=-1,-1 r=104,101
+ATGSeedDiag: seed=1@67,108/1@130,108 begin=7,108 block=5 clip=8
+ATGLptDiag: best=-1(-57295.8) imip=-1/-1 pass=00000 acc=-1 ipm=-1.0,-1.0 inv=-1.0,-1.0 | 8(126.8) imip=0/18 pass=11111 acc=8 ipm=104.5,98.4 inv=107.7,65.0
+frame=720 line=1 track=0 cross=0 circle=0(CIRCLE_NONE) round=0 yroad=0 ramp=0 road=7 speed=0 near=9/2 raw=88/170 sel=9/18 src=10 far=0/0 far_raw=0/0 l=1@10/0@-1 far_l=0@-1/0@-1 straight=0/0 far_straight=0/0 circle_cnt=0/0/0/0 lost=0/0 ref=0 A=0@-1,-1#0 B=0@-1,-1#0 C=0@-1,-1#0 conf=100.4/0.0/0.0/0.0 dist=0 begin=0/0 m0=(84,119) ml=(78,81) md=38/0/38 cxcy=84.0,119.6 guide=5.13 atg=-10.0/-4.0/-4.0 pure=1.72/1.72 yaw=-411 cmd=-811 actual=-28 signed=0 rps=5837/3615:0/0 duty=20/15 pwm=PWM2:20/PWM1:15 motor=2:20/1:15
+CrossDiag: type=CROSS_NONE track=0 half_lr=0/0 nearL=1@10/0@-1 nearNum=9/2 centerNum=9/2 farL=0@-1/0@-1 farNum=0/0 farRaw=0/0 lost=0/0 not_have=0 final=9/18 flags=0/0
+LineErr: aim=41 cxcy=84.0,119.6 left=1:5.59@78,81 dx=-6.1 idx=0/8 dist=40/40 right=1:13.31@73,96 dx=-11.1 idx=0/1 dist=2/2 sel=1:5.58@78,81 dx=-6.1 idx=0/17 dist=34/34 edge=1:14.72@74.5,106.5 dx=-9.5 width=37.1 l=58,98 r=91,115
+CxScan: raw_ref=80.0 edge=74.5,106.5 best_raw_x=55 best_err=-0.10 best_cxcy=74.4,119.5 scan=0:-30.5,10:-25.7,20:-20.5,30:-15.0,40:-9.2,50:-3.1,60:2.9,70:8.9,80:14.7,90:20.2,100:25.3,110:30.0,120:34.3,130:38.2,140:41.7
+ATGSeedDiag: seed=1@15,108/1@90,107 begin=7,108 block=5 clip=8
+ATGLptDiag: best=10(100.4) imip=0/20 pass=11111 acc=10 ipm=58.1,93.0 inv=39.8,58.5 | -1(-57295.8) imip=-1/-1 pass=00000 acc=-1 ipm=-1.0,-1.0 inv=-1.0,-1.0
+frame=728 line=1 track=0 cross=0 circle=0(CIRCLE_NONE) round=0 yroad=0 ramp=0 road=7 speed=0 near=9/3 raw=88/78 sel=9/17 src=10 far=0/0 far_raw=0/0 l=1@10/1@5 far_l=0@-1/0@-1 straight=0/0 far_straight=0/0 circle_cnt=0/0/0/0 lost=0/0 ref=0 A=0@-1,-1#0 B=0@-1,-1#0 C=0@-1,-1#0 conf=98.5/125.8/0.0/0.0 dist=0 begin=0/0 m0=(84,119) ml=(81,83) md=36/0/36 cxcy=84.0,119.6 guide=2.95 atg=-3.0/-1.0/-1.0 pure=1.06/1.06 yaw=-100 cmd=-494 actual=97 signed=0 rps=5611/4255:0/0 duty=20/17 pwm=PWM2:20/PWM1:17 motor=2:20/1:17
+CrossDiag: type=CROSS_NONE track=0 half_lr=0/0 nearL=1@10/1@5 nearNum=9/3 centerNum=9/3 farL=0@-1/0@-1 farNum=0/0 farRaw=0/0 lost=0/0 not_have=0 final=9/17 flags=0/0
+LineErr: aim=41 cxcy=84.0,119.6 left=1:3.65@80,81 dx=-3.9 idx=0/8 dist=40/40 right=1:-74.07@103,137 dx=18.8 idx=0/2 dist=10/10 sel=1:3.29@81,83 dx=-3.4 idx=0/16 dist=32/32 edge=1:-0.72@84.5,105.0 dx=0.5 width=51.0 l=60,98 r=109,112
+CxScan: raw_ref=80.0 edge=84.5,105.0 best_raw_x=80 best_err=-0.72 best_cxcy=84.0,119.6 scan=0:-39.7,10:-36.1,20:-32.0,30:-27.6,40:-22.8,50:-17.6,60:-12.2,70:-6.5,80:-0.7,90:5.1,100:10.8,110:16.2,120:21.4,130:26.2,140:30.7
+ATGSeedDiag: seed=1@17,108/1@137,108 begin=7,108 block=5 clip=8
+ATGLptDiag: best=10(98.5) imip=0/20 pass=11111 acc=10 ipm=59.1,93.3 inv=41.0,58.9 | 5(125.8) imip=0/15 pass=11111 acc=5 ipm=108.5,105.1 inv=120.2,76.1
+frame=736 line=0 track=1 cross=0 circle=0(CIRCLE_NONE) round=0 yroad=0 ramp=0 road=7 speed=0 near=1/1 raw=170/170 sel=1/0 src=11 far=0/0 far_raw=0/0 l=0@-1/0@-1 far_l=0@-1/0@-1 straight=0/0 far_straight=0/0 circle_cnt=0/0/0/0 lost=0/0 ref=0 A=0@-1,-1#0 B=0@-1,-1#0 C=0@-1,-1#0 conf=0.0/0.0/0.0/0.0 dist=0 begin=0/0 m0=(-1,-1) ml=(-1,-1) md=-1/0/-1 cxcy=84.0,119.6 guide=0.00 atg=-22.0/-9.0/-9.0 pure=3.26/3.26 yaw=0 cmd=0 actual=-1 signed=0 rps=0/0:0/0 duty=0/0 pwm=PWM2:0/PWM1:0 motor=2:0/1:0
+CrossDiag: type=CROSS_NONE track=1 half_lr=0/0 nearL=0@-1/0@-1 nearNum=1/1 centerNum=1/1 farL=0@-1/0@-1 farNum=0/0 farRaw=0/0 lost=0/0 not_have=0 final=1/0 flags=0/0
+LineErr: aim=41 cxcy=84.0,119.6 left=0:0.00@-1,-1 dx=0.0 idx=-1/-1 dist=-1/-1 right=0:0.00@-1,-1 dx=0.0 idx=-1/-1 dist=-1/-1 sel=0:0.00@-1,-1 dx=0.0 idx=-1/-1 dist=-1/-1 edge=0:0.00@-1.0,-1.0 dx=0.0 width=0.0 l=-1,-1 r=-1,-1
+ATGSeedDiag: seed=1@72,107/1@95,108 begin=7,108 block=5 clip=8
+ATGLptDiag: best=-1(-57295.8) imip=-1/-1 pass=00000 acc=-1 ipm=-1.0,-1.0 inv=-1.0,-1.0 | -1(-57295.8) imip=-1/-1 pass=00000 acc=-1 ipm=-1.0,-1.0 inv=-1.0,-1.0
+frame=744 line=1 track=0 cross=0 circle=0(CIRCLE_NONE) round=0 yroad=0 ramp=0 road=7 speed=0 near=9/1 raw=85/63 sel=9/18 src=10 far=0/0 far_raw=0/0 l=1@10/1@3 far_l=0@-1/0@-1 straight=0/0 far_straight=0/0 circle_cnt=0/0/0/0 lost=0/0 ref=0 A=0@-1,-1#0 B=0@-1,-1#0 C=0@-1,-1#0 conf=98.3/123.2/0.0/0.0 dist=0 begin=0/0 m0=(84,119) ml=(76,81) md=38/0/38 cxcy=84.0,119.6 guide=6.72 atg=-17.0/-6.0/-6.0 pure=2.17/2.17 yaw=-537 cmd=-937 actual=-39 signed=0 rps=5926/3357:0/0 duty=21/14 pwm=PWM2:21/PWM1:14 motor=2:21/1:14
+CrossDiag: type=CROSS_NONE track=0 half_lr=0/0 nearL=1@10/1@3 nearNum=9/1 centerNum=9/1 farL=0@-1/0@-1 farNum=0/0 farRaw=0/0 lost=0/0 not_have=0 final=9/18 flags=0/0
+LineErr: aim=41 cxcy=84.0,119.6 left=1:7.38@76,79 dx=-8.3 idx=0/8 dist=42/42 right=0:0.00@-1,-1 dx=0.0 idx=-1/-1 dist=-1/-1 sel=1:7.03@76,81 dx=-7.6 idx=0/17 dist=34/34 edge=0:0.00@-1.0,-1.0 dx=0.0 width=0.0 l=57,98 r=-1,-1
+ATGSeedDiag: seed=1@14,108/1@134,108 begin=7,108 block=5 clip=8
+ATGLptDiag: best=10(98.3) imip=0/18 pass=11111 acc=10 ipm=55.9,93.6 inv=36.3,59.3 | 3(123.2) imip=0/12 pass=11111 acc=3 ipm=107.2,109.6 inv=123.1,85.6
+frame=752 line=0 track=1 cross=0 circle=0(CIRCLE_NONE) round=0 yroad=0 ramp=0 road=7 speed=0 near=0/1 raw=0/2 sel=1/0 src=11 far=0/0 far_raw=0/0 l=0@-1/0@-1 far_l=0@-1/0@-1 straight=0/0 far_straight=0/0 circle_cnt=0/0/0/0 lost=0/0 ref=0 A=0@-1,-1#0 B=0@-1,-1#0 C=0@-1,-1#0 conf=0.0/0.0/0.0/0.0 dist=0 begin=0/0 m0=(-1,-1) ml=(-1,-1) md=-1/0/-1 cxcy=84.0,119.6 guide=0.00 atg=-14.0/-5.0/-5.0 pure=2.03/2.03 yaw=0 cmd=0 actual=4 signed=0 rps=0/0:0/0 duty=0/0 pwm=PWM2:0/PWM1:0 motor=2:0/1:0
+CrossDiag: type=CROSS_NONE track=1 half_lr=0/0 nearL=0@-1/0@-1 nearNum=0/1 centerNum=0/1 farL=0@-1/0@-1 farNum=0/0 farRaw=0/0 lost=0/0 not_have=0 final=1/0 flags=0/0
+LineErr: aim=41 cxcy=84.0,119.6 left=0:0.00@-1,-1 dx=0.0 idx=-1/-1 dist=-1/-1 right=0:0.00@-1,-1 dx=0.0 idx=-1/-1 dist=-1/-1 sel=0:0.00@-1,-1 dx=0.0 idx=-1/-1 dist=-1/-1 edge=0:0.00@-1.0,-1.0 dx=0.0 width=0.0 l=-1,-1 r=-1,-1
+ATGSeedDiag: seed=1@73,108/1@108,108 begin=7,108 block=5 clip=8
+ATGLptDiag: best=-1(-57295.8) imip=-1/-1 pass=00000 acc=-1 ipm=-1.0,-1.0 inv=-1.0,-1.0 | -1(-57295.8) imip=-1/-1 pass=00000 acc=-1 ipm=-1.0,-1.0 inv=-1.0,-1.0
