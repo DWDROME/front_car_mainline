@@ -123,6 +123,7 @@ enum
     CIRCLE_POINT_SEARCH_NO_B = 3,
     CIRCLE_POINT_SEARCH_NO_EXTREME = 4,
     CIRCLE_POINT_SEARCH_NO_V = 5,
+    CIRCLE_POINT_SEARCH_PHASE_GATE = 6,
 };
 
 static const char *circle_ref_mode_name(enum circle_ref_mode_e mode)
@@ -156,6 +157,8 @@ static const char *circle_point_search_reason_name(int reason)
         return "no_extreme";
     case CIRCLE_POINT_SEARCH_NO_V:
         return "no_v";
+    case CIRCLE_POINT_SEARCH_PHASE_GATE:
+        return "phase_gate";
     default:
         return "unknown";
     }
@@ -473,6 +476,33 @@ static int find_circle_C(int left_circle)
     return 0;
 }
 
+static int circle_C_search_phase_ready(void)
+{
+    return circle_B_streak >= CIRCLE_B_CONFIRM_FRAMES &&
+           circle_B_point.found &&
+           circle_B_point.raw_y >= CIRCLE_B_ENTER_ROW;
+}
+
+static int update_circle_C_search(int left_circle)
+{
+    if(!circle_C_search_phase_ready())
+    {
+        circle_C_search_num = 0;
+        circle_C_search_b_found = circle_B_point.found;
+        circle_C_search_b_id = circle_B_point.id;
+        circle_C_search_start = -1;
+        circle_C_search_end = -1;
+        circle_C_search_reason = CIRCLE_POINT_SEARCH_PHASE_GATE;
+        circle_C_point.found = 0;
+        circle_C_point.id = -1;
+        circle_C_point.raw_x = -1;
+        circle_C_point.raw_y = -1;
+        return 0;
+    }
+
+    return find_circle_C(left_circle);
+}
+
 static void print_circle_abc_diag(char side, const char *phase, int mouth_ready)
 {
     if(circle_type == CIRCLE_NONE)
@@ -737,7 +767,7 @@ static int circle_entry_check_angle_variance(int left_side, int a_id, float *out
 // 左环向右取最大 x,右环向左取最小 x。
 // 若存在尖锐远角点(far_Lpt)→那是十字,不是圆环;返回区分。
 // 返回值:1=找到 B 且是非尖锐(圆环),-1=找到尖锐 B(十字),0=没找到。
-static int find_circle_B_vertical(int left_side)
+static int find_circle_B(int left_side)
 {
     const int a_id = left_side ? Lpt0_rpts0s_id : Lpt1_rpts1s_id;
     const int a_found = left_side ? (Lpt0_found ? 1 : 0) : (Lpt1_found ? 1 : 0);
@@ -990,7 +1020,7 @@ static int circle_entry_find_double_breakpoint(int left_side)
         return 0;
     }
 
-    const int b_ret = find_circle_B_vertical(left_side);
+    const int b_ret = find_circle_B(left_side);
     if(b_ret <= 0)
     {
         print_circle_entry_probe_diag(left_side, a_id, a_rx, a_ry, b_ret);
@@ -1078,12 +1108,12 @@ void run_circle() {
         print_left_begin_diag("state");
 
         latch_circle_A(1);
-        // BEGIN 内持续找 B(非尖锐弧顶) 和 C(上方尖角)
-        const int b_ok = find_circle_B_vertical(1) == 1;
+        // BEGIN 早期只找 B; B 到达相位门后才允许 C 搜索,避免 B/C 都落在中间圆弧。
+        const int b_ok = find_circle_B(1) == 1;
         if(b_ok) { circle_B_streak++; }
         else { circle_B_streak = 0; }
 
-        const int c_ok = find_circle_C(1);
+        const int c_ok = update_circle_C_search(1);
         if(c_ok) { circle_C_streak++; }
         else { circle_C_streak = 0; }
         circle_ref_mode = (circle_C_streak >= CIRCLE_C_CONFIRM_FRAMES) ? CIRCLE_REF_IN_C :
@@ -1092,7 +1122,7 @@ void run_circle() {
         print_circle_abc_diag('L', "BEGIN", 0);
 
         // BEGIN 内:C 找到→ref_mode=IN_C 触发 C 补线(停在 BEGIN 拉线)。
-        // B_row/mouth_loss 只切 ref_mode,不做状态切换。
+        // B_row 只作为 C 搜索相位门,不再单独切到 IN_C。
         // 唯一进 RUNNING 的路径:陀螺到 ENTER(完成切入)。
         if (circle_heading_abs_ge(CIRCLE_HEADING_ENTER_DEG10)) {
             print_circle_transition(circle_type, CIRCLE_LEFT_RUNNING,
@@ -1106,21 +1136,15 @@ void run_circle() {
             circle_C_streak = 0;
             Count_dis_Flag = 0;
         }
-        // B_row/mouth_loss 不直接 RUNNING——只在 BEGIN 内改 ref_mode 启用补线
-        else if (circle_B_streak >= CIRCLE_B_CONFIRM_FRAMES &&
-                 circle_B_point.found &&
-                 circle_B_point.raw_y >= CIRCLE_B_ENTER_ROW) {
-            circle_ref_mode = CIRCLE_REF_IN_C;  // B 到了,启用 C 补线模式但不离开 BEGIN
-        }
         else {
-        const int mouth_lost_too_late =
-            circle_left_begin_lost_streak >= CIRCLE_BEGIN_LOST_CONFIRM_FRAMES &&
-            circle_left_loss_start_begin_dist >= CIRCLE_BEGIN_MOUTH_MIN_DIST &&
-            circle_left_loss_start_begin_dist > CIRCLE_BEGIN_LOSS_MAX_DIST;
+            const int mouth_lost_too_late =
+                circle_left_begin_lost_streak >= CIRCLE_BEGIN_LOST_CONFIRM_FRAMES &&
+                circle_left_loss_start_begin_dist >= CIRCLE_BEGIN_MOUTH_MIN_DIST &&
+                circle_left_loss_start_begin_dist > CIRCLE_BEGIN_LOSS_MAX_DIST;
 
-        if (mouth_lost_too_late) {
-            abort_circle_begin("LEFT_BEGIN mouth_loss too late");
-        }
+            if (mouth_lost_too_late) {
+                abort_circle_begin("LEFT_BEGIN mouth_loss too late");
+            }
         }
     }
     else if (circle_type == CIRCLE_LEFT_RUNNING) {
@@ -1179,16 +1203,19 @@ void run_circle() {
 
         print_right_begin_diag("state");
 
-        // BEGIN 内持续找 B(非尖锐弧顶) 和 C(上方尖角)——对称左环
-        const int b_ok_r = find_circle_B_vertical(0) == 1;
+        latch_circle_A(0);
+        // BEGIN 早期只找 B; B 到达相位门后才允许 C 搜索,避免 B/C 都落在中间圆弧。
+        const int b_ok_r = find_circle_B(0) == 1;
         if(b_ok_r) { circle_B_streak++; }
         else { circle_B_streak = 0; }
 
-        const int c_ok_r = find_circle_C(0);
+        const int c_ok_r = update_circle_C_search(0);
         if(c_ok_r) { circle_C_streak++; }
         else { circle_C_streak = 0; }
         circle_ref_mode = (circle_C_streak >= CIRCLE_C_CONFIRM_FRAMES) ? CIRCLE_REF_IN_C :
                           (circle_B_streak >= CIRCLE_B_CONFIRM_FRAMES) ? CIRCLE_REF_BEGIN_AB : CIRCLE_REF_NONE;
+
+        print_circle_abc_diag('R', "BEGIN", 0);
 
         // BEGIN→RUNNING:陀螺到→RUNNING(C 找到时 ref_mode=IN_C,BEGIN 内已拉线)
         if (circle_heading_abs_ge(CIRCLE_HEADING_ENTER_DEG10)) {
@@ -1203,21 +1230,15 @@ void run_circle() {
             circle_C_streak = 0;
             Count_dis_Flag = 0;
         }
-        // B_row/mouth_loss 不直接 RUNNING——只在 BEGIN 内改 ref_mode 启用补线
-        else if (circle_B_streak >= CIRCLE_B_CONFIRM_FRAMES &&
-                 circle_B_point.found &&
-                 circle_B_point.raw_y >= CIRCLE_B_ENTER_ROW) {
-            circle_ref_mode = CIRCLE_REF_IN_C;
-        }
         else {
-        const int mouth_lost_too_late_r =
-            circle_right_begin_lost_streak >= CIRCLE_BEGIN_LOST_CONFIRM_FRAMES &&
-            circle_right_loss_start_begin_dist >= CIRCLE_BEGIN_MOUTH_MIN_DIST &&
-            circle_right_loss_start_begin_dist > CIRCLE_BEGIN_LOSS_MAX_DIST;
+            const int mouth_lost_too_late_r =
+                circle_right_begin_lost_streak >= CIRCLE_BEGIN_LOST_CONFIRM_FRAMES &&
+                circle_right_loss_start_begin_dist >= CIRCLE_BEGIN_MOUTH_MIN_DIST &&
+                circle_right_loss_start_begin_dist > CIRCLE_BEGIN_LOSS_MAX_DIST;
 
-        if (mouth_lost_too_late_r) {
-            abort_circle_begin("RIGHT_BEGIN mouth_loss too late");
-        }
+            if (mouth_lost_too_late_r) {
+                abort_circle_begin("RIGHT_BEGIN mouth_loss too late");
+            }
         }
     }
     else if (circle_type == CIRCLE_RIGHT_RUNNING) {
