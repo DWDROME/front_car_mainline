@@ -94,6 +94,18 @@ static int circle_B_search_a_found;
 static int circle_B_search_a_id;
 static int circle_B_search_start;
 static int circle_B_search_end;
+static const char *circle_B_search_detail;
+static int circle_B_search_scan_x;
+static int circle_B_search_best_x;
+static int circle_B_search_best_y;
+static int circle_B_search_rise_hits;
+static int circle_B_search_dx;
+static int circle_B_search_inner_dx;
+static int circle_B_search_dy;
+static int circle_B_search_up_dy;
+static int circle_B_search_dist2;
+static int circle_B_search_jump_bad;
+static int circle_B_search_sharp_far;
 static int circle_C_search_reason;
 static int circle_C_search_num;
 static int circle_C_search_b_found;
@@ -165,6 +177,42 @@ int circle_cal_log_enabled(void)
         warned_invalid = 1;
     }
     return 0;
+}
+
+static void print_circle_entry_probe_diag(int left_side,
+                                          int a_id,
+                                          int a_rx,
+                                          int a_ry,
+                                          int b_ret)
+{
+    if(!circle_cal_log_enabled())
+    {
+        return;
+    }
+    printf("ATGCircleEntryProbe: side=%c A=1@%d(raw=%d,%d) B=0 ret=%d reason=%s detail=%s "
+           "hits=%d rise=%d range=%d..%d scan_x=%d best=%d,%d dx=%d inner_dx=%d "
+           "dy=%d up_dy=%d dist2=%d jump=%d sharp_far=%d\n",
+           left_side ? 'L' : 'R',
+           a_id,
+           a_rx,
+           a_ry,
+           b_ret,
+           circle_point_search_reason_name(circle_B_search_reason),
+           circle_B_search_detail ? circle_B_search_detail : "unknown",
+           circle_B_search_num,
+           circle_B_search_rise_hits,
+           circle_B_search_start,
+           circle_B_search_end,
+           circle_B_search_scan_x,
+           circle_B_search_best_x,
+           circle_B_search_best_y,
+           circle_B_search_dx,
+           circle_B_search_inner_dx,
+           circle_B_search_dy,
+           circle_B_search_up_dy,
+           circle_B_search_dist2,
+           circle_B_search_jump_bad,
+           circle_B_search_sharp_far);
 }
 
 static int circle_heading_deg10(void)
@@ -700,14 +748,28 @@ static int find_circle_B_vertical(int left_side)
     circle_B_search_a_id = a_id;
     circle_B_search_start = -1;
     circle_B_search_end = -1;
+    circle_B_search_detail = "start";
+    circle_B_search_scan_x = -1;
+    circle_B_search_best_x = -1;
+    circle_B_search_best_y = -1;
+    circle_B_search_rise_hits = 0;
+    circle_B_search_dx = 0;
+    circle_B_search_inner_dx = 0;
+    circle_B_search_dy = 0;
+    circle_B_search_up_dy = 0;
+    circle_B_search_dist2 = 0;
+    circle_B_search_jump_bad = 0;
+    circle_B_search_sharp_far = 0;
     if(!a_found || a_id < 0)
     {
         circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_A;
+        circle_B_search_detail = "no_a";
         return 0;
     }
     if(a_id >= CIRCLE_ENTRY_A_ID_MAX)
     {
         circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_A;
+        circle_B_search_detail = "a_too_far";
         return 0;
     }
 
@@ -715,6 +777,7 @@ static int find_circle_B_vertical(int left_side)
     if(!circle_get_raw_point(left_side, a_id, &seed_raw_x, &seed_raw_y))
     {
         circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_A;
+        circle_B_search_detail = "raw_a_failed";
         return 0;
     }
 
@@ -731,6 +794,7 @@ static int find_circle_B_vertical(int left_side)
                                                (seed_raw_x - CIRCLE_ENTRY_B_SKIP_EDGE_X),
                                   block_size / 2,
                                   MT9V03X_W - block_size / 2 - 1);
+    circle_B_search_scan_x = scan_start_x;
     circle_B_search_start = y_max;
     circle_B_search_end = -1;
 
@@ -771,10 +835,15 @@ static int find_circle_B_vertical(int left_side)
         }
         if(!hit) continue;
     }
+    circle_B_search_best_x = best_x;
+    circle_B_search_best_y = best_y;
+    circle_B_search_rise_hits = rise_hits;
+    circle_B_search_jump_bad = jump_bad;
 
     if(best_y < 0)
     {
         circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_B;
+        circle_B_search_detail = "no_best_y";
         // printf("ATGCircleBDiag: side=%c seed=%d,%d y=%d..%d hits=%d best_y=-1 reason=no_best_y\n",
         //        left_side ? 'L' : 'R', seed_raw_x, seed_raw_y, y_min, y_max, valid_hits);
         return 0;
@@ -782,20 +851,12 @@ static int find_circle_B_vertical(int left_side)
     if(valid_hits < CIRCLE_ENTRY_B_MIN_HITS || rise_hits < CIRCLE_ENTRY_B_MIN_RISE_HITS)
     {
         circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_B;
+        circle_B_search_detail = "not_enough_hits";
         // printf("ATGCircleBDiag: side=%c seed=%d,%d best=%d,%d hits=%d/%d reason=not_enough_hits\n",
         //        left_side ? 'L' : 'R', seed_raw_x, seed_raw_y, best_x, best_y,
         //        valid_hits, rise_hits);
         return 0;
     }
-    if(jump_bad)
-    {
-        circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_EXTREME;
-        // printf("ATGCircleBDiag: side=%c seed=%d,%d best=%d,%d hits=%d/%d reason=jump_bad\n",
-        //        left_side ? 'L' : 'R', seed_raw_x, seed_raw_y, best_x, best_y,
-        //        valid_hits, rise_hits);
-        return 0;
-    }
-
     // AB 约束:A 不能太远,B 必须离 A 够远(纵向分离+空间距离),否则不是真双断点。
     // y 坐标减小 = 往上，所以 dy_ab = seed_raw_y - best_y
     const int dy_ab = seed_raw_y - best_y;
@@ -803,27 +864,41 @@ static int find_circle_B_vertical(int left_side)
     const int inner_dx_ab = left_side ? dx_ab : -dx_ab;
     const int dist2_ab = dx_ab * dx_ab + dy_ab * dy_ab;
     const int up_dy = seed_raw_y - best_y;
+    circle_B_search_dx = dx_ab;
+    circle_B_search_inner_dx = inner_dx_ab;
+    circle_B_search_dy = dy_ab;
+    circle_B_search_up_dy = up_dy;
+    circle_B_search_dist2 = dist2_ab;
 
     // printf("ATGCircleBDiag: side=%c seed=%d,%d best=%d,%d dy=%d dx=%d inner_dx=%d dist2=%d up_dy=%d hits=%d/%d reason=",
     //        left_side ? 'L' : 'R', seed_raw_x, seed_raw_y, best_x, best_y,
     //        dy_ab, dx_ab, inner_dx_ab, dist2_ab, up_dy, valid_hits, rise_hits);
 
+    if(jump_bad)
+    {
+        circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_EXTREME;
+        circle_B_search_detail = "jump_bad";
+        return 0;
+    }
     if(dy_ab < CIRCLE_ENTRY_AB_Y_MIN)
     {
         // printf("dy_too_small\n");
         circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_EXTREME;
+        circle_B_search_detail = "dy_too_small";
         return 0;
     }
     if(inner_dx_ab < CIRCLE_ENTRY_AB_X_MIN)
     {
         // printf("inner_dx_too_small\n");
         circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_EXTREME;
+        circle_B_search_detail = "inner_dx_too_small";
         return 0;
     }
     if(dist2_ab < CIRCLE_ENTRY_AB_DIST_MIN * CIRCLE_ENTRY_AB_DIST_MIN)
     {
         // printf("dist2_too_small\n");
         circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_EXTREME;
+        circle_B_search_detail = "dist2_too_small";
         return 0;
     }
 
@@ -833,6 +908,7 @@ static int find_circle_B_vertical(int left_side)
     {
         // printf("up_dy_out_of_range\n");
         circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_EXTREME;
+        circle_B_search_detail = "up_dy_out_of_range";
         return 0;
     }
     // printf("ok\n");
@@ -863,6 +939,8 @@ static int find_circle_B_vertical(int left_side)
     if(sharp_far_lpt)
     {
         circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_EXTREME;
+        circle_B_search_detail = "sharp_far";
+        circle_B_search_sharp_far = sharp_far_lpt;
         return -1;
     }
 
@@ -871,6 +949,8 @@ static int find_circle_B_vertical(int left_side)
     circle_B_point.raw_x = best_x;
     circle_B_point.raw_y = best_y;
     circle_B_search_reason = CIRCLE_POINT_SEARCH_OK;
+    circle_B_search_detail = "ok";
+    circle_B_search_sharp_far = sharp_far_lpt;
 
     if(circle_cal_log_enabled())
     {
@@ -904,19 +984,7 @@ static int circle_entry_find_double_breakpoint(int left_side)
     const int b_ret = find_circle_B_vertical(left_side);
     if(b_ret <= 0)
     {
-        if(circle_cal_log_enabled())
-        {
-            printf("ATGCircleEntryProbe: side=%c A=1@%d(raw=%d,%d) B=0 ret=%d reason=%s hits=%d range=%d..%d\n",
-                   left_side ? 'L' : 'R',
-                   a_id,
-                   a_rx,
-                   a_ry,
-                   b_ret,
-                   circle_point_search_reason_name(circle_B_search_reason),
-                   circle_B_search_num,
-                   circle_B_search_start,
-                   circle_B_search_end);
-        }
+        print_circle_entry_probe_diag(left_side, a_id, a_rx, a_ry, b_ret);
         return 0;  // 0=没找到 B, -1=尖锐B(十字)→都不算圆环
     }
 
