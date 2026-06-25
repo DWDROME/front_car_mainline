@@ -7,7 +7,11 @@
 .diag/
 *.diag.zip
 .gemini/
-.trellis/
+.trellis/.backup-*
+.trellis/worktrees/
+.trellis/.template-hashes.json
+.trellis/.runtime/
+.trellis/.cache/
 .github/agents/
 .github/copilot/
 .github/hooks/trellis.json

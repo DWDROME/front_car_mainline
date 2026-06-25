@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "四层边界(ATG算法/tracking桥/control/log+assistant)是本任务核心不变量;拆 runners 与 control_input_builder 必须沿层边界切,不能跨层泄漏状态"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "seed 单一来源去重直接针对第二真相源;circle.c 导出、assistant 复用须遵守此指南避免再造重复公式"}
+{"file": ".trellis/spec/quality/embedded-tracking-guidelines.md", "reason": "嵌入式行为保持要求:重构须可由 replay 逐字节验证,禁止炫技抽象与静默降级,日志门控不得改变保留字符串"}
