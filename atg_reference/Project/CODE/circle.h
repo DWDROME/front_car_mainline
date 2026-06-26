@@ -2,11 +2,12 @@
 #define CIRCLE_H
 
 enum circle_type_e {
-    CIRCLE_NONE = 0,                            // 闂堢偛娓鹃悳顖浤佸锟�
-    CIRCLE_LEFT_BEGIN, CIRCLE_RIGHT_BEGIN,      // 閸﹀棛骞嗗锟芥慨瀣剁礉鐠囧棗鍩嗛崚鏉垮礋娓氼湌鐟欐帞鍋ｉ崣锔跨娓氀囨毐閻╂挳浜鹃妴锟�
-    CIRCLE_LEFT_RUNNING, CIRCLE_RIGHT_RUNNING,  // 閸﹀棛骞嗛崘鍛村劥閵嗭拷
-    CIRCLE_LEFT_OUT, CIRCLE_RIGHT_OUT,          // 閸戝棗顦崙鍝勬妇閻滎垽绱濋崡瀹犵槕閸掝偄鍩岄崙铏瑰箚婢跺嫮娈慙鐟欐帞鍋ｉ妴锟�
-    CIRCLE_NUM,                                 //
+    CIRCLE_NONE = 0,                            /* no circle active */
+    CIRCLE_LEFT_ENTRY, CIRCLE_RIGHT_ENTRY,      /* Phase 1: A entry evidence held, searching B */
+    CIRCLE_LEFT_BEGIN, CIRCLE_RIGHT_BEGIN,      /* Phase 2: B confirmed, searching C */
+    CIRCLE_LEFT_RUNNING, CIRCLE_RIGHT_RUNNING,  /* Phase 3: inside circle, following inner line */
+    CIRCLE_LEFT_OUT, CIRCLE_RIGHT_OUT,          /* Phase 4: exiting, heading back to straight */
+    CIRCLE_NUM,                                 /* total count */
 };
 
 enum circle_ref_mode_e {
@@ -34,7 +35,7 @@ extern circle_anchor_point_t circle_C_point;
 
 extern int none_left_line , none_right_line ;
 
-extern int have_left_line, have_right_line;
+extern int have_left_line, have_right_line; // DEPRECATED: not used for state progression
 
 extern int circle_count;
 

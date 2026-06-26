@@ -2,180 +2,202 @@
 #include "atg_reference_step.h"
 #include "motor.h"
 #include "headfile.h"
+#include "imgproc.h"
+
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#define ENCODER_PER_METER   (5800)
+
+enum circle_side_e
+{
+    CIRCLE_SIDE_RIGHT = 0,
+    CIRCLE_SIDE_LEFT = 1,
+};
+
+typedef struct circle_point_s
+{
+    int x;
+    int y;
+} circle_point_t;
+
+/* ================= 圆环状态门：真正决定流程 ================= */
+enum
+{
+    CIRCLE_ENTRY_CONFIRM_FRAMES = 2,
+    CIRCLE_B_CONFIRM_FRAMES = 2,
+    CIRCLE_C_CONFIRM_FRAMES = 2,
+
+    CIRCLE_HEADING_ENTER_DEG10 = 600,
+    CIRCLE_HEADING_OUT_GATE_DEG10 = 1500,
+    CIRCLE_HEADING_START_OUT_DEG10 = 2000,
+    CIRCLE_HEADING_READY_OUT_TO_END_DEG10 = 2660,
+    CIRCLE_HEADING_FINISH_SOFT_DEG10 = 3300,
+
+    CIRCLE_OUT_LPT_NEAR_ID = 55,
+    CIRCLE_REENTRY_SUPPRESS_FRAMES = 150,
+};
+
+/* ================= 入口 A/B/C 几何：B/C 搜索器内部参数 =================
+   正常调车不动，只在 B/C 点定位偏差时才调整。
+   circle_find_B() / circle_find_C() 的具体约束，非状态推进门槛。 */
+enum
+{
+    CIRCLE_ENTRY_A_ID_MAX = 35,
+    CIRCLE_ENTRY_A_NEAR_ID = 8,
+    CIRCLE_B_READY_RAW_Y_MIN = 58,
+
+    CIRCLE_ENTRY_AB_DIST_MIN = 23,
+    CIRCLE_ENTRY_AB_Y_MIN = 8,
+    CIRCLE_ENTRY_AB_X_MIN = 6,
+
+    CIRCLE_ENTRY_B_MIN_HITS = 1,
+    CIRCLE_ENTRY_B_MAX_STEP_X = 18,
+
+    CIRCLE_B_UP_MIN = 15,
+    CIRCLE_B_UP_MAX = 50,
+    CIRCLE_ENTRY_FAR_LPT_NEAR_RAW_DIST = 20,
+
+    CIRCLE_PREDICT_SEED_RADIUS = 8,
+    CIRCLE_PREDICT_TRACE_MIN_POINTS = 6,
+    CIRCLE_SEED_LINE_B_OFFSET_X = 8,
+    CIRCLE_B_FOLLOW_Y_RADIUS = 8,
+    CIRCLE_C_UP_MIN = 6,
+    CIRCLE_C_ANGLE_DIST = 3,
+    CIRCLE_C_ANGLE_NMS_KERNEL = 7,
+    CIRCLE_C_ANGLE_MIN_MRAD = 350,
+};
+
+/* ================= BEGIN 异常撤回：保险丝，非主流程 =================
+   abort_late_mouth_loss 的触发条件。只在假入口（直道伪 L）卡住时起效。
+   不是正常推进路径，不要依赖它调环。 */
+enum
+{
+    CIRCLE_BEGIN_LOST_CONFIRM_FRAMES = 2,
+    CIRCLE_BEGIN_LOST_RPTS_MAX = 2,
+    CIRCLE_BEGIN_MOUTH_MIN_DIST = 600,
+    CIRCLE_BEGIN_LOSS_MAX_DIST = 4000,
+};
+
+enum
+{
+    CIRCLE_POINT_SEARCH_OK = 0,
+    CIRCLE_POINT_SEARCH_NO_A,
+    CIRCLE_POINT_SEARCH_NO_B,
+    CIRCLE_POINT_SEARCH_NO_EXTREME,
+    CIRCLE_POINT_SEARCH_NO_V,
+    CIRCLE_POINT_SEARCH_PHASE_GATE,
+    CIRCLE_POINT_SEARCH_NO_SEED,
+    CIRCLE_POINT_SEARCH_NO_TRACE,
+    CIRCLE_POINT_SEARCH_NO_SLOPE,
+};
+
+static const float CIRCLE_GYRO_DEADZONE_RAD_S = 0.065f;
+static const float CIRCLE_RAD_TO_DEG10 = 1800.0f / 3.14159265358979f;
+
 int circle_count;
 enum circle_type_e circle_type = CIRCLE_NONE;
 enum circle_ref_mode_e circle_ref_mode = CIRCLE_REF_NONE;
 circle_anchor_point_t circle_A_point;
 circle_anchor_point_t circle_B_point;
 circle_anchor_point_t circle_C_point;
-
+int none_left_line = 0, none_right_line = 0;
+int have_left_line = 0, have_right_line = 0; // DEPRECATED: not used for state progression
 
 const char *circle_type_name[CIRCLE_NUM] = {
-        "CIRCLE_NONE",
-        "CIRCLE_LEFT_BEGIN", "CIRCLE_RIGHT_BEGIN",
-        "CIRCLE_LEFT_RUNNING", "CIRCLE_RIGHT_RUNNING",
-        "CIRCLE_LEFT_OUT", "CIRCLE_RIGHT_OUT",
+    "CIRCLE_NONE",
+    "CIRCLE_LEFT_ENTRY", "CIRCLE_RIGHT_ENTRY",
+    "CIRCLE_LEFT_BEGIN", "CIRCLE_RIGHT_BEGIN",
+    "CIRCLE_LEFT_RUNNING", "CIRCLE_RIGHT_RUNNING",
+    "CIRCLE_LEFT_OUT", "CIRCLE_RIGHT_OUT",
 };
 
-
-int none_left_line = 0, none_right_line = 0;                //丢线标志位
-int have_left_line = 0, have_right_line = 0;                //重找到线的线标志位
-
-enum
-{
-    CIRCLE_ENTRY_CONFIRM_FRAMES = 2,
-    CIRCLE_BEGIN_LOST_CONFIRM_FRAMES = 2,
-    CIRCLE_BEGIN_LOST_RPTS_MAX = 2,
-    CIRCLE_B_CONFIRM_FRAMES = 2,
-    CIRCLE_C_CONFIRM_FRAMES = 2,
-    // CIRCLE_B_ENTER_ROW: y=0 在图像顶部, y=120 在底部
-    // raw_y >= 58 表示 B 靠近车身(下方),用于判断是否进入圆环
-    // 当前只用于改 ref_mode，不做状态切换
-    CIRCLE_B_ENTER_ROW = 58,
-    // 旧 mouth_loss 方案的诊断门限。现在只打印 mouth_ready, 不再推进 BEGIN->IN。
-    CIRCLE_BEGIN_MOUTH_MIN_DIST = 600,
-    // 真双断点 A+B 约束: A 不能太远, A/B 必须分离(不是同一个断点)。
-    CIRCLE_ENTRY_A_ID_MAX = 35,
-    CIRCLE_ENTRY_AB_DIST_MIN = 23,     // IPM 欧氏距离,≈ 0.20m * 116px/m
-    CIRCLE_ENTRY_AB_Y_MIN = 8,        // 纵向分离像素(圆弧B近,满足此值即可)
-    CIRCLE_ENTRY_AB_X_MIN = 6,        // B 必须向对侧弧面展开,不能只是 A 同列上方黑边
-    CIRCLE_ENTRY_B_SKIP_EDGE_X = 20,  // 跳过近端线边缘假目标,再找对侧弧面 B
-    CIRCLE_ENTRY_B_SCAN_SPAN_X = 45,  // B 只在口门横向窗口内找,避免扫到远侧普通边线
-    CIRCLE_ENTRY_B_MIN_HITS = 1,  // 远点内圆边界仅1-2行可见,降低门槛(AB约束(dy/dist/dx)已防噪)
-    // B 必须在 A 上方高度窗口中:A_raw_y - B_raw_y ∈ [UP_MIN, UP_MAX]
-    // 坐标系:y=0 在图像顶部(远处), y=120 在底部(车身)。A_y≈80(近), B_y≈41(远弧顶)。窗口靠实测定。
-    CIRCLE_B_UP_MIN = 15,
-    CIRCLE_B_UP_MAX = 50,
-    CIRCLE_ENTRY_B_MIN_RISE_HITS = 1,  // 远端弧面可见点少,AB 几何继续防噪
-    CIRCLE_ENTRY_B_MAX_STEP_X = 18,
-    CIRCLE_ENTRY_FAR_LPT_NEAR_RAW_DIST = 20,
-    // BEGIN→IN mouth_loss 相位窗:丢线只能在合理 begin_dist 窗口内触发。
-    // mouth_loss_too_late 保护车已拖到中间圆才丢线(实测喉口丢线 begin_dist~1200~1700)。
-    CIRCLE_BEGIN_LOSS_MAX_DIST = 4000, // 超出此距离的丢线=拖太晚,撤回
-    // 线方差判据:B 点在弧面上弯度自然大;只做诊断,不做硬门。
-    // (原在 A 点区域算方差无意义——A 还在直道段,var 天然≈0.3)。
-    CIRCLE_ENTRY_ANGLE_VAR_WINDOW = 10,
-    CIRCLE_ENTRY_MIN_ANGLE_VAR = 1,       // B 点弧面弯度足够大,诊断用
-    // 参考陀螺积分圆环：阈值单位是 0.1 度，进 IN 后单次清零，后续累计比较。
-    CIRCLE_HEADING_ENTER_DEG10 = 600,
-    CIRCLE_HEADING_START_OUT_DEG10 = 2000,
-    // 阶段2(视觉驱动+陀螺门限): RUNNING->OUT 改为"对侧出口角点出现 + 陀螺过门限"为主, 陀螺 START_OUT 兜底。两值待 live 标定。
-    CIRCLE_HEADING_OUT_GATE_DEG10 = 1500,   // 视觉出环的陀螺门限(< START_OUT 2000), 防光干扰/假角点早触发; live 调
-    CIRCLE_OUT_LPT_NEAR_ID = 55,            // 对侧出口角点足够近的 rpts id 阈值, 确认车已到出环口; live 调 (drive02 左环对侧 Lpt 出现在 id=51, 原 25 偏严)
-    // drive24: 260度可出环, END内guide穿零后交棒; drive25: 250度退环太早, guide仍为负会回起点。
-    CIRCLE_HEADING_READY_OUT_TO_END_DEG10 = 2660,
-    // END 安全释放:主出口仍是视觉近角点;编码器释放只防止 END 固定补线死锁。
-    CIRCLE_HEADING_FINISH_SOFT_DEG10 = 3300,
-    CIRCLE_REENTRY_SUPPRESS_FRAMES = 150,
-};
-static const float CIRCLE_GYRO_DEADZONE_RAD_S = 0.065f;
-static const float CIRCLE_RAD_TO_DEG10 = 1800.0f / 3.14159265358979f;
-
-static int circle_left_entry_votes;
-static int circle_right_entry_votes;
+static int circle_entry_votes[2];
+static circle_anchor_point_t circle_entry_pending_A[2];
+static int circle_entry_seen_B[2];
 static int circle_entry_suppress_frames;
 static float circle_heading_rad;
-// BEGIN 内连续丢线计数(恢复即清零),用于喉口相位锚定。区别于 latch 的 none_*_line。
-static int circle_left_begin_lost_streak;
-static int circle_right_begin_lost_streak;
-// 丢线起点 begin_dist(用于正确判断"第一次丢线窗口是否太早")。
-static int64_t circle_left_loss_start_begin_dist = -1;
-static int64_t circle_right_loss_start_begin_dist = -1;
-static int circle_left_out_straight_streak;  // OUT→NONE 对侧直线连续帧
-static int circle_right_out_straight_streak;
+static int circle_begin_lost_streak[2];
+static int64_t circle_loss_start_begin_dist[2] = {-1, -1};
+static int circle_out_straight_streak[2];
 static int circle_B_streak;
 static int circle_C_streak;
+static int circle_B_follow_fail_streak[2];
+static int circle_seed_line_x[2];
+static int circle_seed_line_y[2];
+static int circle_seed_line_valid[2];
+
 static int circle_B_search_reason;
 static int circle_B_search_num;
-static int circle_B_search_a_found;
-static int circle_B_search_a_id;
-static int circle_B_search_start;
-static int circle_B_search_end;
 static const char *circle_B_search_detail;
-static int circle_B_search_scan_x;
-static int circle_B_search_scan_end_x;
 static int circle_B_search_best_x;
 static int circle_B_search_best_y;
-static int circle_B_search_rise_hits;
-static int circle_B_search_dx;
-static int circle_B_search_inner_dx;
-static int circle_B_search_dy;
-static int circle_B_search_up_dy;
-static int circle_B_search_dist2;
-static int circle_B_search_jump_bad;
 static int circle_B_search_sharp_far;
+static int circle_B_search_seed_x;
+static int circle_B_search_seed_y;
+static int circle_B_search_ready;
+static float circle_B_search_slope;
+
 static int circle_C_search_reason;
 static int circle_C_search_num;
-static int circle_C_search_b_found;
-static int circle_C_search_b_id;
-static int circle_C_search_start;
-static int circle_C_search_end;
+static const char *circle_C_search_detail;
+static int circle_C_search_seed_x;
+static int circle_C_search_seed_y;
+static int circle_C_search_best_i;
+static float circle_C_search_slope;
+static float circle_C_search_angle;
 
-enum
-{
-    CIRCLE_POINT_SEARCH_OK = 0,
-    CIRCLE_POINT_SEARCH_NO_A = 1,
-    CIRCLE_POINT_SEARCH_SHORT_LINE = 2,
-    CIRCLE_POINT_SEARCH_NO_B = 3,
-    CIRCLE_POINT_SEARCH_NO_EXTREME = 4,
-    CIRCLE_POINT_SEARCH_NO_V = 5,
-    CIRCLE_POINT_SEARCH_PHASE_GATE = 6,
-};
+static int side_index(int side) { return side ? CIRCLE_SIDE_LEFT : CIRCLE_SIDE_RIGHT; }
+static char side_char(int side) { return side ? 'L' : 'R'; }
+static int side_is_left(int side) { return side_index(side) == CIRCLE_SIDE_LEFT; }
+static int side_lpt_found(int side) { return side_is_left(side) ? (Lpt0_found ? 1 : 0) : (Lpt1_found ? 1 : 0); }
+static int side_lpt_id(int side) { return side_is_left(side) ? Lpt0_rpts0s_id : Lpt1_rpts1s_id; }
+static int side_rpts_num(int side) { return side_is_left(side) ? rpts0s_num : rpts1s_num; }
+static int side_opposite_lpt_found(int side) { return side_is_left(side) ? (Lpt1_found ? 1 : 0) : (Lpt0_found ? 1 : 0); }
+static int side_opposite_lpt_id(int side) { return side_is_left(side) ? Lpt1_rpts1s_id : Lpt0_rpts0s_id; }
+static int side_opposite_straight(int side) { return side_is_left(side) ? is_straight1 : is_straight0; }
+static int side_out_straight(int side) { return side_is_left(side) ? is_straight1 : is_straight0; }
+static int side_entry_state(int side) { return side_is_left(side) ? CIRCLE_LEFT_ENTRY : CIRCLE_RIGHT_ENTRY; }
+static int side_begin_state(int side) { return side_is_left(side) ? CIRCLE_LEFT_BEGIN : CIRCLE_RIGHT_BEGIN; }
+static int side_running_state(int side) { return side_is_left(side) ? CIRCLE_LEFT_RUNNING : CIRCLE_RIGHT_RUNNING; }
+static int side_out_state(int side) { return side_is_left(side) ? CIRCLE_LEFT_OUT : CIRCLE_RIGHT_OUT; }
+static int side_begin_track(int side) { return side_is_left(side) ? TRACK_RIGHT : TRACK_LEFT; }
+static int side_out_track(int side) { return side_is_left(side) ? TRACK_LEFT : TRACK_RIGHT; }
 
 static const char *circle_ref_mode_name(enum circle_ref_mode_e mode)
 {
     switch(mode)
     {
-    case CIRCLE_REF_NONE:
-        return "none";
-    case CIRCLE_REF_BEGIN_AB:
-        return "begin_ab";
-    case CIRCLE_REF_IN_C:
-        return "in_c";
-    default:
-        return "unknown";
+    case CIRCLE_REF_NONE: return "none";
+    case CIRCLE_REF_BEGIN_AB: return "begin_ab";
+    case CIRCLE_REF_IN_C: return "in_c";
+    default: return "unknown";
     }
 }
 
-static const char *circle_point_search_reason_name(int reason)
+static const char *point_search_reason_name(int reason)
 {
     switch(reason)
     {
-    case CIRCLE_POINT_SEARCH_OK:
-        return "ok";
-    case CIRCLE_POINT_SEARCH_NO_A:
-        return "no_a";
-    case CIRCLE_POINT_SEARCH_SHORT_LINE:
-        return "short_line";
-    case CIRCLE_POINT_SEARCH_NO_B:
-        return "no_b";
-    case CIRCLE_POINT_SEARCH_NO_EXTREME:
-        return "no_extreme";
-    case CIRCLE_POINT_SEARCH_NO_V:
-        return "no_v";
-    case CIRCLE_POINT_SEARCH_PHASE_GATE:
-        return "phase_gate";
-    default:
-        return "unknown";
+    case CIRCLE_POINT_SEARCH_OK: return "ok";
+    case CIRCLE_POINT_SEARCH_NO_A: return "no_a";
+    case CIRCLE_POINT_SEARCH_NO_B: return "no_b";
+    case CIRCLE_POINT_SEARCH_NO_EXTREME: return "no_extreme";
+    case CIRCLE_POINT_SEARCH_NO_V: return "no_v";
+    case CIRCLE_POINT_SEARCH_PHASE_GATE: return "phase_gate";
+    case CIRCLE_POINT_SEARCH_NO_SEED: return "no_seed";
+    case CIRCLE_POINT_SEARCH_NO_TRACE: return "no_trace";
+    case CIRCLE_POINT_SEARCH_NO_SLOPE: return "no_slope";
+    default: return "unknown";
     }
 }
-
+// 
 int circle_cal_log_enabled(void)
 {
     const char *val = getenv("FRONT_CAR_CIRCLE_CAL_LOG");
     static int warned_invalid;
-    if(val == NULL || val[0] == '\0' || strcmp(val, "0") == 0 || strcmp(val, "false") == 0)
-    {
-        return 0;
-    }
-    if(strcmp(val, "1") == 0 || strcmp(val, "true") == 0)
-    {
-        return 1;
-    }
+    if(val == NULL || val[0] == '\0' || strcmp(val, "0") == 0 || strcmp(val, "false") == 0) return 0;
+    if(strcmp(val, "1") == 0 || strcmp(val, "true") == 0) return 1;
     if(!warned_invalid)
     {
         printf("EnvWarn: invalid flag for FRONT_CAR_CIRCLE_CAL_LOG='%s'\n", val);
@@ -184,70 +206,81 @@ int circle_cal_log_enabled(void)
     return 0;
 }
 
-static void print_circle_entry_probe_diag(int left_side,
-                                          int a_id,
-                                          int a_rx,
-                                          int a_ry,
-                                          int b_ret)
-{
-    if(!circle_cal_log_enabled())
-    {
-        return;
-    }
-    printf("ATGCircleEntryProbe: side=%c A=1@%d(raw=%d,%d) B=0 ret=%d reason=%s detail=%s "
-           "hits=%d rise=%d range=%d..%d scan_x=%d..%d best=%d,%d dx=%d inner_dx=%d "
-           "dy=%d up_dy=%d dist2=%d jump=%d sharp_far=%d\n",
-           left_side ? 'L' : 'R',
-           a_id,
-           a_rx,
-           a_ry,
-           b_ret,
-           circle_point_search_reason_name(circle_B_search_reason),
-           circle_B_search_detail ? circle_B_search_detail : "unknown",
-           circle_B_search_num,
-           circle_B_search_rise_hits,
-           circle_B_search_start,
-           circle_B_search_end,
-           circle_B_search_scan_x,
-           circle_B_search_scan_end_x,
-           circle_B_search_best_x,
-           circle_B_search_best_y,
-           circle_B_search_dx,
-           circle_B_search_inner_dx,
-           circle_B_search_dy,
-           circle_B_search_up_dy,
-           circle_B_search_dist2,
-           circle_B_search_jump_bad,
-           circle_B_search_sharp_far);
-}
-
 static int circle_heading_deg10(void)
 {
     return (int)(fabsf(circle_heading_rad) * CIRCLE_RAD_TO_DEG10);
 }
 
-static void print_circle_transition(enum circle_type_e from,
-                                    enum circle_type_e to,
-                                    const char *reason)
+static int circle_heading_abs_ge(int tenth_deg)
 {
-    if(!circle_cal_log_enabled())
-    {
-        return;
-    }
-    printf("ATGCircleCal: from=%s to=%s reason=%s heading_deg10=%d dist=%d begin_dist=%lld begin_last=%lld\n",
-           circle_type_name[from],
-           circle_type_name[to],
-           reason,
-           circle_heading_deg10(),
-           total_distence,
-           (long long)atg_reference_circle_begin_dist(),
-           (long long)atg_reference_circle_begin_last_dist());
+    return fabsf(circle_heading_rad) * CIRCLE_RAD_TO_DEG10 >= (float)tenth_deg;
 }
 
-void reset_circle_entry_votes()
+static void log_circle_state(enum circle_type_e from, enum circle_type_e to, const char *reason)
 {
-    circle_left_entry_votes = 0;
-    circle_right_entry_votes = 0;
+    if(circle_cal_log_enabled())
+    {
+        printf("ATGCircleState: from=%s to=%s reason=%s heading_deg10=%d dist=%d begin_dist=%lld begin_last=%lld\n",
+               circle_type_name[from],
+               circle_type_name[to],
+               reason,
+               circle_heading_deg10(),
+               total_distence,
+               (long long)atg_reference_circle_begin_dist(),
+               (long long)atg_reference_circle_begin_last_dist());
+    }
+}
+
+static void clear_anchor(circle_anchor_point_t *p)
+{
+    p->found = 0;
+    p->id = -1;
+    p->raw_x = -1;
+    p->raw_y = -1;
+}
+
+static void store_anchor(circle_anchor_point_t *p, int id, const circle_point_t *raw)
+{
+    p->found = 1;
+    p->id = id;
+    p->raw_x = raw->x;
+    p->raw_y = raw->y;
+}
+
+static void clear_seed_line(int side)
+{
+    circle_seed_line_valid[side] = 0;
+    circle_seed_line_x[side] = -1;
+    circle_seed_line_y[side] = -1;
+}
+
+static void set_seed_line_from_A(int side, const circle_anchor_point_t *A)
+{
+    if(A == NULL || !A->found) return;
+    circle_seed_line_valid[side] = 1;
+    circle_seed_line_x[side] = A->raw_x;
+    circle_seed_line_y[side] = A->raw_y;
+}
+
+static int signed_B_seed_offset(int side)
+{
+    return side_is_left(side) ? -CIRCLE_SEED_LINE_B_OFFSET_X : CIRCLE_SEED_LINE_B_OFFSET_X;
+}
+
+static void set_seed_line_from_B(int side, const circle_anchor_point_t *B)
+{
+    if(B == NULL || !B->found) return;
+    circle_seed_line_valid[side] = 1;
+    circle_seed_line_x[side] = B->raw_x + signed_B_seed_offset(side);
+    circle_seed_line_y[side] = B->raw_y;
+}
+
+void reset_circle_entry_votes(void)
+{
+    circle_entry_votes[CIRCLE_SIDE_RIGHT] = 0;
+    circle_entry_votes[CIRCLE_SIDE_LEFT] = 0;
+    clear_anchor(&circle_entry_pending_A[CIRCLE_SIDE_RIGHT]);
+    clear_anchor(&circle_entry_pending_A[CIRCLE_SIDE_LEFT]);
 }
 
 void suppress_circle_entry_frames(int frames)
@@ -271,47 +304,57 @@ void clear_circle_entry_suppression(void)
 
 static int circle_entry_suppressed(void)
 {
-    if(circle_entry_suppress_frames <= 0)
-    {
-        return 0;
-    }
+    if(circle_entry_suppress_frames <= 0) return 0;
     circle_entry_suppress_frames--;
     reset_circle_entry_votes();
     return 1;
 }
 
-void reset_circle_begin_flags()
+void reset_circle_begin_flags(void)
 {
     none_left_line = 0;
     none_right_line = 0;
     have_left_line = 0;
     have_right_line = 0;
-    circle_left_begin_lost_streak = 0;
-    circle_right_begin_lost_streak = 0;
+    circle_begin_lost_streak[CIRCLE_SIDE_RIGHT] = 0;
+    circle_begin_lost_streak[CIRCLE_SIDE_LEFT] = 0;
 }
 
 void reset_circle_geometry_state(void)
 {
     circle_ref_mode = CIRCLE_REF_NONE;
-    memset(&circle_A_point, 0, sizeof(circle_A_point));
-    memset(&circle_B_point, 0, sizeof(circle_B_point));
-    memset(&circle_C_point, 0, sizeof(circle_C_point));
-    circle_left_out_straight_streak = 0;
-    circle_right_out_straight_streak = 0;
+    clear_anchor(&circle_A_point);
+    clear_anchor(&circle_B_point);
+    clear_anchor(&circle_C_point);
+    clear_anchor(&circle_entry_pending_A[CIRCLE_SIDE_RIGHT]);
+    clear_anchor(&circle_entry_pending_A[CIRCLE_SIDE_LEFT]);
+    circle_entry_seen_B[CIRCLE_SIDE_RIGHT] = 0;
+    circle_entry_seen_B[CIRCLE_SIDE_LEFT] = 0;
+    clear_seed_line(CIRCLE_SIDE_RIGHT);
+    clear_seed_line(CIRCLE_SIDE_LEFT);
+    circle_out_straight_streak[CIRCLE_SIDE_RIGHT] = 0;
+    circle_out_straight_streak[CIRCLE_SIDE_LEFT] = 0;
     circle_B_streak = 0;
     circle_C_streak = 0;
+    circle_B_follow_fail_streak[CIRCLE_SIDE_RIGHT] = 0;
+    circle_B_follow_fail_streak[CIRCLE_SIDE_LEFT] = 0;
     circle_B_search_reason = CIRCLE_POINT_SEARCH_OK;
+    circle_B_search_detail = "reset";
     circle_B_search_num = 0;
-    circle_B_search_a_found = 0;
-    circle_B_search_a_id = -1;
-    circle_B_search_start = -1;
-    circle_B_search_end = -1;
+    circle_B_search_best_x = -1;
+    circle_B_search_best_y = -1;
+    circle_B_search_seed_x = -1;
+    circle_B_search_seed_y = -1;
+    circle_B_search_ready = 0;
+    circle_B_search_slope = 0.0f;
     circle_C_search_reason = CIRCLE_POINT_SEARCH_OK;
     circle_C_search_num = 0;
-    circle_C_search_b_found = 0;
-    circle_C_search_b_id = -1;
-    circle_C_search_start = -1;
-    circle_C_search_end = -1;
+    circle_C_search_detail = "reset";
+    circle_C_search_seed_x = -1;
+    circle_C_search_seed_y = -1;
+    circle_C_search_best_i = -1;
+    circle_C_search_slope = 0.0f;
+    circle_C_search_angle = 0.0f;
 }
 
 static void reset_circle_heading(void)
@@ -326,21 +369,8 @@ void update_circle_heading(float yaw_rate_rad_s, int period_ms, int valid)
         reset_circle_heading();
         return;
     }
-    if(!valid || period_ms <= 0)
-    {
-        return;
-    }
-
-    if(fabsf(yaw_rate_rad_s) <= CIRCLE_GYRO_DEADZONE_RAD_S)
-    {
-        return;
-    }
+    if(!valid || period_ms <= 0 || fabsf(yaw_rate_rad_s) <= CIRCLE_GYRO_DEADZONE_RAD_S) return;
     circle_heading_rad += yaw_rate_rad_s * ((float)period_ms / 1000.0f);
-}
-
-static int circle_heading_abs_ge(int tenth_deg)
-{
-    return fabsf(circle_heading_rad) * CIRCLE_RAD_TO_DEG10 >= (float)tenth_deg;
 }
 
 int circle_heading_enter_ready(void)
@@ -350,7 +380,7 @@ int circle_heading_enter_ready(void)
 
 static void finish_circle_exit(const char *reason)
 {
-    print_circle_transition(circle_type, CIRCLE_NONE, reason);
+    log_circle_state(circle_type, CIRCLE_NONE, reason);
     circle_type = CIRCLE_NONE;
     road_type = ROAD_NORMAL;
     begin_y = BEGIN_Y;
@@ -359,920 +389,959 @@ static void finish_circle_exit(const char *reason)
     if_lost_right_line = 0;
     if_lost_left_line = 0;
     circle_count++;
-    none_right_line = 0;
-    have_right_line = 0;
-    none_left_line = 0;
-    have_left_line = 0;
+    reset_circle_begin_flags();
     reset_circle_geometry_state();
     suppress_circle_reentry_after_exit();
 }
 
-// BEGIN abort:mouth_loss 太晚丢线,直接撤回 NONE,不等 reference_step idle revoke。
 static void abort_circle_begin(const char *reason)
 {
-    print_circle_transition(circle_type, CIRCLE_NONE, reason);
+    log_circle_state(circle_type, CIRCLE_NONE, reason);
     circle_type = CIRCLE_NONE;
     Count_dis_Flag = 0;
     reset_circle_begin_flags();
     reset_circle_geometry_state();
     reset_circle_entry_votes();
-    circle_ref_mode = CIRCLE_REF_NONE;
-    circle_left_begin_lost_streak = 0;
-    circle_right_begin_lost_streak = 0;
-    circle_left_loss_start_begin_dist = -1;
-    circle_right_loss_start_begin_dist = -1;
+    circle_loss_start_begin_dist[CIRCLE_SIDE_RIGHT] = -1;
+    circle_loss_start_begin_dist[CIRCLE_SIDE_LEFT] = -1;
     suppress_circle_reentry_after_exit();
 }
 
-static int circle_get_raw_point(int left_side, int id, int *raw_x, int *raw_y)
+static int circle_get_raw_point(int side, int id, circle_point_t *p)
 {
-    const int num = left_side ? rpts0s_num : rpts1s_num;
-    float (*pts)[2] = left_side ? rpts0s : rpts1s;
-    if(id < 0 || id >= num)
-    {
-        return 0;
-    }
-    *raw_x = (int)Cal_inv_rot_x(pts[id][0], pts[id][1]);
-    *raw_y = (int)Cal_inv_rot_y(pts[id][0], pts[id][1]);
+    const int num = side_rpts_num(side);
+    float (*pts)[2] = side_is_left(side) ? rpts0s : rpts1s;
+    if(p == NULL || id < 0 || id >= num) return 0;
+    p->x = (int)Cal_inv_rot_x(pts[id][0], pts[id][1]);
+    p->y = (int)Cal_inv_rot_y(pts[id][0], pts[id][1]);
     return 1;
 }
 
-static void latch_circle_A(int left_circle)
+static int circle_get_A(int side, circle_point_t *A)
 {
-    const int found = left_circle ? (Lpt0_found ? 1 : 0) : (Lpt1_found ? 1 : 0);
-    const int id = left_circle ? Lpt0_rpts0s_id : Lpt1_rpts1s_id;
-    int raw_x = 0;
-    int raw_y = 0;
-    circle_A_point.found = 0;
-    circle_A_point.id = -1;
-    if(found && circle_get_raw_point(left_circle, id, &raw_x, &raw_y))
-    {
-        circle_A_point.found = 1;
-        circle_A_point.id = id;
-        circle_A_point.raw_x = raw_x;
-        circle_A_point.raw_y = raw_y;
-    }
+    const int id = side_lpt_id(side);
+    if(!side_lpt_found(side) || !circle_get_raw_point(side, id, A)) return 0;
+    return 1;
 }
 
-// 从 B 沿竖线往上继续扫,找 C 点(更上方的尖锐角点)。
-// 圆环的 A-B-C 三个点沿同一条竖线: A=近断点, B=弧顶(非尖锐), C=最高处的角点(尖锐).
-// C 找到 → 可拉线 A→B→C 进圆。
-static int find_circle_C(int left_circle)
+static int raw_dark(int x, int y, int *threshold)
 {
-    circle_C_search_num = 0;
-    circle_C_search_b_found = circle_B_point.found;
-    circle_C_search_b_id = circle_B_point.id;
-    circle_C_search_start = -1;
-    circle_C_search_end = -1;
-    circle_C_search_reason = CIRCLE_POINT_SEARCH_OK;
-    circle_C_point.found = 0;
-    circle_C_point.id = -1;
-
-    if(!circle_B_point.found)
+    int lt = 0;
+    if(x < block_size / 2 || x >= MT9V03X_W - block_size / 2 ||
+       y < block_size / 2 || y >= MT9V03X_H - block_size / 2) return 0;
+    for(int dy = -block_size / 2; dy <= block_size / 2; dy++)
     {
-        circle_C_search_reason = CIRCLE_POINT_SEARCH_NO_B;
-        return 0;
-    }
-
-    const int inner_dir = left_circle ? -1 : 1;
-    const int x_limit = left_circle ? block_size / 2 : MT9V03X_W - block_size / 2 - 1;
-
-    // 从 B 的位置,沿 B 的 x 列往上扫,每行往内侧扫到底找黑点
-    // y 坐标减小 = 往图像顶部/远处走
-    for(int y = circle_B_point.raw_y - 1; y > block_size / 2 + 5; y--)
-    {
-        int hit_x = -1;
-        for(int x = circle_B_point.raw_x; left_circle ? (x >= x_limit) : (x <= x_limit); x += inner_dir)
+        for(int dx = -block_size / 2; dx <= block_size / 2; dx++)
         {
-            if(x < block_size / 2 || x >= MT9V03X_W - block_size / 2) continue;
-            int lt = 0;
-            for(int dy = -block_size / 2; dy <= block_size / 2; dy++)
-                for(int dx = -block_size / 2; dx <= block_size / 2; dx++)
-                    lt += AT_IMAGE(&img_raw, x + dx, y + dy);
-            lt = lt / (block_size * block_size) - clip_value;
-            if(AT_IMAGE(&img_raw, x, y) < lt && y > 10) { hit_x = x; break; }
-        }
-        if(hit_x < 0) continue;
-
-        // C 是尖锐角点:和最内侧方向一致(左环往左,右环往右),x 出现跳变→拐角
-        // 简单判据:当前行能找到黑点,且 x 明显缩回或跳变(弧顶已过后的拐角)。
-        // 实际用:当前行 hit_x 和 B 的 x 差距超过阈值,即认为找到了 C(上方另一个结构)。
-        const int dx_from_b = left_circle ? (circle_B_point.raw_x - hit_x) : (hit_x - circle_B_point.raw_x);
-        if(dx_from_b > 15 || dx_from_b < -5)
-        {
-            // C 找到:位置明显不同于 B(尖锐拐角或更外侧)
-            circle_C_point.found = 1;
-            circle_C_point.id = -1;
-            circle_C_point.raw_x = hit_x;
-            circle_C_point.raw_y = y;
-            circle_C_search_reason = CIRCLE_POINT_SEARCH_OK;
-            circle_C_search_start = -1;
-            circle_C_search_end = y;
-            return 1;
+            lt += AT_IMAGE(&img_raw, x + dx, y + dy);
         }
     }
+    lt = lt / (block_size * block_size) - clip_value;
+    if(threshold != NULL)
+    {
+        *threshold = lt;
+    }
+    return AT_IMAGE(&img_raw, x, y) < lt;
+}
 
-    circle_C_search_reason = CIRCLE_POINT_SEARCH_NO_V;
+static int mirrored_raw_x(int x)
+{
+    return MT9V03X_W - 1 - x;
+}
+
+static int circle_prediction_slope(int side, float *dx_per_dy)
+{
+    float (*pts)[2] = side_is_left(side) ? rpts1s : rpts0s;
+    const int num = side_is_left(side) ? rpts1s_num : rpts0s_num;
+    if(dx_per_dy == NULL || num < 4) return 0;
+
+    const int ref0 = 0;
+    const int ref_max = clip(num - 1, 1, 30);
+    const int x0 = mirrored_raw_x((int)Cal_inv_rot_x(pts[ref0][0], pts[ref0][1]));
+    const int y0 = (int)Cal_inv_rot_y(pts[ref0][0], pts[ref0][1]);
+    for(int i = ref_max; i > ref0; i--)
+    {
+        const int x1 = mirrored_raw_x((int)Cal_inv_rot_x(pts[i][0], pts[i][1]));
+        const int y1 = (int)Cal_inv_rot_y(pts[i][0], pts[i][1]);
+        const int dy = y1 - y0;
+        if(abs(dy) < 8) continue;
+        *dx_per_dy = (float)(x1 - x0) / (float)dy;
+        return isfinite(*dx_per_dy) ? 1 : 0;
+    }
     return 0;
 }
 
-static int circle_C_search_phase_ready(void)
+static int prediction_x_at_y(int side, int y, float slope)
 {
-    return circle_B_streak >= CIRCLE_B_CONFIRM_FRAMES &&
-           circle_B_point.found &&
-           circle_B_point.raw_y >= CIRCLE_B_ENTER_ROW;
+    const int x = circle_seed_line_x[side] +
+                  (int)lroundf(slope * (float)(y - circle_seed_line_y[side]));
+    return clip(x, block_size / 2, MT9V03X_W - block_size / 2 - 1);
 }
 
-static int update_circle_C_search(int left_circle)
+static int dark_near_prediction(int x_center, int y, int *seed_x)
 {
-    if(!circle_C_search_phase_ready())
+    for(int delta = 0; delta <= CIRCLE_PREDICT_SEED_RADIUS; delta++)
     {
-        circle_C_search_num = 0;
-        circle_C_search_b_found = circle_B_point.found;
-        circle_C_search_b_id = circle_B_point.id;
-        circle_C_search_start = -1;
-        circle_C_search_end = -1;
-        circle_C_search_reason = CIRCLE_POINT_SEARCH_PHASE_GATE;
-        circle_C_point.found = 0;
-        circle_C_point.id = -1;
-        circle_C_point.raw_x = -1;
-        circle_C_point.raw_y = -1;
-        return 0;
+        const int xs[2] = {x_center + delta, x_center - delta};
+        const int n = delta == 0 ? 1 : 2;
+        for(int i = 0; i < n; i++)
+        {
+            const int x = xs[i];
+            if(x < block_size / 2 || x >= MT9V03X_W - block_size / 2) continue;
+            if(raw_dark(x, y, NULL))
+            {
+                *seed_x = x;
+                return 1;
+            }
+        }
     }
-
-    return find_circle_C(left_circle);
+    return 0;
 }
 
-static void print_circle_abc_diag(char side, const char *phase, int mouth_ready)
+static int circle_find_prediction_seed(int side, int y_start, int y_stop,
+                                       int *seed_x, int *seed_y, float *slope_out)
 {
-    if(circle_type == CIRCLE_NONE)
+    float slope = 0.0f;
+    if(!circle_seed_line_valid[side]) return 0;
+    if(!circle_prediction_slope(side, &slope)) return 0;
+
+    y_start = clip(y_start, block_size / 2 + 1, MT9V03X_H - block_size / 2 - 1);
+    y_stop = clip(y_stop, block_size / 2 + 1, MT9V03X_H - block_size / 2 - 1);
+    if(y_start < y_stop)
     {
-        return;
+        const int t = y_start;
+        y_start = y_stop;
+        y_stop = t;
     }
-    if(!circle_cal_log_enabled())
+
+    for(int y = y_start; y >= y_stop; y--)
     {
-        return;
+        const int x_center = prediction_x_at_y(side, y, slope);
+        int x = -1;
+        if(dark_near_prediction(x_center, y, &x))
+        {
+            *seed_x = x;
+            *seed_y = y;
+            if(slope_out != NULL) *slope_out = slope;
+            return 1;
+        }
     }
-    printf("ATGCircleABCDiag: side=%c phase=%s ref=%d(%s) rpts=%d/%d lpt=%d@%d/%d@%d "
-           "A=%d@%d,%d#%d "
-           "B=%d@%d,%d#%d B_streak=%d B_row_ready=%d B_enter_row=%d "
-           "B_search=%s num=%d Acur=%d@%d range=%d..%d "
-           "C=%d@%d,%d#%d C_streak=%d C_ready=%d "
-           "C_search=%s num=%d Bcur=%d@%d range=%d..%d "
-           "mouth_ready=%d heading=%d begin_dist=%lld\n",
-           side,
-           phase,
-           (int)circle_ref_mode,
-           circle_ref_mode_name(circle_ref_mode),
-           rpts0s_num,
-           rpts1s_num,
-           Lpt0_found ? 1 : 0,
-           Lpt0_found ? Lpt0_rpts0s_id : -1,
-           Lpt1_found ? 1 : 0,
-           Lpt1_found ? Lpt1_rpts1s_id : -1,
-           circle_A_point.found,
-           circle_A_point.found ? circle_A_point.raw_x : -1,
-           circle_A_point.found ? circle_A_point.raw_y : -1,
-           circle_A_point.id,
-           circle_B_point.found,
-           circle_B_point.found ? circle_B_point.raw_x : -1,
-           circle_B_point.found ? circle_B_point.raw_y : -1,
-           circle_B_point.id,
-           circle_B_streak,
-           (circle_B_streak >= CIRCLE_B_CONFIRM_FRAMES &&
-            circle_B_point.found &&
-            circle_B_point.raw_y >= CIRCLE_B_ENTER_ROW) ? 1 : 0,
-           CIRCLE_B_ENTER_ROW,
-           circle_point_search_reason_name(circle_B_search_reason),
-           circle_B_search_num,
-           circle_B_search_a_found,
-           circle_B_search_a_id,
-           circle_B_search_start,
-           circle_B_search_end,
-           circle_C_point.found,
-           circle_C_point.found ? circle_C_point.raw_x : -1,
-           circle_C_point.found ? circle_C_point.raw_y : -1,
-           circle_C_point.id,
-           circle_C_streak,
-           circle_C_streak >= CIRCLE_C_CONFIRM_FRAMES ? 1 : 0,
-           circle_point_search_reason_name(circle_C_search_reason),
-           circle_C_search_num,
-           circle_C_search_b_found,
-           circle_C_search_b_id,
-           circle_C_search_start,
-           circle_C_search_end,
-           mouth_ready,
-           circle_heading_deg10(),
-           (long long)atg_reference_circle_begin_dist());
+    if(slope_out != NULL) *slope_out = slope;
+    return 0;
 }
 
-static void print_left_begin_diag(const char *reason)
+static int circle_trace_from_seed(int side, int seed_x, int seed_y, int trace[][2], int *trace_num)
 {
-    if(!circle_cal_log_enabled())
+    *trace_num = MT9V03X_H;
+    if(side_is_left(side))
     {
-        return;
-    }
-    printf("ATGCircleBeginDiag: side=L reason=%s rpts0=%d Lpt0=%d none_left=%d lost_streak=%d dist=%d begin_dist=%lld mouth_ready=%d\n",
-           reason,
-           rpts0s_num,
-           Lpt0_found ? 1 : 0,
-           none_left_line,
-           circle_left_begin_lost_streak,
-           total_distence,
-           (long long)atg_reference_circle_begin_dist(),
-           (circle_left_begin_lost_streak >= CIRCLE_BEGIN_LOST_CONFIRM_FRAMES &&
-            atg_reference_circle_begin_dist() >= CIRCLE_BEGIN_MOUTH_MIN_DIST) ? 1 : 0);
-}
-
-static void print_right_begin_diag(const char *reason)
-{
-    if(!circle_cal_log_enabled())
-    {
-        return;
-    }
-    printf("ATGCircleBeginDiag: side=R reason=%s rpts1=%d Lpt1=%d none_right=%d lost_streak=%d dist=%d begin_dist=%lld mouth_ready=%d\n",
-           reason,
-           rpts1s_num,
-           Lpt1_found ? 1 : 0,
-           none_right_line,
-           circle_right_begin_lost_streak,
-           total_distence,
-           (long long)atg_reference_circle_begin_dist(),
-           (circle_right_begin_lost_streak >= CIRCLE_BEGIN_LOST_CONFIRM_FRAMES &&
-            atg_reference_circle_begin_dist() >= CIRCLE_BEGIN_MOUTH_MIN_DIST) ? 1 : 0);
-}
-
-// 圆环入口 inner-hit 种子的唯一来源。circle.c 自身扫描与 assistant 显示线必须同源,
-// 公式(左 +2/-5、右 +5/-5)只此一份,assistant.cpp::circle_entry_scan_seed_raw 复用本函数。
-int circle_entry_inner_seed(int left_side, int *seed_x, int *seed_y,
-                            float *seed_raw_x, float *seed_raw_y)
-{
-    const int lpt_id = left_side ? Lpt0_rpts0s_id : Lpt1_rpts1s_id;
-    const int lpt_num = left_side ? rpts0s_num : rpts1s_num;
-    const int found_lpt = left_side ? (Lpt0_found ? 1 : 0) : (Lpt1_found ? 1 : 0);
-
-    if(!found_lpt || lpt_num <= 0)
-    {
-        return 0;
-    }
-
-    if(left_side)
-    {
-        const int id = clip(lpt_id, 0, lpt_num - 1);
-        *seed_raw_x = Cal_inv_rot_x(rpts0s[id][0], rpts0s[id][1]) + 2.0f;   // 从角点右侧出发,向左扫内圆黑块有足够空间
-        *seed_raw_y = Cal_inv_rot_y(rpts0s[id][0], rpts0s[id][1]) - 5.0f;  // -17→-5:远点入口raw_y太靠上,-17会推出图像顶
+        findline_lefthand_adaptive(&img_raw, block_size, clip_value, seed_x, seed_y, trace, trace_num);
     }
     else
     {
-        const int id = clip(lpt_id, 0, lpt_num - 1);
-        *seed_raw_x = Cal_inv_rot_x(rpts1s[id][0], rpts1s[id][1]) + 5.0f;
-        *seed_raw_y = Cal_inv_rot_y(rpts1s[id][0], rpts1s[id][1]) - 5.0f;  // 同上
+        findline_righthand_adaptive(&img_raw, block_size, clip_value, seed_x, seed_y, trace, trace_num);
     }
+    return *trace_num >= CIRCLE_PREDICT_TRACE_MIN_POINTS;
+}
 
+static void raw_trace_to_float(int trace[][2], int trace_num, float out[][2])
+{
+    for(int i = 0; i < trace_num; i++)
+    {
+        out[i][0] = (float)trace[i][0];
+        out[i][1] = (float)trace[i][1];
+    }
+}
+
+int circle_entry_inner_seed(int left_side, int *seed_x, int *seed_y,
+                            float *seed_raw_x, float *seed_raw_y)
+{
+    const int side = side_index(left_side);
+    const int found_lpt = side_lpt_found(side);
+    const int lpt_num = side_rpts_num(side);
+    int id = 0;
+
+    if(!found_lpt || lpt_num <= 0) return 0;
+    id = clip(side_lpt_id(side), 0, lpt_num - 1);
+    if(side_is_left(side))
+    {
+        *seed_raw_x = Cal_inv_rot_x(rpts0s[id][0], rpts0s[id][1]) + 2.0f;
+        *seed_raw_y = Cal_inv_rot_y(rpts0s[id][0], rpts0s[id][1]) - 5.0f;
+    }
+    else
+    {
+        *seed_raw_x = Cal_inv_rot_x(rpts1s[id][0], rpts1s[id][1]) + 5.0f;
+        *seed_raw_y = Cal_inv_rot_y(rpts1s[id][0], rpts1s[id][1]) - 5.0f;
+    }
     *seed_x = clip((int)*seed_raw_x, block_size / 2, MT9V03X_W - block_size / 2 - 1);
     *seed_y = clip((int)*seed_raw_y, block_size / 2 + 1, MT9V03X_H - block_size / 2 - 1);
     return 1;
 }
 
-static int circle_entry_find_inner_hit_ray(int left_side, int seed_x, int seed_y,
-                                           int *hit_x, int *hit_y, int *hit_dx,
-                                           int *hit_dy, int *hit_thres)
+static int circle_inner_hit(int side, const circle_point_t *A)
 {
-    const int inner_dx = left_side ? -1 : 1;
-    const int ray_dx[3] = {inner_dx, inner_dx, inner_dx};
+    (void)A;
+    const int inner_dx = side_is_left(side) ? -1 : 1;
     const int ray_dy[3] = {0, -1, -2};
-    const int max_steps = 45;
+    float seed_raw_x = 0.0f, seed_raw_y = 0.0f;
+    int seed_x = -1, seed_y = -1;
+    int hit_x = -1, hit_y = -1, hit_dx = 0, hit_dy = 0, hit_th = 0;
 
-    *hit_x = -1;
-    *hit_y = -1;
-    *hit_dx = 0;
-    *hit_dy = 0;
-    *hit_thres = 0;
-
-    for(int ray = 0; ray < 3 && *hit_y < 0; ray++)
-    {
-        for(int step = 1; step <= max_steps; step++)
-        {
-            const int x = seed_x + ray_dx[ray] * step;
-            const int y = seed_y + ray_dy[ray] * step;
-            int local_thres = 0;
-
-            if(x < block_size / 2 || x >= MT9V03X_W - block_size / 2 ||
-               y < block_size / 2 + 1 || y >= MT9V03X_H - block_size / 2)
-            {
-                break;
-            }
-
-            for(int dy = -block_size / 2; dy <= block_size / 2; dy++)
-            {
-                for(int dx = -block_size / 2; dx <= block_size / 2; dx++)
-                {
-                    local_thres += AT_IMAGE(&img_raw, x + dx, y + dy);
-                }
-            }
-            local_thres /= block_size * block_size;
-            local_thres -= clip_value;
-
-            if(AT_IMAGE(&img_raw, x, y) < local_thres)
-            {
-                *hit_x = x;
-                *hit_y = y;
-                *hit_dx = ray_dx[ray];
-                *hit_dy = ray_dy[ray];
-                *hit_thres = local_thres;
-                break;
-            }
-        }
-    }
-
-    return *hit_y >= 0;
-}
-
-static int circle_entry_find_inner_hit_on_seed_line(int left_side)
-{
-    const int lpt_id = left_side ? Lpt0_rpts0s_id : Lpt1_rpts1s_id;
-    const int found_lpt = left_side ? (Lpt0_found ? 1 : 0) : (Lpt1_found ? 1 : 0);
-    float seed_raw_x = 0.0f;
-    float seed_raw_y = 0.0f;
-    int seed_x = -1;
-    int seed_y = -1;
-    int hit_x = -1;
-    int hit_y = -1;
-    int hit_dx = 0;
-    int hit_dy = 0;
-    int hit_thres = 0;
-
-    if(!circle_entry_inner_seed(left_side, &seed_x, &seed_y, &seed_raw_x, &seed_raw_y))
+    if(!circle_entry_inner_seed(side, &seed_x, &seed_y, &seed_raw_x, &seed_raw_y))
     {
         if(circle_cal_log_enabled())
         {
-            printf("ATGCircleEntryInnerHit: side=%c near=%d@%d seed=-1,-1 hit=0@-1,-1 ray=0,0 sharp=0\n",
-                   left_side ? 'L' : 'R', found_lpt, -1);
+            printf("ATGCircleEntryInnerHit: side=%c near=0@-1 seed=-1,-1 hit=0@-1,-1 ray=0,0 raw=0.0,0.0 th=0\n",
+                   side_char(side));
         }
         return 0;
     }
-
-    circle_entry_find_inner_hit_ray(left_side, seed_x, seed_y, &hit_x, &hit_y,
-                                    &hit_dx, &hit_dy, &hit_thres);
-
-    if(circle_cal_log_enabled())
+    for(int ray = 0; ray < 3 && hit_y < 0; ray++)
     {
-        printf("ATGCircleEntryInnerHit: side=%c near=%d@%d seed=%d,%d hit=%d@%d,%d ray=%d,%d sharp=0 raw=%.1f,%.1f th=%d\n",
-               left_side ? 'L' : 'R',
-               found_lpt,
-               found_lpt ? lpt_id : -1,
-               seed_x,
-               seed_y,
-               hit_y >= 0 ? 1 : 0,
-               hit_x,
-               hit_y,
-               hit_dx,
-               hit_dy,
-               seed_raw_x,
-               seed_raw_y,
-               hit_thres);
-    }
-
-    return hit_y >= 0;
-}
-
-// 线方差判据:圆环入口前同侧边线从直道变成圆弧,角度方差应显著增大。
-// 普通弯道/假开口的边线弯度变化平缓,方差低。
-static int circle_entry_check_angle_variance(int left_side, int a_id, float *out_var)
-{
-    extern float rpts0a[MT9V03X_HH], rpts1a[MT9V03X_HH];
-    extern int rpts0a_num, rpts1a_num;
-    const float *ang = left_side ? rpts0a : rpts1a;
-    const int a_num = left_side ? rpts0a_num : rpts1a_num;
-
-    const int w = CIRCLE_ENTRY_ANGLE_VAR_WINDOW;
-    const int start = clip(a_id - w, 0, a_num - 1);
-    const int end = clip(a_id + w, 0, a_num - 1);
-    const int n = end - start + 1;
-    if(n < 5) { *out_var = 0; return 0; }
-
-    float sum = 0;
-    for(int i = start; i <= end; i++) sum += ang[i];
-    const float mean = sum / (float)n;
-
-    float var = 0;
-    for(int i = start; i <= end; i++) { float d = ang[i] - mean; var += d * d; }
-    var /= (float)n;
-    *out_var = var;
-
-    return var >= (float)CIRCLE_ENTRY_MIN_ANGLE_VAR;
-}
-
-// 对侧扫 B:从角点 A 的 raw 坐标往上取窗口,先跳过近端线边缘,再扫到对侧弧面黑边界。
-// 左环向右取最大 x,右环向左取最小 x。
-// 若存在尖锐远角点(far_Lpt)→那是十字,不是圆环;返回区分。
-// 返回值:1=找到 B 且是非尖锐(圆环),-1=找到尖锐 B(十字),0=没找到。
-static int find_circle_B(int left_side)
-{
-    const int a_id = left_side ? Lpt0_rpts0s_id : Lpt1_rpts1s_id;
-    const int a_found = left_side ? (Lpt0_found ? 1 : 0) : (Lpt1_found ? 1 : 0);
-    circle_B_point.found = 0;
-    circle_B_point.id = -1;
-    circle_B_point.raw_x = -1;
-    circle_B_point.raw_y = -1;
-    circle_B_search_reason = CIRCLE_POINT_SEARCH_OK;
-    circle_B_search_num = 0;
-    circle_B_search_a_found = a_found;
-    circle_B_search_a_id = a_id;
-    circle_B_search_start = -1;
-    circle_B_search_end = -1;
-    circle_B_search_detail = "start";
-    circle_B_search_scan_x = -1;
-    circle_B_search_scan_end_x = -1;
-    circle_B_search_best_x = -1;
-    circle_B_search_best_y = -1;
-    circle_B_search_rise_hits = 0;
-    circle_B_search_dx = 0;
-    circle_B_search_inner_dx = 0;
-    circle_B_search_dy = 0;
-    circle_B_search_up_dy = 0;
-    circle_B_search_dist2 = 0;
-    circle_B_search_jump_bad = 0;
-    circle_B_search_sharp_far = 0;
-    if(!a_found || a_id < 0)
-    {
-        circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_A;
-        circle_B_search_detail = "no_a";
-        return 0;
-    }
-    if(a_id >= CIRCLE_ENTRY_A_ID_MAX)
-    {
-        circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_A;
-        circle_B_search_detail = "a_too_far";
-        return 0;
-    }
-
-    int seed_raw_x = 0, seed_raw_y = 0;
-    if(!circle_get_raw_point(left_side, a_id, &seed_raw_x, &seed_raw_y))
-    {
-        circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_A;
-        circle_B_search_detail = "raw_a_failed";
-        return 0;
-    }
-
-    int best_x = left_side ? -1 : 9999, best_y = -1;
-    int valid_hits = 0;
-    int rise_hits = 0;
-    int jump_bad = 0;
-    int last_candidate_x = -1;
-    // 从 A 的 raw 坐标向上逐行扫描,先跳过近端线边缘假目标,找对侧弧面黑边界。
-    // 左环向右扫,右环向左扫。
-    const int y_min = clip(seed_raw_y - CIRCLE_B_UP_MAX, block_size / 2 + 1, MT9V03X_H - block_size / 2 - 1);
-    const int y_max = clip(seed_raw_y - CIRCLE_B_UP_MIN, block_size / 2 + 1, MT9V03X_H - block_size / 2 - 1);
-    const int scan_start_x = clip(left_side ? (seed_raw_x + CIRCLE_ENTRY_B_SKIP_EDGE_X) :
-                                               (seed_raw_x - CIRCLE_ENTRY_B_SKIP_EDGE_X),
-                                  block_size / 2,
-                                  MT9V03X_W - block_size / 2 - 1);
-    const int scan_end_x = clip(left_side ? (seed_raw_x + CIRCLE_ENTRY_B_SCAN_SPAN_X) :
-                                             (seed_raw_x - CIRCLE_ENTRY_B_SCAN_SPAN_X),
-                                block_size / 2,
-                                MT9V03X_W - block_size / 2 - 1);
-    circle_B_search_scan_x = scan_start_x;
-    circle_B_search_scan_end_x = scan_end_x;
-    circle_B_search_start = y_max;
-    circle_B_search_end = -1;
-
-    for(int y = y_max; y >= y_min; y--)
-    {
-        int hit = 0;
-        for(int x = scan_start_x; left_side ? (x <= scan_end_x) : (x >= scan_end_x);
-            left_side ? x++ : x--)
+        for(int step = 1; step <= 45; step++)
         {
-            if(x < block_size / 2 || x >= MT9V03X_W - block_size / 2) continue;
-            int lt = 0;
-            for(int dy2 = -block_size / 2; dy2 <= block_size / 2; dy2++)
-                for(int dx2 = -block_size / 2; dx2 <= block_size / 2; dx2++)
-                    lt += AT_IMAGE(&img_raw, x + dx2, y + dy2);
-            lt = lt / (block_size * block_size) - clip_value;
-            if(AT_IMAGE(&img_raw, x, y) < lt)
+            const int x = seed_x + inner_dx * step;
+            const int y = seed_y + ray_dy[ray] * step;
+            if(x < block_size / 2 || x >= MT9V03X_W - block_size / 2 ||
+               y < block_size / 2 + 1 || y >= MT9V03X_H - block_size / 2) break;
+            if(raw_dark(x, y, &hit_th))
             {
-                const int inner_dx = left_side ? (x - seed_raw_x) : (seed_raw_x - x);
-                if(inner_dx <= 0) continue;
-
-                valid_hits++;
-                circle_B_search_num = valid_hits;
-                circle_B_search_end = y;
-                if(last_candidate_x >= 0 && abs(x - last_candidate_x) > CIRCLE_ENTRY_B_MAX_STEP_X)
-                    jump_bad = 1;
-                if(inner_dx >= CIRCLE_ENTRY_AB_X_MIN)
-                    rise_hits++;
-                last_candidate_x = x;
-
-                if(left_side ? (x > best_x) : (x < best_x))
-                {
-                    best_x = x;
-                    best_y = y;
-                }
-                hit = 1;
+                hit_x = x;
+                hit_y = y;
+                hit_dx = inner_dx;
+                hit_dy = ray_dy[ray];
                 break;
             }
         }
-        if(!hit) continue;
     }
-    circle_B_search_best_x = best_x;
-    circle_B_search_best_y = best_y;
-    circle_B_search_rise_hits = rise_hits;
-    circle_B_search_jump_bad = jump_bad;
-
-    if(best_y < 0)
-    {
-        circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_B;
-        circle_B_search_detail = "no_best_y";
-        // printf("ATGCircleBDiag: side=%c seed=%d,%d y=%d..%d hits=%d best_y=-1 reason=no_best_y\n",
-        //        left_side ? 'L' : 'R', seed_raw_x, seed_raw_y, y_min, y_max, valid_hits);
-        return 0;
-    }
-    if(valid_hits < CIRCLE_ENTRY_B_MIN_HITS || rise_hits < CIRCLE_ENTRY_B_MIN_RISE_HITS)
-    {
-        circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_B;
-        circle_B_search_detail = "not_enough_hits";
-        // printf("ATGCircleBDiag: side=%c seed=%d,%d best=%d,%d hits=%d/%d reason=not_enough_hits\n",
-        //        left_side ? 'L' : 'R', seed_raw_x, seed_raw_y, best_x, best_y,
-        //        valid_hits, rise_hits);
-        return 0;
-    }
-    // AB 约束:A 不能太远,B 必须离 A 够远(纵向分离+空间距离),否则不是真双断点。
-    // y 坐标减小 = 往上，所以 dy_ab = seed_raw_y - best_y
-    const int dy_ab = seed_raw_y - best_y;
-    const int dx_ab = best_x - seed_raw_x;
-    const int inner_dx_ab = left_side ? dx_ab : -dx_ab;
-    const int dist2_ab = dx_ab * dx_ab + dy_ab * dy_ab;
-    const int up_dy = seed_raw_y - best_y;
-    circle_B_search_dx = dx_ab;
-    circle_B_search_inner_dx = inner_dx_ab;
-    circle_B_search_dy = dy_ab;
-    circle_B_search_up_dy = up_dy;
-    circle_B_search_dist2 = dist2_ab;
-
-    // printf("ATGCircleBDiag: side=%c seed=%d,%d best=%d,%d dy=%d dx=%d inner_dx=%d dist2=%d up_dy=%d hits=%d/%d reason=",
-    //        left_side ? 'L' : 'R', seed_raw_x, seed_raw_y, best_x, best_y,
-    //        dy_ab, dx_ab, inner_dx_ab, dist2_ab, up_dy, valid_hits, rise_hits);
-
-    if(jump_bad)
-    {
-        circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_EXTREME;
-        circle_B_search_detail = "jump_bad";
-        return 0;
-    }
-    if(dy_ab < CIRCLE_ENTRY_AB_Y_MIN)
-    {
-        // printf("dy_too_small\n");
-        circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_EXTREME;
-        circle_B_search_detail = "dy_too_small";
-        return 0;
-    }
-    if(inner_dx_ab < CIRCLE_ENTRY_AB_X_MIN)
-    {
-        // printf("inner_dx_too_small\n");
-        circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_EXTREME;
-        circle_B_search_detail = "inner_dx_too_small";
-        return 0;
-    }
-    if(dist2_ab < CIRCLE_ENTRY_AB_DIST_MIN * CIRCLE_ENTRY_AB_DIST_MIN)
-    {
-        // printf("dist2_too_small\n");
-        circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_EXTREME;
-        circle_B_search_detail = "dist2_too_small";
-        return 0;
-    }
-
-    // B 高度窗口:A_raw_y - B_raw_y ∈ [UP_MIN, UP_MAX]。
-    // B 太近 A 只是近端边线,太远可能是噪声;窗口确保 B 是上方弧顶。
-    if(up_dy < CIRCLE_B_UP_MIN || up_dy > CIRCLE_B_UP_MAX)
-    {
-        // printf("up_dy_out_of_range\n");
-        circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_EXTREME;
-        circle_B_search_detail = "up_dy_out_of_range";
-        return 0;
-    }
-    // printf("ok\n");
-
-    // 尖锐判别:从 raw 序列判断(圆环=平滑弧顶,十字=跳变/少点)。
-    // far_Lpt 只在和当前 B raw 坐标接近时辅助 veto,避免吃其他元素或上一帧远角点。
-    int sharp_far_lpt = 0;
-    if(left_side && far_Lpt0_found)
-    {
-        const int far_x = (int)inv_far_Lpt0_found[0];
-        const int far_y = (int)inv_far_Lpt0_found[1];
-        const int far_dx = far_x - best_x;
-        const int far_dy = far_y - best_y;
-        sharp_far_lpt =
-            (far_dx * far_dx + far_dy * far_dy <
-             CIRCLE_ENTRY_FAR_LPT_NEAR_RAW_DIST * CIRCLE_ENTRY_FAR_LPT_NEAR_RAW_DIST) ? 1 : 0;
-    }
-    else if(!left_side && far_Lpt1_found)
-    {
-        const int far_x = (int)inv_far_Lpt1_found[0];
-        const int far_y = (int)inv_far_Lpt1_found[1];
-        const int far_dx = far_x - best_x;
-        const int far_dy = far_y - best_y;
-        sharp_far_lpt =
-            (far_dx * far_dx + far_dy * far_dy <
-             CIRCLE_ENTRY_FAR_LPT_NEAR_RAW_DIST * CIRCLE_ENTRY_FAR_LPT_NEAR_RAW_DIST) ? 1 : 0;
-    }
-    if(sharp_far_lpt)
-    {
-        circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_EXTREME;
-        circle_B_search_detail = "sharp_far";
-        circle_B_search_sharp_far = sharp_far_lpt;
-        return -1;
-    }
-
-    circle_B_point.found = 1;
-    circle_B_point.id = a_id;
-    circle_B_point.raw_x = best_x;
-    circle_B_point.raw_y = best_y;
-    circle_B_search_reason = CIRCLE_POINT_SEARCH_OK;
-    circle_B_search_detail = "ok";
-    circle_B_search_sharp_far = sharp_far_lpt;
-
     if(circle_cal_log_enabled())
     {
-        printf("ATGCircleEntryB: side=%c A@%d B_raw=%d,%d dx=%d inner_dx=%d dy=%d up_dy=%d "
-               "dist2=%d hits=%d rise=%d sharp_far=%d\n",
-               left_side ? 'L' : 'R', a_id, best_x, best_y, dx_ab, inner_dx_ab, dy_ab,
-               dy_ab, dist2_ab, valid_hits, rise_hits, sharp_far_lpt);
+        printf("ATGCircleEntryInnerHit: side=%c near=%d@%d seed=%d,%d hit=%d@%d,%d ray=%d,%d raw=%.1f,%.1f th=%d\n",
+               side_char(side), side_lpt_found(side), side_lpt_found(side) ? side_lpt_id(side) : -1,
+               seed_x, seed_y, hit_y >= 0, hit_x, hit_y, hit_dx, hit_dy, seed_raw_x, seed_raw_y, hit_th);
+    }
+    return hit_y >= 0;
+}
+
+static void log_entry_probe(int side, const circle_point_t *A, int b_ret)
+{
+    if(!circle_cal_log_enabled()) return;
+    printf("ATGCircleEntryProbe: side=%c A=1@%d(raw=%d,%d) B=0 ret=%d reason=%s detail=%s "
+           "trace=%d seed=%d,%d seed_line=%d,%d slope=%.3f best=%d,%d ready=%d sharp_far=%d\n",
+           side_char(side),
+           side_lpt_id(side), A->x, A->y, b_ret,
+           point_search_reason_name(circle_B_search_reason),
+           circle_B_search_detail ? circle_B_search_detail : "unknown",
+           circle_B_search_num, circle_B_search_seed_x, circle_B_search_seed_y,
+           circle_seed_line_x[side], circle_seed_line_y[side], circle_B_search_slope,
+           circle_B_search_best_x, circle_B_search_best_y, circle_B_search_ready,
+           circle_B_search_sharp_far);
+}
+
+static int far_lpt_near_B(int side, const circle_point_t *B)
+{
+    int far_x = 0, far_y = 0;
+    if(side_is_left(side))
+    {
+        if(!far_Lpt0_found) return 0;
+        far_x = (int)inv_far_Lpt0_found[0];
+        far_y = (int)inv_far_Lpt0_found[1];
+    }
+    else
+    {
+        if(!far_Lpt1_found) return 0;
+        far_x = (int)inv_far_Lpt1_found[0];
+        far_y = (int)inv_far_Lpt1_found[1];
+    }
+    const int dx = far_x - B->x;
+    const int dy = far_y - B->y;
+    return dx * dx + dy * dy <
+           CIRCLE_ENTRY_FAR_LPT_NEAR_RAW_DIST * CIRCLE_ENTRY_FAR_LPT_NEAR_RAW_DIST;
+}
+
+static int circle_find_B(int side, const circle_point_t *ref, int follow_mode, circle_point_t *B_out)
+{
+    int trace[MT9V03X_H][2];
+    int trace_num = 0;
+    int seed_x = -1;
+    int seed_y = -1;
+    float slope = 0.0f;
+    int best_x, best_y;
+    int y_min, y_max;
+
+    if(follow_mode == 0)  /* ENTRY mode: full A-B geometry search */
+    {
+        if(B_out != NULL) memset(B_out, 0, sizeof(*B_out));
+        circle_B_search_reason = CIRCLE_POINT_SEARCH_OK;
+        circle_B_search_detail = "start";
+        circle_B_search_num = 0;
+        circle_B_search_best_x = -1;
+        circle_B_search_best_y = -1;
+        circle_B_search_sharp_far = 0;
+        circle_B_search_seed_x = -1;
+        circle_B_search_seed_y = -1;
+        circle_B_search_ready = 0;
+        circle_B_search_slope = 0.0f;
+        clear_anchor(&circle_B_point);
+
+        if(ref == NULL || !circle_A_point.found)
+        {
+            circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_A;
+            circle_B_search_detail = "no_locked_a";
+            return 0;
+        }
+
+        y_min = clip(ref->y - CIRCLE_B_UP_MAX, block_size / 2 + 1, MT9V03X_H - block_size / 2 - 1);
+        y_max = clip(ref->y - CIRCLE_B_UP_MIN, block_size / 2 + 1, MT9V03X_H - block_size / 2 - 1);
+        best_x = side_is_left(side) ? -1 : 9999;
+        best_y = -1;
+    }
+    else  /* follow_mode == 1: BEGIN follow mode, narrow window around current B */
+    {
+        if(!circle_B_point.found || !circle_seed_line_valid[side]) return 0;
+        y_min = clip(ref->y - CIRCLE_B_FOLLOW_Y_RADIUS, block_size / 2 + 1, MT9V03X_H - block_size / 2 - 1);
+        y_max = clip(ref->y + CIRCLE_B_FOLLOW_Y_RADIUS, block_size / 2 + 1, MT9V03X_H - block_size / 2 - 1);
+        best_x = side_is_left(side) ? -1 : 9999;
+        best_y = -1;
     }
 
+    if(!circle_seed_line_valid[side])
+    {
+        if(follow_mode == 0)
+        {
+            circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_SEED;
+            circle_B_search_detail = "seed_line_invalid";
+        }
+        return 0;
+    }
+    if(!circle_prediction_slope(side, &slope))
+    {
+        if(follow_mode == 0)
+        {
+            circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_SLOPE;
+            circle_B_search_detail = "no_opposite_slope";
+        }
+        return 0;
+    }
+    if(!circle_find_prediction_seed(side, y_max, y_min, &seed_x, &seed_y, &slope))
+    {
+        if(follow_mode == 0)
+        {
+            circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_SEED;
+            circle_B_search_detail = "no_pred_seed";
+            circle_B_search_slope = slope;
+        }
+        return 0;
+    }
+
+    if(follow_mode == 0)
+    {
+        circle_B_search_seed_x = seed_x;
+        circle_B_search_seed_y = seed_y;
+        circle_B_search_slope = slope;
+    }
+
+    if(!circle_trace_from_seed(side, seed_x, seed_y, trace, &trace_num))
+    {
+        if(follow_mode == 0)
+        {
+            circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_TRACE;
+            circle_B_search_detail = "short_trace";
+            circle_B_search_num = trace_num;
+        }
+        return 0;
+    }
+
+    if(follow_mode == 0)
+    {
+        circle_B_search_num = trace_num;
+    }
+
+    {
+        int valid_hits = 0;
+        int candidate_hits = 0;
+        int last_x = -1;
+        int best_i = -1;
+
+        for(int i = 0; i < trace_num; i++)
+        {
+            const int x = trace[i][0];
+            const int y = trace[i][1];
+
+            if(y < y_min || y > y_max) continue;
+            candidate_hits++;
+
+            if(follow_mode == 0)
+            {
+                const int dx = x - ref->x;
+                const int dy = ref->y - y;
+                const int inner_dx = side_is_left(side) ? dx : -dx;
+                const int dist2 = dx * dx + dy * dy;
+
+                if(last_x >= 0 && abs(x - last_x) > CIRCLE_ENTRY_B_MAX_STEP_X)
+                {
+                    circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_EXTREME;
+                    circle_B_search_detail = "jump_bad";
+                    return -1;
+                }
+                last_x = x;
+                if(dy < CIRCLE_ENTRY_AB_Y_MIN ||
+                   inner_dx < CIRCLE_ENTRY_AB_X_MIN ||
+                   dist2 < CIRCLE_ENTRY_AB_DIST_MIN * CIRCLE_ENTRY_AB_DIST_MIN ||
+                   dy < CIRCLE_B_UP_MIN || dy > CIRCLE_B_UP_MAX)
+                {
+                    continue;
+                }
+            }
+
+            valid_hits++;
+            if(side_is_left(side) ? x > best_x : x < best_x)
+            {
+                best_x = x;
+                best_y = y;
+                best_i = i;
+            }
+        }
+
+        if(follow_mode == 0)
+        {
+            circle_B_search_best_x = best_x;
+            circle_B_search_best_y = best_y;
+            if(best_y < 0 || valid_hits < CIRCLE_ENTRY_B_MIN_HITS)
+            {
+                circle_B_search_reason = candidate_hits > 0 ? CIRCLE_POINT_SEARCH_NO_EXTREME :
+                                                               CIRCLE_POINT_SEARCH_NO_B;
+                circle_B_search_detail = candidate_hits > 0 ? "no_legal_extreme" : "no_trace_candidate";
+                return 0;
+            }
+
+            {
+                const int dx = best_x - ref->x;
+                const int dy = ref->y - best_y;
+                const int inner_dx = side_is_left(side) ? dx : -dx;
+                const int dist2 = dx * dx + dy * dy;
+
+                B_out->x = best_x;
+                B_out->y = best_y;
+                if(far_lpt_near_B(side, B_out))
+                {
+                    circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_EXTREME;
+                    circle_B_search_detail = "sharp_far";
+                    circle_B_search_sharp_far = 1;
+                    return -1;
+                }
+
+                circle_B_point.found = 1;
+                circle_B_point.id = circle_A_point.id;
+                circle_B_point.raw_x = B_out->x;
+                circle_B_point.raw_y = B_out->y;
+                circle_B_search_ready = B_out->y >= CIRCLE_B_READY_RAW_Y_MIN;
+                circle_B_search_reason = CIRCLE_POINT_SEARCH_OK;
+                circle_B_search_detail = "ok";
+                if(circle_cal_log_enabled())
+                {
+                    printf("ATGCircleEntryB: side=%c A@%d seed=%d,%d seed_line=%d,%d slope=%.3f "
+                           "B_raw=%d,%d#%d dx=%d inner_dx=%d dy=%d dist2=%d trace=%d cand=%d hits=%d ready=%d sharp_far=%d\n",
+                           side_char(side), circle_A_point.id,
+                           circle_B_search_seed_x, circle_B_search_seed_y,
+                           circle_seed_line_x[side], circle_seed_line_y[side], circle_B_search_slope,
+                           B_out->x, B_out->y, best_i, dx, inner_dx, dy, dist2, trace_num, candidate_hits, valid_hits,
+                           circle_B_search_ready, circle_B_search_sharp_far);
+                }
+                return 1;
+            }
+        }
+        else  /* follow_mode == 1: BEGIN follow mode result */
+        {
+            if(best_y < 0) return 0;
+
+            circle_B_point.raw_x = best_x;
+            circle_B_point.raw_y = best_y;
+            set_seed_line_from_B(side, &circle_B_point);
+            if(circle_cal_log_enabled())
+            {
+                printf("ATGCircleBeginBFollow: side=%c seed=%d,%d B=%d,%d seed_line=%d,%d slope=%.3f trace=%d\n",
+                       side_char(side), seed_x, seed_y,
+                       circle_B_point.raw_x, circle_B_point.raw_y,
+                       circle_seed_line_x[side], circle_seed_line_y[side], slope, trace_num);
+            }
+            return 1;
+        }
+    }
+}
+
+static void log_B_follow_miss(int side)
+{
+    if(!circle_cal_log_enabled()) return;
+    printf("ATGCircleBeginBFollow: side=%c miss_streak=%d B=%d@%d,%d seed_line=%d@%d,%d\n",
+           side_char(side),
+           circle_B_follow_fail_streak[side],
+           circle_B_point.found,
+           circle_B_point.raw_x,
+           circle_B_point.raw_y,
+           circle_seed_line_valid[side],
+           circle_seed_line_x[side],
+           circle_seed_line_y[side]);
+}
+
+static int circle_find_C(int side, const circle_point_t *B, circle_point_t *C)
+{
+    int trace[MT9V03X_H][2];
+    float trace_f[MT9V03X_H][2];
+    float angles[MT9V03X_H];
+    float angles_nms[MT9V03X_H];
+    int trace_num = 0;
+    int seed_x = -1;
+    int seed_y = -1;
+    float slope = 0.0f;
+    int best_i = -1;
+    float best_abs_angle = 0.0f;
+
+    clear_anchor(&circle_C_point);
+    circle_C_search_num = 0;
+    circle_C_search_reason = CIRCLE_POINT_SEARCH_OK;
+    circle_C_search_detail = "start";
+    circle_C_search_seed_x = -1;
+    circle_C_search_seed_y = -1;
+    circle_C_search_best_i = -1;
+    circle_C_search_slope = 0.0f;
+    circle_C_search_angle = 0.0f;
+    if(!circle_B_point.found)
+    {
+        circle_C_search_reason = CIRCLE_POINT_SEARCH_NO_B;
+        circle_C_search_detail = "no_locked_b";
+        return 0;
+    }
+
+    if(!circle_seed_line_valid[side])
+    {
+        circle_C_search_reason = CIRCLE_POINT_SEARCH_NO_SEED;
+        circle_C_search_detail = "seed_line_invalid";
+        return 0;
+    }
+    if(!circle_prediction_slope(side, &slope))
+    {
+        circle_C_search_reason = CIRCLE_POINT_SEARCH_NO_SLOPE;
+        circle_C_search_detail = "no_opposite_slope";
+        return 0;
+    }
+    if(!circle_find_prediction_seed(side,
+                                    B->y - CIRCLE_C_UP_MIN,
+                                    block_size / 2 + 5,
+                                    &seed_x, &seed_y, &slope))
+    {
+        circle_C_search_reason = CIRCLE_POINT_SEARCH_NO_SEED;
+        circle_C_search_detail = "no_pred_seed";
+        circle_C_search_slope = slope;
+        return 0;
+    }
+    circle_C_search_seed_x = seed_x;
+    circle_C_search_seed_y = seed_y;
+    circle_C_search_slope = slope;
+
+    if(!circle_trace_from_seed(side, seed_x, seed_y, trace, &trace_num))
+    {
+        circle_C_search_reason = CIRCLE_POINT_SEARCH_NO_TRACE;
+        circle_C_search_detail = "short_trace";
+        circle_C_search_num = trace_num;
+        return 0;
+    }
+    circle_C_search_num = trace_num;
+    raw_trace_to_float(trace, trace_num, trace_f);
+    local_angle_points(trace_f, trace_num, angles, CIRCLE_C_ANGLE_DIST);
+    nms_angle(angles, trace_num, angles_nms, CIRCLE_C_ANGLE_NMS_KERNEL);
+
+    for(int i = 0; i < trace_num; i++)
+    {
+        const int y = trace[i][1];
+        const float abs_angle = fabsf(angles_nms[i]);
+        if(y >= B->y - CIRCLE_C_UP_MIN) continue;
+        if((int)(abs_angle * 1000.0f) < CIRCLE_C_ANGLE_MIN_MRAD) continue;
+        if(abs_angle > best_abs_angle)
+        {
+            best_abs_angle = abs_angle;
+            best_i = i;
+        }
+    }
+
+    if(best_i < 0)
+    {
+        circle_C_search_reason = CIRCLE_POINT_SEARCH_NO_V;
+        circle_C_search_detail = "no_corner";
+        return 0;
+    }
+
+    C->x = trace[best_i][0];
+    C->y = trace[best_i][1];
+    circle_C_point.found = 1;
+    circle_C_point.id = best_i;
+    circle_C_point.raw_x = C->x;
+    circle_C_point.raw_y = C->y;
+    circle_C_search_reason = CIRCLE_POINT_SEARCH_OK;
+    circle_C_search_detail = "ok";
+    circle_C_search_best_i = best_i;
+    circle_C_search_angle = angles_nms[best_i];
+    if(circle_cal_log_enabled())
+    {
+        printf("ATGCircleBeginC: side=%c B=%d,%d seed=%d,%d seed_line=%d,%d slope=%.3f "
+               "C=%d,%d#%d angle=%.3f trace=%d\n",
+               side_char(side), B->x, B->y,
+               circle_C_search_seed_x, circle_C_search_seed_y,
+               circle_seed_line_x[side], circle_seed_line_y[side], slope,
+               C->x, C->y, best_i, circle_C_search_angle, trace_num);
+    }
     return 1;
 }
 
-// 真双断点:左环 A=Lpt0,跳过近端线边缘后扫到对侧弧面 B(非尖锐=圆环);尖锐 B 是十字,不放行。
-static int circle_entry_find_double_breakpoint(int left_side)
+static int circle_C_phase_ready(void)
 {
-    // 先满足圆环基本条件:对侧直道+对侧无近 Lpt+内侧黑块
-    const int basic = left_side ?
-        (!Lpt1_found && is_straight1 && circle_entry_find_inner_hit_on_seed_line(1)) :
-        (!Lpt0_found && is_straight0 && circle_entry_find_inner_hit_on_seed_line(0));
-    if(!basic) return 0;
+    return circle_B_streak >= CIRCLE_B_CONFIRM_FRAMES &&
+           circle_B_point.found &&
+           circle_B_point.raw_y >= CIRCLE_B_READY_RAW_Y_MIN;
+}
 
-    // A 点高度门:raw_y 应在合理范围(底部太近=false,顶部太远=false)
-    // 对应 viewer y≈80(车在圆环入口前合适距离)。
-    const int a_id = left_side ? Lpt0_rpts0s_id : Lpt1_rpts1s_id;
-    int a_rx = 0, a_ry = 0;
-    if(!circle_get_raw_point(left_side, a_id, &a_rx, &a_ry) || a_ry > 100)
+static int circle_update_C(int side, circle_point_t *C)
+{
+    circle_point_t B = {circle_B_point.raw_x, circle_B_point.raw_y};
+    if(!circle_C_phase_ready())
     {
+        clear_anchor(&circle_C_point);
+        circle_C_search_num = 0;
+        circle_C_search_reason = CIRCLE_POINT_SEARCH_PHASE_GATE;
+        circle_C_search_detail = "b_not_ready";
+        circle_C_search_seed_x = -1;
+        circle_C_search_seed_y = -1;
+        circle_C_search_best_i = -1;
+        circle_C_search_slope = 0.0f;
+        circle_C_search_angle = 0.0f;
         return 0;
     }
+    return circle_find_C(side, &B, C);
+}
 
-    const int b_ret = find_circle_B(left_side);
-    if(b_ret <= 0)
-    {
-        print_circle_entry_probe_diag(left_side, a_id, a_rx, a_ry, b_ret);
-        return 0;  // 0=没找到 B, -1=尖锐B(十字)→都不算圆环
-    }
+static void log_circle_abc(int side, const char *phase, int mouth_ready)
+{
+    if(!circle_cal_log_enabled() || circle_type == CIRCLE_NONE) return;
+    printf("ATGCircleABC: side=%c phase=%s ref=%d(%s) rpts=%d/%d lpt=%d@%d/%d@%d "
+           "seed_line=%d@%d,%d B_offset=%d "
+           "A=%d@%d,%d#%d B=%d@%d,%d#%d B_streak=%d B_ready=%d B_ready_y=%d "
+           "B_search=%s/%s trace=%d seed=%d,%d best=%d,%d slope=%.3f "
+           "C=%d@%d,%d#%d C_streak=%d C_ready=%d C_search=%s/%s trace=%d seed=%d,%d best_i=%d angle=%.3f slope=%.3f "
+           "mouth_ready=%d heading=%d begin_dist=%lld\n",
+           side_char(side), phase, (int)circle_ref_mode, circle_ref_mode_name(circle_ref_mode),
+           rpts0s_num, rpts1s_num,
+           Lpt0_found ? 1 : 0, Lpt0_found ? Lpt0_rpts0s_id : -1,
+           Lpt1_found ? 1 : 0, Lpt1_found ? Lpt1_rpts1s_id : -1,
+           circle_seed_line_valid[side], circle_seed_line_x[side], circle_seed_line_y[side],
+           signed_B_seed_offset(side),
+           circle_A_point.found, circle_A_point.raw_x, circle_A_point.raw_y, circle_A_point.id,
+           circle_B_point.found, circle_B_point.raw_x, circle_B_point.raw_y, circle_B_point.id,
+           circle_B_streak, circle_B_search_ready, CIRCLE_B_READY_RAW_Y_MIN,
+           point_search_reason_name(circle_B_search_reason),
+           circle_B_search_detail ? circle_B_search_detail : "unknown",
+           circle_B_search_num, circle_B_search_seed_x, circle_B_search_seed_y,
+           circle_B_search_best_x, circle_B_search_best_y, circle_B_search_slope,
+           circle_C_point.found, circle_C_point.raw_x, circle_C_point.raw_y, circle_C_point.id,
+           circle_C_streak, circle_C_streak >= CIRCLE_C_CONFIRM_FRAMES,
+           point_search_reason_name(circle_C_search_reason),
+           circle_C_search_detail ? circle_C_search_detail : "unknown",
+           circle_C_search_num, circle_C_search_seed_x, circle_C_search_seed_y,
+           circle_C_search_best_i, circle_C_search_angle, circle_C_search_slope,
+           mouth_ready, circle_heading_deg10(), (long long)atg_reference_circle_begin_dist());
+}
 
-    // A=B 确认,圆环入口
-    if(circle_cal_log_enabled())
-    {
-        printf("ATGCircleEntryAB: side=%c A=1@%d(raw=%d,%d) B=1@%d,%d OK\n",
-               left_side ? 'L' : 'R', a_id, a_rx, a_ry,
-               circle_B_point.raw_x, circle_B_point.raw_y);
-    }
+static int circle_entry_detect(int side, circle_point_t *A)
+{
+    if(!circle_get_A(side, A)) return 0;
+    if(side_lpt_id(side) < 0 || side_lpt_id(side) >= CIRCLE_ENTRY_A_ID_MAX) return 0;
+    if(A->y > 100) return 0;
+    if(side_opposite_lpt_found(side) || !side_opposite_straight(side)) return 0;
+    if(circle_cal_log_enabled()) (void)circle_inner_hit(side, A);
     return 1;
+}
+
+static int circle_update_entry_A(int side)
+{
+    circle_point_t A = {0, 0};
+    if(!circle_get_A(side, &A)) return 0;
+    if(side_lpt_id(side) < 0 || side_lpt_id(side) >= CIRCLE_ENTRY_A_ID_MAX) return 0;
+    store_anchor(&circle_A_point, side_lpt_id(side), &A);
+    set_seed_line_from_A(side, &circle_A_point);
+    return 1;
+}
+
+static void enter_circle_entry(int side)
+{
+    const circle_anchor_point_t pending_A = circle_entry_pending_A[side];
+    log_circle_state(circle_type, (enum circle_type_e)side_entry_state(side), "entry_vote");
+    circle_type = (enum circle_type_e)side_entry_state(side);
+    reset_circle_begin_flags();
+    reset_circle_geometry_state();
+    if(pending_A.found)
+    {
+        circle_A_point = pending_A;
+        set_seed_line_from_A(side, &circle_A_point);
+    }
+    Count_dis_Flag = 0;
+    reset_circle_entry_votes();
+}
+
+static void abort_circle_entry(int side, const char *reason)
+{
+    log_circle_state(circle_type, CIRCLE_NONE, reason);
+    circle_type = CIRCLE_NONE;
+    circle_ref_mode = CIRCLE_REF_NONE;
+    Count_dis_Flag = 0;
+    reset_circle_begin_flags();
+    reset_circle_geometry_state();
+    reset_circle_entry_votes();
+    suppress_circle_reentry_after_exit();
+    (void)side;
+}
+
+static void promote_entry_to_begin(int side)
+{
+    const circle_anchor_point_t B = circle_B_point;
+    log_circle_state(circle_type, (enum circle_type_e)side_begin_state(side), "b_ready");
+    circle_type = (enum circle_type_e)side_begin_state(side);
+    clear_anchor(&circle_A_point);
+    circle_B_point = B;
+    set_seed_line_from_B(side, &circle_B_point);
+    circle_C_streak = 0;
+    circle_ref_mode = CIRCLE_REF_BEGIN_AB;
+    reset_circle_begin_flags();
+    Count_dis_Flag = 0;
+}
+
+static void run_circle_entry(int side)
+{
+    circle_point_t A = {circle_A_point.raw_x, circle_A_point.raw_y};
+    circle_point_t B = {0, 0};
+    const int a_visible = circle_update_entry_A(side);
+    const int a_near = a_visible && side_lpt_id(side) <= CIRCLE_ENTRY_A_NEAR_ID;
+    A.x = circle_A_point.raw_x;
+    A.y = circle_A_point.raw_y;
+    const int b_ret = circle_find_B(side, &A, 0, &B);
+
+    track_type = side_begin_track(side);
+    circle_ref_mode = CIRCLE_REF_NONE;
+    if(b_ret < 0)
+    {
+        log_entry_probe(side, &A, b_ret);
+        abort_circle_entry(side, side_is_left(side) ? "LEFT_ENTRY false_b" : "RIGHT_ENTRY false_b");
+        return;
+    }
+    if(b_ret == 1 && circle_B_search_ready)
+    {
+        circle_entry_seen_B[side] = 1;
+        circle_B_streak++;
+    }
+    else if(b_ret == 1)
+    {
+        circle_entry_seen_B[side] = 0;
+        circle_B_streak = 0;
+    }
+    else
+    {
+        log_entry_probe(side, &A, b_ret);
+        circle_entry_seen_B[side] = 0;
+        circle_B_streak = 0;
+    }
+
+    log_circle_abc(side, "ENTRY", 0);
+
+    if(circle_B_streak >= CIRCLE_B_CONFIRM_FRAMES &&
+       circle_B_point.found &&
+       circle_B_search_ready)
+    {
+        promote_entry_to_begin(side);
+        return;
+    }
+
+    if(!circle_entry_seen_B[side] && (!a_visible || a_near))
+    {
+        abort_circle_entry(side, side_is_left(side) ? "LEFT_ENTRY no_b_window" : "RIGHT_ENTRY no_b_window");
+    }
 }
 
 int circle_entry_candidate_pending(void)
 {
-    return circle_left_entry_votes > 0 || circle_right_entry_votes > 0;
+    return circle_entry_votes[CIRCLE_SIDE_LEFT] > 0 || circle_entry_votes[CIRCLE_SIDE_RIGHT] > 0;
 }
 
-void check_circle() {
-    if (circle_type != CIRCLE_NONE) {
+void check_circle(void)
+{
+    if(circle_type != CIRCLE_NONE)
+    {
         reset_circle_entry_votes();
         return;
     }
+    if(circle_entry_suppressed()) return;
 
-    if (circle_entry_suppressed()) {
-        return;
+    for(int side = CIRCLE_SIDE_RIGHT; side <= CIRCLE_SIDE_LEFT; side++)
+    {
+        circle_point_t A = {0, 0};
+        if(circle_entry_detect(side, &A))
+        {
+            if(circle_entry_votes[side] == 0)
+            {
+                store_anchor(&circle_entry_pending_A[side], side_lpt_id(side), &A);
+            }
+            circle_entry_votes[side]++;
+        }
+        else
+        {
+            circle_entry_votes[side] = 0;
+            clear_anchor(&circle_entry_pending_A[side]);
+        }
     }
 
-    // 入口:先判断是圆环(对侧直道+对侧无近Lpt+内侧黑块+竖线扫到弧顶B非尖锐)。
-    // circle_entry_find_double_breakpoint 内部已含 basic 条件检查 + B 搜索 + 尖锐判别。
-    const int left_entry = circle_entry_find_double_breakpoint(1);
-    const int right_entry = circle_entry_find_double_breakpoint(0);
-
-    // 线方差只打诊断(弧面弯度观测用)
-    float left_angle_var = 0, right_angle_var = 0;
-    if(Lpt0_found) circle_entry_check_angle_variance(1, Lpt0_rpts0s_id, &left_angle_var);
-    if(Lpt1_found) circle_entry_check_angle_variance(0, Lpt1_rpts1s_id, &right_angle_var);
-
-    circle_left_entry_votes = left_entry ? circle_left_entry_votes + 1 : 0;
-    circle_right_entry_votes = right_entry ? circle_right_entry_votes + 1 : 0;
-
-    if (circle_left_entry_votes >= CIRCLE_ENTRY_CONFIRM_FRAMES) {
-        print_circle_transition(circle_type, CIRCLE_LEFT_BEGIN, "entry_vote");
-        circle_type = CIRCLE_LEFT_BEGIN;
-        reset_circle_begin_flags();
-        reset_circle_geometry_state();
-        Count_dis_Flag=0;
-        reset_circle_entry_votes();
-    }
-
-    if (circle_right_entry_votes >= CIRCLE_ENTRY_CONFIRM_FRAMES) {
-        print_circle_transition(circle_type, CIRCLE_RIGHT_BEGIN, "entry_vote");
-        circle_type = CIRCLE_RIGHT_BEGIN;
-        reset_circle_begin_flags();
-        reset_circle_geometry_state();
-        Count_dis_Flag=0;
-        reset_circle_entry_votes();
+    for(int side = CIRCLE_SIDE_RIGHT; side <= CIRCLE_SIDE_LEFT; side++)
+    {
+        if(circle_entry_votes[side] >= CIRCLE_ENTRY_CONFIRM_FRAMES)
+        {
+            enter_circle_entry(side);
+            return;
+        }
     }
 }
 
-void run_circle() {
-    // ===================== 左环 =====================
-    if (circle_type == CIRCLE_LEFT_BEGIN) {
-        track_type = TRACK_RIGHT;
-
-        // 入环口内侧(左)线丢失:none_left_line 累计(idle-revoke 用),lost_streak 连续计数(恢复即清零)。
-        // 记录丢线起点 begin_dist;mouth_loss 只认起点在合理窗口的丢线,挡早开口一直拖到 600。
-        if (rpts0s_num < CIRCLE_BEGIN_LOST_RPTS_MAX && !Lpt0_found) {
-            Count_dis_Flag = 1;
+static void update_begin_loss(int side)
+{
+    const int lost = side_rpts_num(side) < CIRCLE_BEGIN_LOST_RPTS_MAX && !side_lpt_found(side);
+    if(lost)
+    {
+        Count_dis_Flag = 1;
+        if(side_is_left(side))
+        {
             none_left_line++;
             have_left_line = 0;
-            if(circle_left_begin_lost_streak == 0) {
-                circle_left_loss_start_begin_dist = atg_reference_circle_begin_dist();
-            }
-            circle_left_begin_lost_streak++;
         }
-        else {
-            circle_left_begin_lost_streak = 0;
-            circle_left_loss_start_begin_dist = -1;
-        }
-
-        print_left_begin_diag("state");
-
-        latch_circle_A(1);
-        // BEGIN 早期只找 B; B 到达相位门后才允许 C 搜索,避免 B/C 都落在中间圆弧。
-        const int b_ok = find_circle_B(1) == 1;
-        if(b_ok) { circle_B_streak++; }
-        else { circle_B_streak = 0; }
-
-        const int c_ok = update_circle_C_search(1);
-        if(c_ok) { circle_C_streak++; }
-        else { circle_C_streak = 0; }
-        circle_ref_mode = (circle_C_streak >= CIRCLE_C_CONFIRM_FRAMES) ? CIRCLE_REF_IN_C :
-                          (circle_B_streak >= CIRCLE_B_CONFIRM_FRAMES) ? CIRCLE_REF_BEGIN_AB : CIRCLE_REF_NONE;
-
-        print_circle_abc_diag('L', "BEGIN", 0);
-
-        // BEGIN 内:C 找到→ref_mode=IN_C 触发 C 补线(停在 BEGIN 拉线)。
-        // B_row 只作为 C 搜索相位门,不再单独切到 IN_C。
-        // 唯一进 RUNNING 的路径:陀螺到 ENTER(完成切入)。
-        if (circle_heading_abs_ge(CIRCLE_HEADING_ENTER_DEG10)) {
-            print_circle_transition(circle_type, CIRCLE_LEFT_RUNNING,
-                circle_C_streak >= CIRCLE_C_CONFIRM_FRAMES ? "gyro_c" : "gyro");
-            circle_type = CIRCLE_LEFT_RUNNING;
-            circle_ref_mode = CIRCLE_REF_NONE;
-            reset_circle_heading();
-            if_lost_right_line = 0;
-            reset_circle_begin_flags();
-            circle_C_point.found = 0;
-            circle_C_streak = 0;
-            Count_dis_Flag = 0;
-        }
-        else {
-            const int mouth_lost_too_late =
-                circle_left_begin_lost_streak >= CIRCLE_BEGIN_LOST_CONFIRM_FRAMES &&
-                circle_left_loss_start_begin_dist >= CIRCLE_BEGIN_MOUTH_MIN_DIST &&
-                circle_left_loss_start_begin_dist > CIRCLE_BEGIN_LOSS_MAX_DIST;
-
-            if (mouth_lost_too_late) {
-                abort_circle_begin("LEFT_BEGIN mouth_loss too late");
-            }
-        }
-    }
-    else if (circle_type == CIRCLE_LEFT_RUNNING) {
-        track_type = TRACK_RIGHT;
-        Count_dis_Flag = 1;
-
-        // 阶段2(视觉为主+陀螺门限): 对侧出口角点出现且陀螺已过门限;视觉失效时只留陀螺主触发。
-        if (Lpt1_found && Lpt1_rpts1s_id < CIRCLE_OUT_LPT_NEAR_ID &&
-            circle_heading_abs_ge(CIRCLE_HEADING_OUT_GATE_DEG10)) {
-            print_circle_transition(circle_type, CIRCLE_LEFT_OUT, "vision_lpt");
-            circle_type = CIRCLE_LEFT_OUT;
-            circle_left_out_straight_streak = 0;
-            Count_dis_Flag = 0;
-            if_lost_right_line = 0;
-        }
-        else if (circle_heading_abs_ge(CIRCLE_HEADING_START_OUT_DEG10)) {
-            print_circle_transition(circle_type, CIRCLE_LEFT_OUT, "gyro");
-            circle_type = CIRCLE_LEFT_OUT;
-            circle_left_out_straight_streak = 0;
-            Count_dis_Flag = 0;
-            if_lost_right_line = 0;
-        }
-    }
-    else if (circle_type == CIRCLE_LEFT_OUT) {
-        track_type = TRACK_LEFT;
-        Count_dis_Flag = 1;
-
-        // OUT→NONE:陀螺到+对侧直线连续2帧→交棒;或陀螺超大兜底
-        if(is_straight1) circle_left_out_straight_streak++;
-        else circle_left_out_straight_streak = 0;
-        if ((circle_heading_abs_ge(CIRCLE_HEADING_READY_OUT_TO_END_DEG10) &&
-             circle_left_out_straight_streak >= 2) ||
-            circle_heading_abs_ge(CIRCLE_HEADING_FINISH_SOFT_DEG10)) {
-            finish_circle_exit("straight_exit");
-        }
-    }
-
-    // ===================== 右环 =====================
-    else if (circle_type == CIRCLE_RIGHT_BEGIN) {
-        track_type = TRACK_LEFT;
-
-        // 内侧(右)线丢失:记录丢线起点 begin_dist;mouth_loss 只认起点在合理窗口的丢线。
-        if (rpts1s_num < CIRCLE_BEGIN_LOST_RPTS_MAX && !Lpt1_found) {
-            Count_dis_Flag = 1;
+        else
+        {
             none_right_line++;
             have_right_line = 0;
-            if(circle_right_begin_lost_streak == 0) {
-                circle_right_loss_start_begin_dist = atg_reference_circle_begin_dist();
-            }
-            circle_right_begin_lost_streak++;
         }
-        else {
-            circle_right_begin_lost_streak = 0;
-            circle_right_loss_start_begin_dist = -1;
+        if(circle_begin_lost_streak[side] == 0)
+        {
+            circle_loss_start_begin_dist[side] = atg_reference_circle_begin_dist();
         }
+        circle_begin_lost_streak[side]++;
+    }
+    else
+    {
+        circle_begin_lost_streak[side] = 0;
+        circle_loss_start_begin_dist[side] = -1;
+    }
+}
 
-        print_right_begin_diag("state");
-
-        latch_circle_A(0);
-        // BEGIN 早期只找 B; B 到达相位门后才允许 C 搜索,避免 B/C 都落在中间圆弧。
-        const int b_ok_r = find_circle_B(0) == 1;
-        if(b_ok_r) { circle_B_streak++; }
-        else { circle_B_streak = 0; }
-
-        const int c_ok_r = update_circle_C_search(0);
-        if(c_ok_r) { circle_C_streak++; }
-        else { circle_C_streak = 0; }
-        circle_ref_mode = (circle_C_streak >= CIRCLE_C_CONFIRM_FRAMES) ? CIRCLE_REF_IN_C :
-                          (circle_B_streak >= CIRCLE_B_CONFIRM_FRAMES) ? CIRCLE_REF_BEGIN_AB : CIRCLE_REF_NONE;
-
-        print_circle_abc_diag('R', "BEGIN", 0);
-
-        // BEGIN→RUNNING:陀螺到→RUNNING(C 找到时 ref_mode=IN_C,BEGIN 内已拉线)
-        if (circle_heading_abs_ge(CIRCLE_HEADING_ENTER_DEG10)) {
-            print_circle_transition(circle_type, CIRCLE_RIGHT_RUNNING,
-                circle_C_streak >= CIRCLE_C_CONFIRM_FRAMES ? "gyro_c" : "gyro");
-            circle_type = CIRCLE_RIGHT_RUNNING;
-            circle_ref_mode = CIRCLE_REF_NONE;
-            reset_circle_heading();
-            if_lost_left_line = 0;
-            reset_circle_begin_flags();
-            circle_C_point.found = 0;
-            circle_C_streak = 0;
-            Count_dis_Flag = 0;
-        }
-        else {
-            const int mouth_lost_too_late_r =
-                circle_right_begin_lost_streak >= CIRCLE_BEGIN_LOST_CONFIRM_FRAMES &&
-                circle_right_loss_start_begin_dist >= CIRCLE_BEGIN_MOUTH_MIN_DIST &&
-                circle_right_loss_start_begin_dist > CIRCLE_BEGIN_LOSS_MAX_DIST;
-
-            if (mouth_lost_too_late_r) {
-                abort_circle_begin("RIGHT_BEGIN mouth_loss too late");
-            }
+// begin
+static void run_circle_begin(int side)
+{
+    circle_point_t C = {0, 0};
+    track_type = side_begin_track(side);
+    update_begin_loss(side);
+    {
+        circle_point_t B_ref = {circle_B_point.raw_x, circle_B_point.raw_y};
+        if(circle_find_B(side, &B_ref, 1, NULL)) circle_B_follow_fail_streak[side] = 0;
+        else
+        {
+            circle_B_follow_fail_streak[side]++;
+            log_B_follow_miss(side);
         }
     }
-    else if (circle_type == CIRCLE_RIGHT_RUNNING) {
-        track_type = TRACK_LEFT;
-        Count_dis_Flag = 1;
+    if(circle_update_C(side, &C)) circle_C_streak++;
+    else circle_C_streak = 0;
 
-        // 阶段2(视觉为主+陀螺门限): 对称右环, 对侧(左)Lpt0 出环触发 + 陀螺门限。
-        if (Lpt0_found && Lpt0_rpts0s_id < CIRCLE_OUT_LPT_NEAR_ID &&
-            circle_heading_abs_ge(CIRCLE_HEADING_OUT_GATE_DEG10)) {
-            print_circle_transition(circle_type, CIRCLE_RIGHT_OUT, "vision_lpt");
-            circle_type = CIRCLE_RIGHT_OUT;
-            circle_right_out_straight_streak = 0;
-            Count_dis_Flag = 0;
-            if_lost_left_line = 0;
-        }
-        else if (circle_heading_abs_ge(CIRCLE_HEADING_START_OUT_DEG10)) {
-            print_circle_transition(circle_type, CIRCLE_RIGHT_OUT, "gyro");
-            circle_type = CIRCLE_RIGHT_OUT;
-            circle_right_out_straight_streak = 0;
-            Count_dis_Flag = 0;
-            if_lost_left_line = 0;
-        }
+    circle_ref_mode = circle_C_streak >= CIRCLE_C_CONFIRM_FRAMES ? CIRCLE_REF_IN_C :
+                      circle_B_point.found ? CIRCLE_REF_BEGIN_AB : CIRCLE_REF_NONE;
+    log_circle_abc(side, "BEGIN", 0);
+
+    if(circle_heading_abs_ge(CIRCLE_HEADING_ENTER_DEG10))
+    {
+        log_circle_state(circle_type, (enum circle_type_e)side_running_state(side),
+                         circle_C_streak >= CIRCLE_C_CONFIRM_FRAMES ? "gyro_c" : "gyro");
+        circle_type = (enum circle_type_e)side_running_state(side);
+        circle_ref_mode = CIRCLE_REF_NONE;
+        reset_circle_heading();
+        if(side_is_left(side)) if_lost_right_line = 0;
+        else if_lost_left_line = 0;
+        reset_circle_begin_flags();
+        clear_anchor(&circle_C_point);
+        circle_C_streak = 0;
+        Count_dis_Flag = 0;
+        return;
     }
-    else if (circle_type == CIRCLE_RIGHT_OUT) {
-        track_type = TRACK_RIGHT;
-        Count_dis_Flag = 1;
 
-        // OUT→NONE:陀螺到+对侧直线连续2帧→交棒;或陀螺超大兜底
-        if(is_straight0) circle_right_out_straight_streak++;
-        else circle_right_out_straight_streak = 0;
-        if ((circle_heading_abs_ge(CIRCLE_HEADING_READY_OUT_TO_END_DEG10) &&
-             circle_right_out_straight_streak >= 2) ||
-            circle_heading_abs_ge(CIRCLE_HEADING_FINISH_SOFT_DEG10)) {
-            finish_circle_exit("straight_exit");
-        }
+    /* not a normal progression condition — abort on late mouth loss (false entry) */
+    const int abort_late_mouth_loss =
+        circle_begin_lost_streak[side] >= CIRCLE_BEGIN_LOST_CONFIRM_FRAMES &&
+        circle_loss_start_begin_dist[side] >= CIRCLE_BEGIN_MOUTH_MIN_DIST &&
+        circle_loss_start_begin_dist[side] > CIRCLE_BEGIN_LOSS_MAX_DIST;
+    if(abort_late_mouth_loss)
+    {
+        abort_circle_begin(side_is_left(side) ? "LEFT_BEGIN mouth_loss too late" :
+                                                "RIGHT_BEGIN mouth_loss too late");
+    }
+}
+
+// running
+static void run_circle_running(int side)
+{
+    track_type = side_begin_track(side);
+    Count_dis_Flag = 1;
+    if(side_opposite_lpt_found(side) &&
+       side_opposite_lpt_id(side) < CIRCLE_OUT_LPT_NEAR_ID &&
+       circle_heading_abs_ge(CIRCLE_HEADING_OUT_GATE_DEG10))
+    {
+        log_circle_state(circle_type, (enum circle_type_e)side_out_state(side), "vision_lpt");
+        circle_type = (enum circle_type_e)side_out_state(side);
+        circle_out_straight_streak[side] = 0;
+        Count_dis_Flag = 0;
+        if(side_is_left(side)) if_lost_right_line = 0;
+        else if_lost_left_line = 0;
+    }
+    else if(circle_heading_abs_ge(CIRCLE_HEADING_START_OUT_DEG10))
+    {
+        log_circle_state(circle_type, (enum circle_type_e)side_out_state(side), "gyro");
+        circle_type = (enum circle_type_e)side_out_state(side);
+        circle_out_straight_streak[side] = 0;
+        Count_dis_Flag = 0;
+        if(side_is_left(side)) if_lost_right_line = 0;
+        else if_lost_left_line = 0;
+    }
+}
+
+// out
+static void run_circle_out(int side)
+{
+    track_type = side_out_track(side);
+    Count_dis_Flag = 1;
+    if(side_out_straight(side)) circle_out_straight_streak[side]++;
+    else circle_out_straight_streak[side] = 0;
+
+    if((circle_heading_abs_ge(CIRCLE_HEADING_READY_OUT_TO_END_DEG10) &&
+        circle_out_straight_streak[side] >= 2) ||
+       circle_heading_abs_ge(CIRCLE_HEADING_FINISH_SOFT_DEG10))
+    {
+        finish_circle_exit("straight_exit");
+    }
+}
+
+
+// 主流程
+void run_circle(void)
+{
+    switch(circle_type)
+    {
+    case CIRCLE_LEFT_ENTRY: run_circle_entry(CIRCLE_SIDE_LEFT); break;
+    case CIRCLE_RIGHT_ENTRY: run_circle_entry(CIRCLE_SIDE_RIGHT); break;
+    case CIRCLE_LEFT_BEGIN: run_circle_begin(CIRCLE_SIDE_LEFT); break;
+    case CIRCLE_RIGHT_BEGIN: run_circle_begin(CIRCLE_SIDE_RIGHT); break;
+    case CIRCLE_LEFT_RUNNING: run_circle_running(CIRCLE_SIDE_LEFT); break;
+    case CIRCLE_RIGHT_RUNNING: run_circle_running(CIRCLE_SIDE_RIGHT); break;
+    case CIRCLE_LEFT_OUT: run_circle_out(CIRCLE_SIDE_LEFT); break;
+    case CIRCLE_RIGHT_OUT: run_circle_out(CIRCLE_SIDE_RIGHT); break;
+    default: break;
     }
 }
