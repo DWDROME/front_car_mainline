@@ -496,11 +496,10 @@ static int dark_near_prediction(int x_center, int y, int *seed_x)
    再在 ±8 像素范围内找暗点。
    这样即使本侧线在拐点处断裂，也能靠对面线的斜率"跨过去"找到弯道内侧边界。 */
 static int circle_find_prediction_seed(int side, int y_start, int y_stop,
-                                       int *seed_x, int *seed_y, float *slope_out)
+                                       int *seed_x, int *seed_y, const float *slope)
 {
-    float slope = 0.0f;
     if(!circle_seed_line_valid[side]) return 0;
-    if(!circle_prediction_slope(side, &slope)) return 0;
+    if(slope == NULL || !isfinite(*slope)) return 0;
 
     y_start = clip(y_start, block_size / 2 + 1, MT9V03X_H - block_size / 2 - 1);
     y_stop = clip(y_stop, block_size / 2 + 1, MT9V03X_H - block_size / 2 - 1);
@@ -513,17 +512,15 @@ static int circle_find_prediction_seed(int side, int y_start, int y_stop,
 
     for(int y = y_start; y >= y_stop; y--)
     {
-        const int x_center = prediction_x_at_y(side, y, slope);
+        const int x_center = prediction_x_at_y(side, y, *slope);
         int x = -1;
         if(dark_near_prediction(x_center, y, &x))
         {
             *seed_x = x;
             *seed_y = y;
-            if(slope_out != NULL) *slope_out = slope;
             return 1;
         }
     }
-    if(slope_out != NULL) *slope_out = slope;
     return 0;
 }
 
