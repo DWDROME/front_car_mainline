@@ -24,59 +24,18 @@ typedef struct circle_point_s
 /* ================= 圆环状态门：真正决定流程 ================= */
 enum
 {
-    CIRCLE_ENTRY_CONFIRM_FRAMES = 2,
-    CIRCLE_B_CONFIRM_FRAMES = 2,
-    CIRCLE_C_CONFIRM_FRAMES = 2,
+    ENTRY_OK_FRAMES = 2,
+    B_OK_FRAMES = 2,
+    C_OK_FRAMES = 2,
 
-    CIRCLE_HEADING_ENTER_DEG10 = 600,
-    CIRCLE_HEADING_OUT_GATE_DEG10 = 1500,
-    CIRCLE_HEADING_START_OUT_DEG10 = 2000,
-    CIRCLE_HEADING_READY_OUT_TO_END_DEG10 = 2660,
-    CIRCLE_HEADING_FINISH_SOFT_DEG10 = 3300,
+    GYRO_IN_DEG10 = 600,
+    GYRO_OUT_DEG10 = 1500,
+    GYRO_FORCE_OUT_DEG10 = 2000,
 
-    CIRCLE_OUT_LPT_NEAR_ID = 55,
-    CIRCLE_REENTRY_SUPPRESS_FRAMES = 150,
-};
-
-/* ================= 入口 A/B/C 几何：B/C 搜索器内部参数 =================
-   正常调车不动，只在 B/C 点定位偏差时才调整。
-   circle_find_B() / circle_find_C() 的具体约束，非状态推进门槛。 */
-enum
-{
-    CIRCLE_ENTRY_A_ID_MAX = 35,
-    CIRCLE_ENTRY_A_NEAR_ID = 8,
-    CIRCLE_B_READY_RAW_Y_MIN = 58,
-
-    CIRCLE_ENTRY_AB_DIST_MIN = 23,
-    CIRCLE_ENTRY_AB_Y_MIN = 8,
-    CIRCLE_ENTRY_AB_X_MIN = 6,
-
-    CIRCLE_ENTRY_B_MIN_HITS = 1,
-    CIRCLE_ENTRY_B_MAX_STEP_X = 18,
-
-    CIRCLE_B_UP_MIN = 15,
-    CIRCLE_B_UP_MAX = 50,
-    CIRCLE_ENTRY_FAR_LPT_NEAR_RAW_DIST = 20,
-
-    CIRCLE_PREDICT_SEED_RADIUS = 8,
-    CIRCLE_PREDICT_TRACE_MIN_POINTS = 6,
-    CIRCLE_SEED_LINE_B_OFFSET_X = 8,
-    CIRCLE_B_FOLLOW_Y_RADIUS = 8,
-    CIRCLE_C_UP_MIN = 6,
-    CIRCLE_C_ANGLE_DIST = 3,
-    CIRCLE_C_ANGLE_NMS_KERNEL = 7,
-    CIRCLE_C_ANGLE_MIN_MRAD = 350,
-};
-
-/* ================= BEGIN 异常撤回：保险丝，非主流程 =================
-   abort_late_mouth_loss 的触发条件。只在假入口（直道伪 L）卡住时起效。
-   不是正常推进路径，不要依赖它调环。 */
-enum
-{
-    CIRCLE_BEGIN_LOST_CONFIRM_FRAMES = 2,
-    CIRCLE_BEGIN_LOST_RPTS_MAX = 2,
-    CIRCLE_BEGIN_MOUTH_MIN_DIST = 600,
-    CIRCLE_BEGIN_LOSS_MAX_DIST = 4000,
+    B_READY_Y = 58,
+    OUT_LPT_NEAR_ID = 55,
+    OUT_STRAIGHT_FRAMES = 2,
+    REENTRY_SUPPRESS_FRAMES = 150,
 };
 
 enum
@@ -90,6 +49,7 @@ enum
     CIRCLE_POINT_SEARCH_NO_SEED,
     CIRCLE_POINT_SEARCH_NO_TRACE,
     CIRCLE_POINT_SEARCH_NO_SLOPE,
+    CIRCLE_POINT_SEARCH_JOIN_BAD,
 };
 
 static const float CIRCLE_GYRO_DEADZONE_RAD_S = 0.065f;
@@ -114,7 +74,7 @@ const char *circle_type_name[CIRCLE_NUM] = {
 
 static int circle_entry_votes[2];
 static circle_anchor_point_t circle_entry_pending_A[2];
-static int circle_entry_seen_B[2];
+static int circle_entry_ever_valid_B[2];
 static int circle_entry_suppress_frames;
 static float circle_heading_rad;
 static int circle_begin_lost_streak[2];
@@ -122,6 +82,7 @@ static int64_t circle_loss_start_begin_dist[2] = {-1, -1};
 static int circle_out_straight_streak[2];
 static int circle_B_streak;
 static int circle_C_streak;
+static int circle_C_join_ok;
 static int circle_B_follow_fail_streak[2];
 static int circle_seed_line_x[2];
 static int circle_seed_line_y[2];
@@ -138,6 +99,19 @@ static int circle_B_search_seed_y;
 static int circle_B_search_ready;
 static float circle_B_search_slope;
 
+static int B_trace_pts[MT9V03X_H][2];
+static int B_trace_num;
+static int B_seed_x;
+static int B_seed_y;
+static float B_slope;
+static int B_y_min;
+static int B_y_max;
+static int B_best_x;
+static int B_best_y;
+static int B_best_i;
+static int B_candidate_hits;
+static int B_valid_hits;
+
 static int circle_C_search_reason;
 static int circle_C_search_num;
 static const char *circle_C_search_detail;
@@ -146,6 +120,17 @@ static int circle_C_search_seed_y;
 static int circle_C_search_best_i;
 static float circle_C_search_slope;
 static float circle_C_search_angle;
+
+static int C_trace_pts[MT9V03X_H][2];
+static float C_trace_f[MT9V03X_H][2];
+static float C_angles[MT9V03X_H];
+static float C_angles_nms[MT9V03X_H];
+static int C_trace_num;
+static int C_seed_x;
+static int C_seed_y;
+static float C_slope;
+static int C_best_i;
+static float C_best_abs_angle;
 
 static int side_index(int side) { return side ? CIRCLE_SIDE_LEFT : CIRCLE_SIDE_RIGHT; }
 static char side_char(int side) { return side ? 'L' : 'R'; }
@@ -169,7 +154,7 @@ static const char *circle_ref_mode_name(enum circle_ref_mode_e mode)
     switch(mode)
     {
     case CIRCLE_REF_NONE: return "none";
-    case CIRCLE_REF_BEGIN_AB: return "begin_ab";
+    case CIRCLE_REF_BEGIN_AB: return "begin_outer_fallback";
     case CIRCLE_REF_IN_C: return "in_c";
     default: return "unknown";
     }
@@ -188,6 +173,7 @@ static const char *point_search_reason_name(int reason)
     case CIRCLE_POINT_SEARCH_NO_SEED: return "no_seed";
     case CIRCLE_POINT_SEARCH_NO_TRACE: return "no_trace";
     case CIRCLE_POINT_SEARCH_NO_SLOPE: return "no_slope";
+    case CIRCLE_POINT_SEARCH_JOIN_BAD: return "join_bad";
     default: return "unknown";
     }
 }
@@ -264,7 +250,8 @@ static void set_seed_line_from_A(int side, const circle_anchor_point_t *A)
 
 static int signed_B_seed_offset(int side)
 {
-    return side_is_left(side) ? -CIRCLE_SEED_LINE_B_OFFSET_X : CIRCLE_SEED_LINE_B_OFFSET_X;
+    enum { seed_dx = 8 };
+    return side_is_left(side) ? -seed_dx : seed_dx;
 }
 
 static void set_seed_line_from_B(int side, const circle_anchor_point_t *B)
@@ -294,7 +281,7 @@ void suppress_circle_entry_frames(int frames)
 
 void suppress_circle_reentry_after_exit(void)
 {
-    suppress_circle_entry_frames(CIRCLE_REENTRY_SUPPRESS_FRAMES);
+    suppress_circle_entry_frames(REENTRY_SUPPRESS_FRAMES);
 }
 
 void clear_circle_entry_suppression(void)
@@ -328,14 +315,15 @@ void reset_circle_geometry_state(void)
     clear_anchor(&circle_C_point);
     clear_anchor(&circle_entry_pending_A[CIRCLE_SIDE_RIGHT]);
     clear_anchor(&circle_entry_pending_A[CIRCLE_SIDE_LEFT]);
-    circle_entry_seen_B[CIRCLE_SIDE_RIGHT] = 0;
-    circle_entry_seen_B[CIRCLE_SIDE_LEFT] = 0;
+    circle_entry_ever_valid_B[CIRCLE_SIDE_RIGHT] = 0;
+    circle_entry_ever_valid_B[CIRCLE_SIDE_LEFT] = 0;
     clear_seed_line(CIRCLE_SIDE_RIGHT);
     clear_seed_line(CIRCLE_SIDE_LEFT);
     circle_out_straight_streak[CIRCLE_SIDE_RIGHT] = 0;
     circle_out_straight_streak[CIRCLE_SIDE_LEFT] = 0;
     circle_B_streak = 0;
     circle_C_streak = 0;
+    circle_C_join_ok = 0;
     circle_B_follow_fail_streak[CIRCLE_SIDE_RIGHT] = 0;
     circle_B_follow_fail_streak[CIRCLE_SIDE_LEFT] = 0;
     circle_B_search_reason = CIRCLE_POINT_SEARCH_OK;
@@ -375,7 +363,7 @@ void update_circle_heading(float yaw_rate_rad_s, int period_ms, int valid)
 
 int circle_heading_enter_ready(void)
 {
-    return circle_heading_abs_ge(CIRCLE_HEADING_ENTER_DEG10);
+    return circle_heading_abs_ge(GYRO_IN_DEG10);
 }
 
 static void finish_circle_exit(const char *reason)
@@ -449,6 +437,9 @@ static int mirrored_raw_x(int x)
     return MT9V03X_W - 1 - x;
 }
 
+/* 用对面线的斜率预测弯道走向。
+   入环时本侧线在拐点处断开或变形，无法用于预测；对面线在视野内仍保持连续，
+   其延伸方向近似弯道弧线的切线方向，可作为 B/C 搜索的预测基准。 */
 static int circle_prediction_slope(int side, float *dx_per_dy)
 {
     float (*pts)[2] = side_is_left(side) ? rpts1s : rpts0s;
@@ -480,7 +471,9 @@ static int prediction_x_at_y(int side, int y, float slope)
 
 static int dark_near_prediction(int x_center, int y, int *seed_x)
 {
-    for(int delta = 0; delta <= CIRCLE_PREDICT_SEED_RADIUS; delta++)
+    enum { r = 8 };
+
+    for(int delta = 0; delta <= r; delta++)
     {
         const int xs[2] = {x_center + delta, x_center - delta};
         const int n = delta == 0 ? 1 : 2;
@@ -498,6 +491,10 @@ static int dark_near_prediction(int x_center, int y, int *seed_x)
     return 0;
 }
 
+/* 沿预测斜率方向扫描，找到第一个暗点作为 trace 起点。
+   从 y_start 向 y_stop 逐行扫描，用 prediction_x_at_y() 计算预测 x，
+   再在 ±8 像素范围内找暗点。
+   这样即使本侧线在拐点处断裂，也能靠对面线的斜率"跨过去"找到弯道内侧边界。 */
 static int circle_find_prediction_seed(int side, int y_start, int y_stop,
                                        int *seed_x, int *seed_y, float *slope_out)
 {
@@ -530,8 +527,13 @@ static int circle_find_prediction_seed(int side, int y_start, int y_stop,
     return 0;
 }
 
+/* 从 seed 点开始沿边界搜线。
+   左环用 lefthand（逆时针），右环用 righthand（顺时针），
+   保证 trace 方向始终从入口向外侧延伸。 */
 static int circle_trace_from_seed(int side, int seed_x, int seed_y, int trace[][2], int *trace_num)
 {
+    enum { min_trace = 6 };
+
     *trace_num = MT9V03X_H;
     if(side_is_left(side))
     {
@@ -541,7 +543,7 @@ static int circle_trace_from_seed(int side, int seed_x, int seed_y, int trace[][
     {
         findline_righthand_adaptive(&img_raw, block_size, clip_value, seed_x, seed_y, trace, trace_num);
     }
-    return *trace_num >= CIRCLE_PREDICT_TRACE_MIN_POINTS;
+    return *trace_num >= min_trace;
 }
 
 static void raw_trace_to_float(int trace[][2], int trace_num, float out[][2])
@@ -623,13 +625,14 @@ static int circle_inner_hit(int side, const circle_point_t *A)
     return hit_y >= 0;
 }
 
-static void log_entry_probe(int side, const circle_point_t *A, int b_ret)
+static void log_entry_probe(int side, int b_ret)
 {
     if(!circle_cal_log_enabled()) return;
     printf("ATGCircleEntryProbe: side=%c A=1@%d(raw=%d,%d) B=0 ret=%d reason=%s detail=%s "
            "trace=%d seed=%d,%d seed_line=%d,%d slope=%.3f best=%d,%d ready=%d sharp_far=%d\n",
            side_char(side),
-           side_lpt_id(side), A->x, A->y, b_ret,
+           circle_A_point.found ? circle_A_point.id : side_lpt_id(side),
+           circle_A_point.raw_x, circle_A_point.raw_y, b_ret,
            point_search_reason_name(circle_B_search_reason),
            circle_B_search_detail ? circle_B_search_detail : "unknown",
            circle_B_search_num, circle_B_search_seed_x, circle_B_search_seed_y,
@@ -638,8 +641,9 @@ static void log_entry_probe(int side, const circle_point_t *A, int b_ret)
            circle_B_search_sharp_far);
 }
 
-static int far_lpt_near_B(int side, const circle_point_t *B)
+static int far_lpt_near_B(int side, int b_x, int b_y)
 {
+    enum { near_r = 20 };
     int far_x = 0, far_y = 0;
     if(side_is_left(side))
     {
@@ -653,221 +657,353 @@ static int far_lpt_near_B(int side, const circle_point_t *B)
         far_x = (int)inv_far_Lpt1_found[0];
         far_y = (int)inv_far_Lpt1_found[1];
     }
-    const int dx = far_x - B->x;
-    const int dy = far_y - B->y;
-    return dx * dx + dy * dy <
-           CIRCLE_ENTRY_FAR_LPT_NEAR_RAW_DIST * CIRCLE_ENTRY_FAR_LPT_NEAR_RAW_DIST;
+    const int dx = far_x - b_x;
+    const int dy = far_y - b_y;
+    return dx * dx + dy * dy < near_r * near_r;
 }
 
-static int circle_find_B(int side, const circle_point_t *ref, int follow_mode, circle_point_t *B_out)
+static void B_entry_reset(void)
 {
-    int trace[MT9V03X_H][2];
-    int trace_num = 0;
-    int seed_x = -1;
-    int seed_y = -1;
-    float slope = 0.0f;
-    int best_x, best_y;
-    int y_min, y_max;
+    circle_B_search_reason = CIRCLE_POINT_SEARCH_OK;
+    circle_B_search_detail = "start";
+    circle_B_search_num = 0;
+    circle_B_search_best_x = -1;
+    circle_B_search_best_y = -1;
+    circle_B_search_sharp_far = 0;
+    circle_B_search_seed_x = -1;
+    circle_B_search_seed_y = -1;
+    circle_B_search_ready = 0;
+    circle_B_search_slope = 0.0f;
+    clear_anchor(&circle_B_point);
+    B_trace_num = 0;
+    B_seed_x = -1;
+    B_seed_y = -1;
+    B_slope = 0.0f;
+    B_y_min = 0;
+    B_y_max = 0;
+    B_best_x = -1;
+    B_best_y = -1;
+    B_best_i = -1;
+    B_candidate_hits = 0;
+    B_valid_hits = 0;
+}
 
-    if(follow_mode == 0)  /* ENTRY mode: full A-B geometry search */
+static int B_entry_has_A(int side)
+{
+    enum { up_min = 15, up_max = 50 };
+
+    if(!circle_A_point.found)
     {
-        if(B_out != NULL) memset(B_out, 0, sizeof(*B_out));
-        circle_B_search_reason = CIRCLE_POINT_SEARCH_OK;
-        circle_B_search_detail = "start";
-        circle_B_search_num = 0;
-        circle_B_search_best_x = -1;
-        circle_B_search_best_y = -1;
-        circle_B_search_sharp_far = 0;
-        circle_B_search_seed_x = -1;
-        circle_B_search_seed_y = -1;
-        circle_B_search_ready = 0;
-        circle_B_search_slope = 0.0f;
-        clear_anchor(&circle_B_point);
-
-        if(ref == NULL || !circle_A_point.found)
-        {
-            circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_A;
-            circle_B_search_detail = "no_locked_a";
-            return 0;
-        }
-
-        y_min = clip(ref->y - CIRCLE_B_UP_MAX, block_size / 2 + 1, MT9V03X_H - block_size / 2 - 1);
-        y_max = clip(ref->y - CIRCLE_B_UP_MIN, block_size / 2 + 1, MT9V03X_H - block_size / 2 - 1);
-        best_x = side_is_left(side) ? -1 : 9999;
-        best_y = -1;
-    }
-    else  /* follow_mode == 1: BEGIN follow mode, narrow window around current B */
-    {
-        if(!circle_B_point.found || !circle_seed_line_valid[side]) return 0;
-        y_min = clip(ref->y - CIRCLE_B_FOLLOW_Y_RADIUS, block_size / 2 + 1, MT9V03X_H - block_size / 2 - 1);
-        y_max = clip(ref->y + CIRCLE_B_FOLLOW_Y_RADIUS, block_size / 2 + 1, MT9V03X_H - block_size / 2 - 1);
-        best_x = side_is_left(side) ? -1 : 9999;
-        best_y = -1;
+        circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_A;
+        circle_B_search_detail = "no_locked_a";
+        return 0;
     }
 
+    B_y_min = clip(circle_A_point.raw_y - up_max, block_size / 2 + 1, MT9V03X_H - block_size / 2 - 1);
+    B_y_max = clip(circle_A_point.raw_y - up_min, block_size / 2 + 1, MT9V03X_H - block_size / 2 - 1);
+    B_best_x = side_is_left(side) ? -1 : 9999;
+    B_best_y = -1;
+    return 1;
+}
+
+static int B_entry_seed(int side)
+{
     if(!circle_seed_line_valid[side])
     {
-        if(follow_mode == 0)
-        {
-            circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_SEED;
-            circle_B_search_detail = "seed_line_invalid";
-        }
+        circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_SEED;
+        circle_B_search_detail = "seed_line_invalid";
         return 0;
     }
-    if(!circle_prediction_slope(side, &slope))
+    if(!circle_prediction_slope(side, &B_slope))
     {
-        if(follow_mode == 0)
-        {
-            circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_SLOPE;
-            circle_B_search_detail = "no_opposite_slope";
-        }
+        circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_SLOPE;
+        circle_B_search_detail = "no_opposite_slope";
         return 0;
     }
-    if(!circle_find_prediction_seed(side, y_max, y_min, &seed_x, &seed_y, &slope))
+    if(!circle_find_prediction_seed(side, B_y_max, B_y_min, &B_seed_x, &B_seed_y, &B_slope))
     {
-        if(follow_mode == 0)
-        {
-            circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_SEED;
-            circle_B_search_detail = "no_pred_seed";
-            circle_B_search_slope = slope;
-        }
+        circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_SEED;
+        circle_B_search_detail = "no_pred_seed";
+        circle_B_search_slope = B_slope;
         return 0;
     }
 
-    if(follow_mode == 0)
-    {
-        circle_B_search_seed_x = seed_x;
-        circle_B_search_seed_y = seed_y;
-        circle_B_search_slope = slope;
-    }
+    circle_B_search_seed_x = B_seed_x;
+    circle_B_search_seed_y = B_seed_y;
+    circle_B_search_slope = B_slope;
+    return 1;
+}
 
-    if(!circle_trace_from_seed(side, seed_x, seed_y, trace, &trace_num))
+static int B_entry_trace(int side)
+{
+    if(!circle_trace_from_seed(side, B_seed_x, B_seed_y, B_trace_pts, &B_trace_num))
     {
-        if(follow_mode == 0)
-        {
-            circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_TRACE;
-            circle_B_search_detail = "short_trace";
-            circle_B_search_num = trace_num;
-        }
+        circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_TRACE;
+        circle_B_search_detail = "short_trace";
+        circle_B_search_num = B_trace_num;
         return 0;
     }
 
-    if(follow_mode == 0)
+    circle_B_search_num = B_trace_num;
+    return 1;
+}
+
+static int B_entry_pick(int side)
+{
+    enum
     {
-        circle_B_search_num = trace_num;
+        min_dy = 8,
+        min_inner_dx = 6,
+        min_dist = 23,
+        max_step = 18,
+        min_hits = 1,
+        up_min = 15,
+        up_max = 50,
+    };
+
+    int last_x = -1;
+
+    for(int i = 0; i < B_trace_num; i++)
+    {
+        const int x = B_trace_pts[i][0];
+        const int y = B_trace_pts[i][1];
+        const int dx = x - circle_A_point.raw_x;
+        const int dy = circle_A_point.raw_y - y;
+        const int inner_dx = side_is_left(side) ? dx : -dx;
+        const int dist2 = dx * dx + dy * dy;
+
+        if(y < B_y_min || y > B_y_max) continue;
+        B_candidate_hits++;
+
+        if(last_x >= 0 && abs(x - last_x) > max_step)
+        {
+            circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_EXTREME;
+            circle_B_search_detail = "jump_bad";
+            return -1;
+        }
+        last_x = x;
+        if(dy < min_dy ||
+           inner_dx < min_inner_dx ||
+           dist2 < min_dist * min_dist ||
+           dy < up_min || dy > up_max)
+        {
+            continue;
+        }
+
+        B_valid_hits++;
+        if(side_is_left(side) ? x > B_best_x : x < B_best_x)
+        {
+            B_best_x = x;
+            B_best_y = y;
+            B_best_i = i;
+        }
     }
 
+    circle_B_search_best_x = B_best_x;
+    circle_B_search_best_y = B_best_y;
+    if(B_best_y < 0 || B_valid_hits < min_hits)
     {
-        int valid_hits = 0;
-        int candidate_hits = 0;
-        int last_x = -1;
-        int best_i = -1;
+        circle_B_search_reason = B_candidate_hits > 0 ? CIRCLE_POINT_SEARCH_NO_EXTREME :
+                                                        CIRCLE_POINT_SEARCH_NO_B;
+        circle_B_search_detail = B_candidate_hits > 0 ? "no_legal_extreme" : "no_trace_candidate";
+        return 0;
+    }
 
-        for(int i = 0; i < trace_num; i++)
+    return 1;
+}
+
+static int B_entry_fake(int side)
+{
+    if(!far_lpt_near_B(side, B_best_x, B_best_y)) return 0;
+    circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_EXTREME;
+    circle_B_search_detail = "sharp_far";
+    circle_B_search_sharp_far = 1;
+    return 1;
+}
+
+static void B_entry_lock(void)
+{
+    circle_B_point.found = 1;
+    circle_B_point.id = circle_A_point.id;
+    circle_B_point.raw_x = B_best_x;
+    circle_B_point.raw_y = B_best_y;
+    circle_B_search_ready = circle_B_point.raw_y >= B_READY_Y;
+    circle_B_search_reason = CIRCLE_POINT_SEARCH_OK;
+    circle_B_search_detail = "ok";
+}
+
+static void B_entry_log(int side)
+{
+    if(!circle_cal_log_enabled()) return;
+    const int dx = B_best_x - circle_A_point.raw_x;
+    const int dy = circle_A_point.raw_y - B_best_y;
+    const int inner_dx = side_is_left(side) ? dx : -dx;
+    const int dist2 = dx * dx + dy * dy;
+    printf("ATGCircleEntryB: side=%c A@%d seed=%d,%d seed_line=%d,%d slope=%.3f "
+           "B_raw=%d,%d#%d dx=%d inner_dx=%d dy=%d dist2=%d trace=%d cand=%d hits=%d ready=%d sharp_far=%d\n",
+           side_char(side), circle_A_point.id,
+           circle_B_search_seed_x, circle_B_search_seed_y,
+           circle_seed_line_x[side], circle_seed_line_y[side], circle_B_search_slope,
+           circle_B_point.raw_x, circle_B_point.raw_y, B_best_i, dx, inner_dx, dy, dist2,
+           B_trace_num, B_candidate_hits, B_valid_hits,
+           circle_B_search_ready, circle_B_search_sharp_far);
+}
+
+/* ENTRY 中从 A 点出发找弯道外侧极值点 B。 */
+static int find_B_entry(int side)
+{
+    int pick_ret;
+
+    B_entry_reset();
+    if(!B_entry_has_A(side)) return 0;
+    if(!B_entry_seed(side)) return 0;
+    if(!B_entry_trace(side)) return 0;
+
+    pick_ret = B_entry_pick(side);
+    if(pick_ret <= 0) return pick_ret;
+
+    if(B_entry_fake(side)) return -1;
+    B_entry_lock();
+    B_entry_log(side);
+    return 1;
+}
+
+static void B_follow_reset(void)
+{
+    circle_B_search_reason = CIRCLE_POINT_SEARCH_OK;
+    circle_B_search_detail = "follow_start";
+    circle_B_search_num = 0;
+    circle_B_search_best_x = -1;
+    circle_B_search_best_y = -1;
+    circle_B_search_sharp_far = 0;
+    circle_B_search_seed_x = -1;
+    circle_B_search_seed_y = -1;
+    circle_B_search_ready = 0;
+    circle_B_search_slope = 0.0f;
+    B_trace_num = 0;
+    B_seed_x = -1;
+    B_seed_y = -1;
+    B_slope = 0.0f;
+    B_y_min = 0;
+    B_y_max = 0;
+    B_best_x = -1;
+    B_best_y = -1;
+    B_best_i = -1;
+    B_candidate_hits = 0;
+    B_valid_hits = 0;
+}
+
+static int B_follow_check(int side)
+{
+    enum { y_r = 8 };
+
+    if(!circle_B_point.found)
+    {
+        circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_B;
+        circle_B_search_detail = "follow_no_b";
+        return 0;
+    }
+    if(!circle_seed_line_valid[side])
+    {
+        circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_SEED;
+        circle_B_search_detail = "follow_seed_line_invalid";
+        return 0;
+    }
+
+    B_y_min = clip(circle_B_point.raw_y - y_r, block_size / 2 + 1, MT9V03X_H - block_size / 2 - 1);
+    B_y_max = clip(circle_B_point.raw_y + y_r, block_size / 2 + 1, MT9V03X_H - block_size / 2 - 1);
+    B_best_x = side_is_left(side) ? -1 : 9999;
+    B_best_y = -1;
+    return 1;
+}
+
+static int B_follow_get_seed(int side)
+{
+    if(!circle_prediction_slope(side, &B_slope))
+    {
+        circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_SLOPE;
+        circle_B_search_detail = "follow_no_slope";
+        return 0;
+    }
+    if(!circle_find_prediction_seed(side, B_y_max, B_y_min, &B_seed_x, &B_seed_y, &B_slope))
+    {
+        circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_SEED;
+        circle_B_search_detail = "follow_no_pred_seed";
+        circle_B_search_slope = B_slope;
+        return 0;
+    }
+    circle_B_search_seed_x = B_seed_x;
+    circle_B_search_seed_y = B_seed_y;
+    circle_B_search_slope = B_slope;
+    return 1;
+}
+
+static int B_follow_trace(int side)
+{
+    if(!circle_trace_from_seed(side, B_seed_x, B_seed_y, B_trace_pts, &B_trace_num))
+    {
+        circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_TRACE;
+        circle_B_search_detail = "follow_short_trace";
+        circle_B_search_num = B_trace_num;
+        return 0;
+    }
+    circle_B_search_num = B_trace_num;
+    return 1;
+}
+
+static int B_pick_follow(int side)
+{
+    for(int i = 0; i < B_trace_num; i++)
+    {
+        const int x = B_trace_pts[i][0];
+        const int y = B_trace_pts[i][1];
+
+        if(y < B_y_min || y > B_y_max) continue;
+        if(side_is_left(side) ? x > B_best_x : x < B_best_x)
         {
-            const int x = trace[i][0];
-            const int y = trace[i][1];
-
-            if(y < y_min || y > y_max) continue;
-            candidate_hits++;
-
-            if(follow_mode == 0)
-            {
-                const int dx = x - ref->x;
-                const int dy = ref->y - y;
-                const int inner_dx = side_is_left(side) ? dx : -dx;
-                const int dist2 = dx * dx + dy * dy;
-
-                if(last_x >= 0 && abs(x - last_x) > CIRCLE_ENTRY_B_MAX_STEP_X)
-                {
-                    circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_EXTREME;
-                    circle_B_search_detail = "jump_bad";
-                    return -1;
-                }
-                last_x = x;
-                if(dy < CIRCLE_ENTRY_AB_Y_MIN ||
-                   inner_dx < CIRCLE_ENTRY_AB_X_MIN ||
-                   dist2 < CIRCLE_ENTRY_AB_DIST_MIN * CIRCLE_ENTRY_AB_DIST_MIN ||
-                   dy < CIRCLE_B_UP_MIN || dy > CIRCLE_B_UP_MAX)
-                {
-                    continue;
-                }
-            }
-
-            valid_hits++;
-            if(side_is_left(side) ? x > best_x : x < best_x)
-            {
-                best_x = x;
-                best_y = y;
-                best_i = i;
-            }
-        }
-
-        if(follow_mode == 0)
-        {
-            circle_B_search_best_x = best_x;
-            circle_B_search_best_y = best_y;
-            if(best_y < 0 || valid_hits < CIRCLE_ENTRY_B_MIN_HITS)
-            {
-                circle_B_search_reason = candidate_hits > 0 ? CIRCLE_POINT_SEARCH_NO_EXTREME :
-                                                               CIRCLE_POINT_SEARCH_NO_B;
-                circle_B_search_detail = candidate_hits > 0 ? "no_legal_extreme" : "no_trace_candidate";
-                return 0;
-            }
-
-            {
-                const int dx = best_x - ref->x;
-                const int dy = ref->y - best_y;
-                const int inner_dx = side_is_left(side) ? dx : -dx;
-                const int dist2 = dx * dx + dy * dy;
-
-                B_out->x = best_x;
-                B_out->y = best_y;
-                if(far_lpt_near_B(side, B_out))
-                {
-                    circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_EXTREME;
-                    circle_B_search_detail = "sharp_far";
-                    circle_B_search_sharp_far = 1;
-                    return -1;
-                }
-
-                circle_B_point.found = 1;
-                circle_B_point.id = circle_A_point.id;
-                circle_B_point.raw_x = B_out->x;
-                circle_B_point.raw_y = B_out->y;
-                circle_B_search_ready = B_out->y >= CIRCLE_B_READY_RAW_Y_MIN;
-                circle_B_search_reason = CIRCLE_POINT_SEARCH_OK;
-                circle_B_search_detail = "ok";
-                if(circle_cal_log_enabled())
-                {
-                    printf("ATGCircleEntryB: side=%c A@%d seed=%d,%d seed_line=%d,%d slope=%.3f "
-                           "B_raw=%d,%d#%d dx=%d inner_dx=%d dy=%d dist2=%d trace=%d cand=%d hits=%d ready=%d sharp_far=%d\n",
-                           side_char(side), circle_A_point.id,
-                           circle_B_search_seed_x, circle_B_search_seed_y,
-                           circle_seed_line_x[side], circle_seed_line_y[side], circle_B_search_slope,
-                           B_out->x, B_out->y, best_i, dx, inner_dx, dy, dist2, trace_num, candidate_hits, valid_hits,
-                           circle_B_search_ready, circle_B_search_sharp_far);
-                }
-                return 1;
-            }
-        }
-        else  /* follow_mode == 1: BEGIN follow mode result */
-        {
-            if(best_y < 0) return 0;
-
-            circle_B_point.raw_x = best_x;
-            circle_B_point.raw_y = best_y;
-            set_seed_line_from_B(side, &circle_B_point);
-            if(circle_cal_log_enabled())
-            {
-                printf("ATGCircleBeginBFollow: side=%c seed=%d,%d B=%d,%d seed_line=%d,%d slope=%.3f trace=%d\n",
-                       side_char(side), seed_x, seed_y,
-                       circle_B_point.raw_x, circle_B_point.raw_y,
-                       circle_seed_line_x[side], circle_seed_line_y[side], slope, trace_num);
-            }
-            return 1;
+            B_best_x = x;
+            B_best_y = y;
         }
     }
+
+    if(B_best_y >= 0) return 1;
+    circle_B_search_reason = CIRCLE_POINT_SEARCH_NO_EXTREME;
+    circle_B_search_detail = "follow_no_window_point";
+    return 0;
+}
+
+static void B_lock_follow(int side)
+{
+    circle_B_point.raw_x = B_best_x;
+    circle_B_point.raw_y = B_best_y;
+    circle_B_search_reason = CIRCLE_POINT_SEARCH_OK;
+    circle_B_search_detail = "follow_ok";
+    circle_B_search_best_x = B_best_x;
+    circle_B_search_best_y = B_best_y;
+    circle_B_search_ready = B_best_y >= B_READY_Y;
+    set_seed_line_from_B(side, &circle_B_point);
+}
+
+static void B_log_follow(int side)
+{
+    if(!circle_cal_log_enabled()) return;
+    printf("ATGCircleBeginBFollow: side=%c seed=%d,%d B=%d,%d seed_line=%d,%d slope=%.3f trace=%d\n",
+           side_char(side), B_seed_x, B_seed_y,
+           circle_B_point.raw_x, circle_B_point.raw_y,
+           circle_seed_line_x[side], circle_seed_line_y[side], B_slope, B_trace_num);
+}
+
+/* BEGIN 中在当前 B 附近 ±8 像素窄窗内跟踪 B 点漂移。 */
+static int follow_B_begin(int side)
+{
+    B_follow_reset();
+    if(!B_follow_check(side)) return 0;
+    if(!B_follow_get_seed(side)) return 0;
+    if(!B_follow_trace(side)) return 0;
+    if(!B_pick_follow(side)) return 0;
+    B_lock_follow(side);
+    B_log_follow(side);
+    return 1;
 }
 
 static void log_B_follow_miss(int side)
@@ -884,19 +1020,8 @@ static void log_B_follow_miss(int side)
            circle_seed_line_y[side]);
 }
 
-static int circle_find_C(int side, const circle_point_t *B, circle_point_t *C)
+static void C_reset(void)
 {
-    int trace[MT9V03X_H][2];
-    float trace_f[MT9V03X_H][2];
-    float angles[MT9V03X_H];
-    float angles_nms[MT9V03X_H];
-    int trace_num = 0;
-    int seed_x = -1;
-    int seed_y = -1;
-    float slope = 0.0f;
-    int best_i = -1;
-    float best_abs_angle = 0.0f;
-
     clear_anchor(&circle_C_point);
     circle_C_search_num = 0;
     circle_C_search_reason = CIRCLE_POINT_SEARCH_OK;
@@ -906,103 +1031,166 @@ static int circle_find_C(int side, const circle_point_t *B, circle_point_t *C)
     circle_C_search_best_i = -1;
     circle_C_search_slope = 0.0f;
     circle_C_search_angle = 0.0f;
+    circle_C_join_ok = 0;
+    C_trace_num = 0;
+    C_seed_x = -1;
+    C_seed_y = -1;
+    C_slope = 0.0f;
+    C_best_i = -1;
+    C_best_abs_angle = 0.0f;
+}
+
+static int C_has_B(void)
+{
     if(!circle_B_point.found)
     {
         circle_C_search_reason = CIRCLE_POINT_SEARCH_NO_B;
         circle_C_search_detail = "no_locked_b";
         return 0;
     }
+    return 1;
+}
 
+static int C_seed(int side)
+{
     if(!circle_seed_line_valid[side])
     {
         circle_C_search_reason = CIRCLE_POINT_SEARCH_NO_SEED;
         circle_C_search_detail = "seed_line_invalid";
         return 0;
     }
-    if(!circle_prediction_slope(side, &slope))
+    if(!circle_prediction_slope(side, &C_slope))
     {
         circle_C_search_reason = CIRCLE_POINT_SEARCH_NO_SLOPE;
         circle_C_search_detail = "no_opposite_slope";
         return 0;
     }
+    /* 从 B 点上方一点开始找 C */
     if(!circle_find_prediction_seed(side,
-                                    B->y - CIRCLE_C_UP_MIN,
+                                    circle_B_point.raw_y - 6,
                                     block_size / 2 + 5,
-                                    &seed_x, &seed_y, &slope))
+                                    &C_seed_x, &C_seed_y, &C_slope))
     {
         circle_C_search_reason = CIRCLE_POINT_SEARCH_NO_SEED;
         circle_C_search_detail = "no_pred_seed";
-        circle_C_search_slope = slope;
+        circle_C_search_slope = C_slope;
         return 0;
     }
-    circle_C_search_seed_x = seed_x;
-    circle_C_search_seed_y = seed_y;
-    circle_C_search_slope = slope;
+    circle_C_search_seed_x = C_seed_x;
+    circle_C_search_seed_y = C_seed_y;
+    circle_C_search_slope = C_slope;
+    return 1;
+}
 
-    if(!circle_trace_from_seed(side, seed_x, seed_y, trace, &trace_num))
+static int C_trace(int side)
+{
+    enum { angle_dist = 3, nms = 7 };
+
+    if(!circle_trace_from_seed(side, C_seed_x, C_seed_y, C_trace_pts, &C_trace_num))
     {
         circle_C_search_reason = CIRCLE_POINT_SEARCH_NO_TRACE;
         circle_C_search_detail = "short_trace";
-        circle_C_search_num = trace_num;
+        circle_C_search_num = C_trace_num;
         return 0;
     }
-    circle_C_search_num = trace_num;
-    raw_trace_to_float(trace, trace_num, trace_f);
-    local_angle_points(trace_f, trace_num, angles, CIRCLE_C_ANGLE_DIST);
-    nms_angle(angles, trace_num, angles_nms, CIRCLE_C_ANGLE_NMS_KERNEL);
+    circle_C_search_num = C_trace_num;
+    raw_trace_to_float(C_trace_pts, C_trace_num, C_trace_f);
+    local_angle_points(C_trace_f, C_trace_num, C_angles, angle_dist);
+    nms_angle(C_angles, C_trace_num, C_angles_nms, nms);
+    return 1;
+}
 
-    for(int i = 0; i < trace_num; i++)
+static int C_pick(void)
+{
+    enum
     {
-        const int y = trace[i][1];
-        const float abs_angle = fabsf(angles_nms[i]);
-        if(y >= B->y - CIRCLE_C_UP_MIN) continue;
-        if((int)(abs_angle * 1000.0f) < CIRCLE_C_ANGLE_MIN_MRAD) continue;
-        if(abs_angle > best_abs_angle)
+        up_min = 6,
+        min_angle_mrad = 350,
+        min_trace = 6,
+    };
+
+    for(int i = 0; i < C_trace_num; i++)
+    {
+        const int y = C_trace_pts[i][1];
+        const float abs_angle = fabsf(C_angles_nms[i]);
+        const int dy = circle_B_point.raw_y - y;
+        if(dy <= up_min) continue;
+        if((int)(abs_angle * 1000.0f) < min_angle_mrad) continue;
+        if(abs_angle > C_best_abs_angle)
         {
-            best_abs_angle = abs_angle;
-            best_i = i;
+            C_best_abs_angle = abs_angle;
+            C_best_i = i;
         }
     }
 
-    if(best_i < 0)
+    if(C_best_i < 0)
     {
         circle_C_search_reason = CIRCLE_POINT_SEARCH_NO_V;
         circle_C_search_detail = "no_corner";
         return 0;
     }
 
-    C->x = trace[best_i][0];
-    C->y = trace[best_i][1];
+    circle_C_join_ok = C_trace_num >= min_trace &&
+                       C_best_i >= 0 &&
+                       C_best_i < C_trace_num &&
+                       circle_B_point.raw_y - C_trace_pts[C_best_i][1] > up_min;
+    if(!circle_C_join_ok)
+    {
+        circle_C_search_reason = CIRCLE_POINT_SEARCH_JOIN_BAD;
+        circle_C_search_detail = "join_bad";
+        clear_anchor(&circle_C_point);
+        return 0;
+    }
+    return 1;
+}
+
+static void C_lock(void)
+{
     circle_C_point.found = 1;
-    circle_C_point.id = best_i;
-    circle_C_point.raw_x = C->x;
-    circle_C_point.raw_y = C->y;
+    circle_C_point.id = C_best_i;
+    circle_C_point.raw_x = C_trace_pts[C_best_i][0];
+    circle_C_point.raw_y = C_trace_pts[C_best_i][1];
     circle_C_search_reason = CIRCLE_POINT_SEARCH_OK;
     circle_C_search_detail = "ok";
-    circle_C_search_best_i = best_i;
-    circle_C_search_angle = angles_nms[best_i];
+    circle_C_search_best_i = C_best_i;
+    circle_C_search_angle = C_angles_nms[C_best_i];
+}
+
+static void C_log(int side)
+{
     if(circle_cal_log_enabled())
     {
         printf("ATGCircleBeginC: side=%c B=%d,%d seed=%d,%d seed_line=%d,%d slope=%.3f "
-               "C=%d,%d#%d angle=%.3f trace=%d\n",
-               side_char(side), B->x, B->y,
+               "C=%d,%d#%d angle=%.3f trace=%d join=%d\n",
+               side_char(side), circle_B_point.raw_x, circle_B_point.raw_y,
                circle_C_search_seed_x, circle_C_search_seed_y,
-               circle_seed_line_x[side], circle_seed_line_y[side], slope,
-               C->x, C->y, best_i, circle_C_search_angle, trace_num);
+               circle_seed_line_x[side], circle_seed_line_y[side], C_slope,
+               circle_C_point.raw_x, circle_C_point.raw_y, C_best_i,
+               circle_C_search_angle, C_trace_num, circle_C_join_ok);
     }
+}
+
+static int find_C_begin(int side)
+{
+    C_reset();
+    if(!C_has_B()) return 0;
+    if(!C_seed(side)) return 0;
+    if(!C_trace(side)) return 0;
+    if(!C_pick()) return 0;
+    C_lock();
+    C_log(side);
     return 1;
 }
 
 static int circle_C_phase_ready(void)
 {
-    return circle_B_streak >= CIRCLE_B_CONFIRM_FRAMES &&
+    return circle_B_streak >= B_OK_FRAMES &&
            circle_B_point.found &&
-           circle_B_point.raw_y >= CIRCLE_B_READY_RAW_Y_MIN;
+           circle_B_point.raw_y >= B_READY_Y;
 }
 
-static int circle_update_C(int side, circle_point_t *C)
+static int circle_update_C(int side)
 {
-    circle_point_t B = {circle_B_point.raw_x, circle_B_point.raw_y};
     if(!circle_C_phase_ready())
     {
         clear_anchor(&circle_C_point);
@@ -1014,9 +1202,10 @@ static int circle_update_C(int side, circle_point_t *C)
         circle_C_search_best_i = -1;
         circle_C_search_slope = 0.0f;
         circle_C_search_angle = 0.0f;
+        circle_C_join_ok = 0;
         return 0;
     }
-    return circle_find_C(side, &B, C);
+    return find_C_begin(side);
 }
 
 static void log_circle_abc(int side, const char *phase, int mouth_ready)
@@ -1026,7 +1215,7 @@ static void log_circle_abc(int side, const char *phase, int mouth_ready)
            "seed_line=%d@%d,%d B_offset=%d "
            "A=%d@%d,%d#%d B=%d@%d,%d#%d B_streak=%d B_ready=%d B_ready_y=%d "
            "B_search=%s/%s trace=%d seed=%d,%d best=%d,%d slope=%.3f "
-           "C=%d@%d,%d#%d C_streak=%d C_ready=%d C_search=%s/%s trace=%d seed=%d,%d best_i=%d angle=%.3f slope=%.3f "
+           "C=%d@%d,%d#%d C_streak=%d C_ready=%d C_join=%d C_search=%s/%s trace=%d seed=%d,%d best_i=%d angle=%.3f slope=%.3f "
            "mouth_ready=%d heading=%d begin_dist=%lld\n",
            side_char(side), phase, (int)circle_ref_mode, circle_ref_mode_name(circle_ref_mode),
            rpts0s_num, rpts1s_num,
@@ -1036,13 +1225,13 @@ static void log_circle_abc(int side, const char *phase, int mouth_ready)
            signed_B_seed_offset(side),
            circle_A_point.found, circle_A_point.raw_x, circle_A_point.raw_y, circle_A_point.id,
            circle_B_point.found, circle_B_point.raw_x, circle_B_point.raw_y, circle_B_point.id,
-           circle_B_streak, circle_B_search_ready, CIRCLE_B_READY_RAW_Y_MIN,
+           circle_B_streak, circle_B_search_ready, B_READY_Y,
            point_search_reason_name(circle_B_search_reason),
            circle_B_search_detail ? circle_B_search_detail : "unknown",
            circle_B_search_num, circle_B_search_seed_x, circle_B_search_seed_y,
            circle_B_search_best_x, circle_B_search_best_y, circle_B_search_slope,
            circle_C_point.found, circle_C_point.raw_x, circle_C_point.raw_y, circle_C_point.id,
-           circle_C_streak, circle_C_streak >= CIRCLE_C_CONFIRM_FRAMES,
+           circle_C_streak, circle_C_streak >= C_OK_FRAMES, circle_C_join_ok,
            point_search_reason_name(circle_C_search_reason),
            circle_C_search_detail ? circle_C_search_detail : "unknown",
            circle_C_search_num, circle_C_search_seed_x, circle_C_search_seed_y,
@@ -1052,8 +1241,10 @@ static void log_circle_abc(int side, const char *phase, int mouth_ready)
 
 static int circle_entry_detect(int side, circle_point_t *A)
 {
+    enum { max_id = 35 };
+
     if(!circle_get_A(side, A)) return 0;
-    if(side_lpt_id(side) < 0 || side_lpt_id(side) >= CIRCLE_ENTRY_A_ID_MAX) return 0;
+    if(side_lpt_id(side) < 0 || side_lpt_id(side) >= max_id) return 0;
     if(A->y > 100) return 0;
     if(side_opposite_lpt_found(side) || !side_opposite_straight(side)) return 0;
     if(circle_cal_log_enabled()) (void)circle_inner_hit(side, A);
@@ -1062,9 +1253,11 @@ static int circle_entry_detect(int side, circle_point_t *A)
 
 static int circle_update_entry_A(int side)
 {
+    enum { max_id = 35 };
+
     circle_point_t A = {0, 0};
     if(!circle_get_A(side, &A)) return 0;
-    if(side_lpt_id(side) < 0 || side_lpt_id(side) >= CIRCLE_ENTRY_A_ID_MAX) return 0;
+    if(side_lpt_id(side) < 0 || side_lpt_id(side) >= max_id) return 0;
     store_anchor(&circle_A_point, side_lpt_id(side), &A);
     set_seed_line_from_A(side, &circle_A_point);
     return 1;
@@ -1082,6 +1275,7 @@ static void enter_circle_entry(int side)
         circle_A_point = pending_A;
         set_seed_line_from_A(side, &circle_A_point);
     }
+    circle_entry_ever_valid_B[side] = 0;
     Count_dis_Flag = 0;
     reset_circle_entry_votes();
 }
@@ -1109,48 +1303,47 @@ static void promote_entry_to_begin(int side)
     set_seed_line_from_B(side, &circle_B_point);
     circle_C_streak = 0;
     circle_ref_mode = CIRCLE_REF_BEGIN_AB;
+    circle_entry_ever_valid_B[side] = 0;
+    circle_B_streak = 0;
     reset_circle_begin_flags();
     Count_dis_Flag = 0;
 }
 
 static void run_circle_entry(int side)
 {
-    circle_point_t A = {circle_A_point.raw_x, circle_A_point.raw_y};
-    circle_point_t B = {0, 0};
+    enum { near_id = 8 };
+
     const int a_visible = circle_update_entry_A(side);
-    const int a_near = a_visible && side_lpt_id(side) <= CIRCLE_ENTRY_A_NEAR_ID;
-    A.x = circle_A_point.raw_x;
-    A.y = circle_A_point.raw_y;
-    const int b_ret = circle_find_B(side, &A, 0, &B);
+    const int a_near = a_visible && side_lpt_id(side) <= near_id;
+
+    /* A may disappear after ENTRY is locked; circle_A_point keeps the last locked A. */
+    const int b_ret = find_B_entry(side);
 
     track_type = side_begin_track(side);
     circle_ref_mode = CIRCLE_REF_NONE;
     if(b_ret < 0)
     {
-        log_entry_probe(side, &A, b_ret);
+        log_entry_probe(side, b_ret);
         abort_circle_entry(side, side_is_left(side) ? "LEFT_ENTRY false_b" : "RIGHT_ENTRY false_b");
         return;
     }
-    if(b_ret == 1 && circle_B_search_ready)
+    if(b_ret == 1)
     {
-        circle_entry_seen_B[side] = 1;
-        circle_B_streak++;
-    }
-    else if(b_ret == 1)
-    {
-        circle_entry_seen_B[side] = 0;
-        circle_B_streak = 0;
+        /* any valid B trace counts as "ever seen" -
+           A loss after this point must not abort ENTRY */
+        circle_entry_ever_valid_B[side] = 1;
+        if(circle_B_search_ready) circle_B_streak++;
+        else circle_B_streak = 0;
     }
     else
     {
-        log_entry_probe(side, &A, b_ret);
-        circle_entry_seen_B[side] = 0;
+        log_entry_probe(side, b_ret);
         circle_B_streak = 0;
     }
 
     log_circle_abc(side, "ENTRY", 0);
 
-    if(circle_B_streak >= CIRCLE_B_CONFIRM_FRAMES &&
+    if(circle_B_streak >= B_OK_FRAMES &&
        circle_B_point.found &&
        circle_B_search_ready)
     {
@@ -1158,15 +1351,10 @@ static void run_circle_entry(int side)
         return;
     }
 
-    if(!circle_entry_seen_B[side] && (!a_visible || a_near))
+    if(!circle_entry_ever_valid_B[side] && (!a_visible || a_near))
     {
         abort_circle_entry(side, side_is_left(side) ? "LEFT_ENTRY no_b_window" : "RIGHT_ENTRY no_b_window");
     }
-}
-
-int circle_entry_candidate_pending(void)
-{
-    return circle_entry_votes[CIRCLE_SIDE_LEFT] > 0 || circle_entry_votes[CIRCLE_SIDE_RIGHT] > 0;
 }
 
 void check_circle(void)
@@ -1198,7 +1386,7 @@ void check_circle(void)
 
     for(int side = CIRCLE_SIDE_RIGHT; side <= CIRCLE_SIDE_LEFT; side++)
     {
-        if(circle_entry_votes[side] >= CIRCLE_ENTRY_CONFIRM_FRAMES)
+        if(circle_entry_votes[side] >= ENTRY_OK_FRAMES)
         {
             enter_circle_entry(side);
             return;
@@ -1208,7 +1396,9 @@ void check_circle(void)
 
 static void update_begin_loss(int side)
 {
-    const int lost = side_rpts_num(side) < CIRCLE_BEGIN_LOST_RPTS_MAX && !side_lpt_found(side);
+    enum { rpts_max = 2 };
+
+    const int lost = side_rpts_num(side) < rpts_max && !side_lpt_found(side);
     if(lost)
     {
         Count_dis_Flag = 1;
@@ -1238,29 +1428,32 @@ static void update_begin_loss(int side)
 // begin
 static void run_circle_begin(int side)
 {
-    circle_point_t C = {0, 0};
+    enum
+    {
+        lost_frames = 2,
+        min_dist = 600,
+        max_dist = 4000,
+    };
+
     track_type = side_begin_track(side);
     update_begin_loss(side);
+    if(follow_B_begin(side)) circle_B_follow_fail_streak[side] = 0;
+    else
     {
-        circle_point_t B_ref = {circle_B_point.raw_x, circle_B_point.raw_y};
-        if(circle_find_B(side, &B_ref, 1, NULL)) circle_B_follow_fail_streak[side] = 0;
-        else
-        {
-            circle_B_follow_fail_streak[side]++;
-            log_B_follow_miss(side);
-        }
+        circle_B_follow_fail_streak[side]++;
+        log_B_follow_miss(side);
     }
-    if(circle_update_C(side, &C)) circle_C_streak++;
+    if(circle_update_C(side) && circle_C_join_ok) circle_C_streak++;
     else circle_C_streak = 0;
 
-    circle_ref_mode = circle_C_streak >= CIRCLE_C_CONFIRM_FRAMES ? CIRCLE_REF_IN_C :
+    circle_ref_mode = (circle_C_streak >= C_OK_FRAMES && circle_C_join_ok) ? CIRCLE_REF_IN_C :
                       circle_B_point.found ? CIRCLE_REF_BEGIN_AB : CIRCLE_REF_NONE;
     log_circle_abc(side, "BEGIN", 0);
 
-    if(circle_heading_abs_ge(CIRCLE_HEADING_ENTER_DEG10))
+    if(circle_heading_abs_ge(GYRO_IN_DEG10))
     {
         log_circle_state(circle_type, (enum circle_type_e)side_running_state(side),
-                         circle_C_streak >= CIRCLE_C_CONFIRM_FRAMES ? "gyro_c" : "gyro");
+                         circle_C_streak >= C_OK_FRAMES ? "gyro_c" : "gyro");
         circle_type = (enum circle_type_e)side_running_state(side);
         circle_ref_mode = CIRCLE_REF_NONE;
         reset_circle_heading();
@@ -1275,9 +1468,9 @@ static void run_circle_begin(int side)
 
     /* not a normal progression condition — abort on late mouth loss (false entry) */
     const int abort_late_mouth_loss =
-        circle_begin_lost_streak[side] >= CIRCLE_BEGIN_LOST_CONFIRM_FRAMES &&
-        circle_loss_start_begin_dist[side] >= CIRCLE_BEGIN_MOUTH_MIN_DIST &&
-        circle_loss_start_begin_dist[side] > CIRCLE_BEGIN_LOSS_MAX_DIST;
+        circle_begin_lost_streak[side] >= lost_frames &&
+        circle_loss_start_begin_dist[side] >= min_dist &&
+        circle_loss_start_begin_dist[side] > max_dist;
     if(abort_late_mouth_loss)
     {
         abort_circle_begin(side_is_left(side) ? "LEFT_BEGIN mouth_loss too late" :
@@ -1291,8 +1484,8 @@ static void run_circle_running(int side)
     track_type = side_begin_track(side);
     Count_dis_Flag = 1;
     if(side_opposite_lpt_found(side) &&
-       side_opposite_lpt_id(side) < CIRCLE_OUT_LPT_NEAR_ID &&
-       circle_heading_abs_ge(CIRCLE_HEADING_OUT_GATE_DEG10))
+       side_opposite_lpt_id(side) < OUT_LPT_NEAR_ID &&
+       circle_heading_abs_ge(GYRO_OUT_DEG10))
     {
         log_circle_state(circle_type, (enum circle_type_e)side_out_state(side), "vision_lpt");
         circle_type = (enum circle_type_e)side_out_state(side);
@@ -1301,7 +1494,7 @@ static void run_circle_running(int side)
         if(side_is_left(side)) if_lost_right_line = 0;
         else if_lost_left_line = 0;
     }
-    else if(circle_heading_abs_ge(CIRCLE_HEADING_START_OUT_DEG10))
+    else if(circle_heading_abs_ge(GYRO_FORCE_OUT_DEG10))
     {
         log_circle_state(circle_type, (enum circle_type_e)side_out_state(side), "gyro");
         circle_type = (enum circle_type_e)side_out_state(side);
@@ -1317,12 +1510,11 @@ static void run_circle_out(int side)
 {
     track_type = side_out_track(side);
     Count_dis_Flag = 1;
+
     if(side_out_straight(side)) circle_out_straight_streak[side]++;
     else circle_out_straight_streak[side] = 0;
 
-    if((circle_heading_abs_ge(CIRCLE_HEADING_READY_OUT_TO_END_DEG10) &&
-        circle_out_straight_streak[side] >= 2) ||
-       circle_heading_abs_ge(CIRCLE_HEADING_FINISH_SOFT_DEG10))
+    if(circle_out_straight_streak[side] >= OUT_STRAIGHT_FRAMES)
     {
         finish_circle_exit("straight_exit");
     }
