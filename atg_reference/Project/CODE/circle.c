@@ -1431,7 +1431,6 @@ static void run_circle_begin(int side)
     enum
     {
         lost_frames = 2,
-        min_dist = 600,
         max_dist = 4000,
     };
 
@@ -1469,7 +1468,6 @@ static void run_circle_begin(int side)
     /* not a normal progression condition — abort on late mouth loss (false entry) */
     const int abort_late_mouth_loss =
         circle_begin_lost_streak[side] >= lost_frames &&
-        circle_loss_start_begin_dist[side] >= min_dist &&
         circle_loss_start_begin_dist[side] > max_dist;
     if(abort_late_mouth_loss)
     {
