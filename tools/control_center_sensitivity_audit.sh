@@ -11,7 +11,7 @@ REPORT_KEYS='^(line_found|atg_track_type|atg_rpts_num|atg_rptsn_num|mid_step|mid
 mkdir -p "${OUT}"
 
 if [[ ! -f "${BUILD}/Makefile" ]]; then
-    bash "${ROOT}/scripts/test.sh" --host --reconfigure
+    bash "${ROOT}/test.sh" --host --reconfigure
 fi
 cmake --build "${BUILD}" --target front_car_mainline -j"${MAKE_JOBS:-$(nproc)}"
 

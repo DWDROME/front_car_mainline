@@ -1,29 +1,29 @@
 # tools
 
-> **IPM 重标定？** 如果你是来重标定相机的，直接看 [IPM 重标定流程（SOP）](../docs/IPM重标定流程.md)。那个文档不需要理解算法，按步骤走就行。
+> **IPM 重标定？** 如果你是来重标定相机的，直接看 [调参与验证手册](../docs/03_调参与验证手册.md)。那个文档不需要理解算法，按步骤走就行。
 
-当前推荐入口在 `scripts/`。`tools/` 只保留实际执行体、历史兼容入口和少量人工辅助脚本。
+当前推荐入口在 `tools/`。顶层 `test.sh` 是编译入口，`code/tools/` 只放 CMake 独立工具 target。
 
 ## 常用验证
 
 ```bash
-bash "scripts/test.sh" --host
-bash "scripts/straight_baseline_audit.sh" ".diag/front_car_capture_live_current.png"
-bash "scripts/ipm_geometry_audit.sh"
+bash "test.sh" --host
+bash "tools/straight_baseline_audit.sh" ".diag/front_car_capture_live_current.png"
+bash "tools/ipm_geometry_audit.sh"
 ```
 
 ## 当前主线入口
 
 ```text
-scripts/test.sh                 编译 host/target
-scripts/straight_baseline_audit.sh  直道 baseline 审计
-scripts/ipm_geometry_audit.sh       IPM 几何只读审计
-scripts/ipm_recalib_capture.sh      从当前板子抓一张 IPM 重标定灰度图
-scripts/ipm_recalib_generate.sh     交互点选四点并生成 IPM 矩阵和预览图
-scripts/ipm_recalib_apply.sh        把生成的矩阵写入 ATG shy_Image.c::rot/inv_rot
+test.sh                         编译 host/target
+tools/straight_baseline_audit.sh  直道 baseline 审计
+tools/ipm_geometry_audit.sh       IPM 几何只读审计
+tools/ipm_recalib_capture.sh      从当前板子抓一张 IPM 重标定灰度图
+tools/ipm_recalib_generate.sh     交互点选四点并生成 IPM 矩阵和预览图
+tools/ipm_recalib_apply.sh        把生成的矩阵写入 ATG shy_Image.c::rot/inv_rot
 ```
 
-`tools/straight_baseline_audit.sh` 和 `tools/ipm_geometry_audit.sh` 是实际执行体；用户侧优先走 `scripts/` 包装入口。
+`tools/` 是脚本入口；`scripts/` 的重复包装入口已移除。
 
 ## 已退休入口
 
@@ -71,19 +71,19 @@ cd "/home/root"
 重标定抓图：
 
 ```bash
-bash "scripts/ipm_recalib_capture.sh"
+bash "tools/ipm_recalib_capture.sh"
 ```
 
 点选四点：
 
 ```bash
-bash "scripts/ipm_recalib_generate.sh"
+bash "tools/ipm_recalib_generate.sh"
 ```
 
 应用新 ATG IPM 矩阵：
 
 ```bash
-bash "scripts/ipm_recalib_apply.sh" ".diag/ipm_recalib/ipm_matrix_tuned.txt"
+bash "tools/ipm_recalib_apply.sh" ".diag/ipm_recalib/ipm_matrix_tuned.txt"
 ```
 
 离线诊断：

@@ -12,6 +12,7 @@
 .trellis/.template-hashes.json
 .trellis/.runtime/
 .trellis/.cache/
+.trellis/**/__pycache__/
 .github/agents/
 .github/copilot/
 .github/hooks/trellis.json
@@ -21,6 +22,8 @@
 build/
 build-host/
 **/build/
+**/build-host/
+logs/
 *.o
 *.d
 *.a

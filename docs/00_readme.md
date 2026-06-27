@@ -27,7 +27,7 @@
 ```bash
 bash code/test.sh --host
 bash code/test.sh
-bash scripts/straight_baseline_audit.sh .diag/front_car_capture_live_current.png
+bash tools/straight_baseline_audit.sh .diag/front_car_capture_live_current.png
 ```
 
 IPM 重标定入口见 [03_调参与验证手册.md](03_调参与验证手册.md)。
