@@ -3,10 +3,10 @@
  *
  *  单帧处理流程：
  *
- *    image_handle()     — 基础搜线，产出 rpts0s/rpts1s（左右边线）
- *    find_corners()     — 角点检测，产出 Lpt0/1_found、is_straight0/1
- *    run_atg_elements() — 元素状态机（圆环/十字/坡道/环岛/Y路/车库）
- *    select_work_line() — 选择控制用线（远线/圆环补线/普通线）
+ *    image_handle()           — 基础搜线，产出 rpts0s/rpts1s（左右边线）
+ *    find_corners()           — 角点检测，产出 Lpt0/1_found、is_straight0/1
+ *    元素处理                 — 圆环/十字/坡道/环岛/Y路/车库状态机
+ *    select_work_line()       — 选择控制用线（远线/圆环补线/普通线）
  *    normalize_selected_line() — 归一化成 rptsn 给控制
  *    check_road()       — 道路类型检测（直道/弯道）
  *
@@ -40,25 +40,15 @@ static float g_vehicle_raw_ref_x = MT9V03X_W / 2.0f;
 static const char *g_selected_line_source = "none";
 static int g_selected_line_begin_id;
 
-/* 环岛状态停滞出口：本车 line_found=0 即停车，状态机无法继续靠视觉/陀螺推进。
- * 连续 ATG_CIRCLE_STALL_FRAMES 帧"环岛状态活跃但无任何选线"时复位环岛状态，
- * 显式打日志；不伪造线、不复用旧帧，复位后若环岛证据真实存在会重新自然触发。 */
+/* 圆环状态停滞出口：本车 line_found=0 即停车，状态机无法继续靠视觉/陀螺推进。
+ * 连续 ATG_CIRCLE_STALL_FRAMES 帧"圆环状态活跃但无任何选线"时复位圆环状态，
+ * 显式打日志；不伪造线、不复用旧帧，复位后若圆环证据真实存在会重新自然触发。 */
 enum
 {
     ATG_CIRCLE_STALL_FRAMES = 30,
 };
 static int g_circle_stall_frames;
 
-/* CIRCLE_*_BEGIN 误入撤销：真环 BEGIN 后短距离内必然出现入环口"丢线"事件
- * (none_left/right_line>0) 才能推进到 IN；直道伪 L 误入时该事件永不发生，
- * 状态会滞留并把 track_type 锁在对侧边线上（本次实测表现为稳定贴左直行）。
- * 进入 BEGIN 后累计行驶超过 ATG_CIRCLE_BEGIN_MAX_DIST_COUNTS（约 1.0m）仍无丢线
- * 事件即判定证据消失，撤回 NONE 并显式打日志。用距离不用帧数，与车速解耦。
- * ENCODER_PER_METER=5800，6000 counts 约 1.03m，能在误入 BEGIN 时及时撤销。 */
-enum
-{
-    ATG_CIRCLE_BEGIN_MAX_DIST_COUNTS = 6000,
-};
 static int64_t g_circle_begin_dist;
 static int64_t g_circle_begin_last_dist;
 
@@ -119,6 +109,12 @@ enum
     CIRCLE_FIXED_RIGHT_IN_TARGET_RAW_X = MT9V03X_W / 2 + CIRCLE_FIXED_RIGHT_IN_TARGET_RAW_X_OFFSET,
     CIRCLE_RUNNING_NATURAL_MIN_POINTS = 20,                         /* 自然线最少点数，不够则用固定补线兜底 */
     CROSS_HALF_CANDIDATE_LPT_ID_MAX = 25,                           /* 半十字角点最大 id，超过则不认为是候选 */
+};
+
+enum
+{
+    CIRCLE_SIDE_RIGHT = 0,
+    CIRCLE_SIDE_LEFT = 1,
 };
 
 /* ================= 本帧准备与状态复位 =================
@@ -205,8 +201,7 @@ static void reset_element_state(void)
  * 饱和而不回绕：误入元素状态长期滞留时 int16 累计会绕成负数，破坏所有距离门限。
  * 所以超过 32767 就钳位，不回绕。
  *
- * g_circle_begin_dist 单独追踪 BEGIN 阶段的行驶距离，
- * 用于 revoke_idle_circle_begin() 的超时判断。 */
+ * g_circle_begin_dist 单独追踪 BEGIN 阶段的行驶距离，供外部诊断查看。 */
 static void update_distance_counters(int64_t encoder_total)
 {
     int64_t delta = encoder_total - last_encoder_total;
@@ -355,147 +350,6 @@ static void keep_disabled_elements_idle(void)
 #endif
 }
 
-/* ================= 元素状态机调度 =================
- *
- * 一帧里只做三件事：
- *   1. 已经激活的元素继续跑；
- *   2. 没有活跃元素时，按原优先级检测新元素；
- *   3. 把刚检测到的元素当帧跑一次。
- *
- * 这里故意写成直白 if，不做 Element 调度框架。 */
-static void run_atg_elements(void)
-{
-    int stop_check = 0;
-
-    keep_disabled_elements_idle();
-
-    /* === 已激活元素继续执行 === */
-#if ATG_ENABLE_CIRCLE
-    if(circle_type != CIRCLE_NONE)
-    {
-        cross_type = CROSS_NONE;  /* 圆环优先：强制清除十字，防止干扰 */
-        Lpt0_found_flag = 0;
-        Lpt1_found_flag = 0;
-        run_circle();
-        keep_disabled_elements_idle();
-        return;
-    }
-#endif
-#if ATG_ENABLE_CROSS
-    if(cross_type != CROSS_NONE && !yroad_type && round_type == ROUND_NONE && !garage_type)
-    {
-        run_cross();
-        keep_disabled_elements_idle();
-        return;
-    }
-#endif
-#if ATG_ENABLE_RAMP
-    if(ramp_type != RAMP_NONE && !yroad_type && round_type == ROUND_NONE && !garage_type)
-    {
-        Run_Ramp();
-        keep_disabled_elements_idle();
-        return;
-    }
-#endif
-#if ATG_ENABLE_YROAD
-    if(yroad_type != YROAD_NONE && round_type == ROUND_NONE && !garage_type)
-    {
-        run_yroad();
-        keep_disabled_elements_idle();
-        return;
-    }
-#endif
-
-    /* === 无活跃元素时检测新元素 === */
-#if ATG_ENABLE_CIRCLE
-    if(!cross_type && !yroad_type && !round_type && !ramp_type && !garage_type)
-    {
-        check_circle();
-        if(circle_type != CIRCLE_NONE)
-        {
-            stop_check = 1;
-        }
-    }
-#endif
-#if ATG_ENABLE_CROSS
-    if(!stop_check &&
-       !yroad_type && !ramp_type && !circle_type && !cross_type && !round_type && !garage_type)
-    {
-        check_Half();
-        if(cross_type != CROSS_NONE)
-        {
-            stop_check = 1;
-        }
-    }
-#endif
-#if ATG_ENABLE_ROUND
-    if(!stop_check &&
-       !garage_type && !yroad_type && !ramp_type &&
-       (circle_type == CIRCLE_RIGHT_BEGIN || circle_type == CIRCLE_LEFT_BEGIN || circle_type == CIRCLE_NONE))
-    {
-        check_round();
-    }
-#endif
-#if ATG_ENABLE_RAMP
-    if(!stop_check &&
-       !circle_type && !yroad_type && !garage_type && !ramp_type)
-    {
-        Check_ramp();
-    }
-#endif
-#if ATG_ENABLE_YROAD
-    if(!stop_check &&
-       !circle_type && !ramp_type && !garage_type)
-    {
-        check_yroad();
-    }
-#endif
-
-    /* === 刚激活元素当帧执行 === */
-#if ATG_ENABLE_ROUND
-    if(yroad_type == YROAD_NONE && round_type != ROUND_NONE && ramp_type == RAMP_NONE && !garage_type)
-    {
-        run_round();
-        keep_disabled_elements_idle();
-        return;
-    }
-#endif
-#if ATG_ENABLE_RAMP
-    if(ramp_type != RAMP_NONE && !circle_type && !yroad_type && !round_type && !garage_type)
-    {
-        Run_Ramp();
-        keep_disabled_elements_idle();
-        return;
-    }
-#endif
-#if ATG_ENABLE_CROSS
-    if(cross_type != CROSS_NONE && !circle_type && !yroad_type && round_type == ROUND_NONE && !garage_type)
-    {
-        run_cross();
-        keep_disabled_elements_idle();
-        return;
-    }
-#endif
-#if ATG_ENABLE_CIRCLE
-    if(circle_type != CIRCLE_NONE && !cross_type && !yroad_type && round_type == ROUND_NONE && !garage_type)
-    {
-        run_circle();
-        keep_disabled_elements_idle();
-        return;
-    }
-#endif
-#if ATG_ENABLE_YROAD
-    if(!circle_type && !cross_type && yroad_type != YROAD_NONE && round_type == ROUND_NONE && !garage_type)
-    {
-        run_yroad();
-        keep_disabled_elements_idle();
-        return;
-    }
-#endif
-
-    keep_disabled_elements_idle();
-}
-
 /* ================= 圆环补线构造 =================
  *
  * 圆环各阶段的补线策略（每帧从固定 raw 几何重建，不复用旧帧）：
@@ -507,23 +361,22 @@ static void run_atg_elements(void)
  * 左环用右侧自然线（rpts1s），右环用左侧自然线（rpts0s）——
  * 因为圆环内侧的线被遮挡，外侧自然线更完整。 */
 
-/* 左环 RUNNING 时，右侧自然线是否足够长？
- * 足够长则直接用自然线，否则需要固定补线兜底。 */
-static int circle_left_running_natural_right_ready(void)
+/* 圆环 RUNNING 时，外侧自然线是否足够长？
+ * side=1（左环）看右侧自然线；side=0（右环）看左侧自然线。 */
+static int outer_line_ready(int side)
 {
-    return rpts1s_num >= CIRCLE_RUNNING_NATURAL_MIN_POINTS &&
-           rptsc1_num >= CIRCLE_RUNNING_NATURAL_MIN_POINTS;
-}
+    if(side == 1)
+    {
+        return rpts1s_num >= CIRCLE_RUNNING_NATURAL_MIN_POINTS &&
+               rptsc1_num >= CIRCLE_RUNNING_NATURAL_MIN_POINTS;
+    }
 
-static int circle_right_running_natural_left_ready(void)
-{
     return rpts0s_num >= CIRCLE_RUNNING_NATURAL_MIN_POINTS &&
            rptsc0_num >= CIRCLE_RUNNING_NATURAL_MIN_POINTS;
 }
 
-/* 构建左环固定补线：从左下角锚点到右上方目标点，右偏半赛宽成中心线。
- * 用于右环 RUNNING（自然线不足时）和右环 OUT 阶段。 */
-static void build_fixed_left_center_for_circle(void)
+/* 固定点补左线。 */
+static void fixed_left(void)
 {
     point_Cal_Line(Cal_rot_x(RAW_LEFT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
                    Cal_rot_y(RAW_LEFT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
@@ -547,9 +400,8 @@ static void build_fixed_left_center_for_circle(void)
     Splicing_leftline_center_num = Splicing_leftline_s1s_num;
 }
 
-/* 构建右环固定补线：从右下角锚点到左上方目标点，左偏半赛宽成中心线。
- * 用于左环 RUNNING（自然线不足时）和左环 OUT 阶段。 */
-static void build_fixed_right_center_for_circle(void)
+/* 固定点补右线。 */
+static void fixed_right(void)
 {
     point_Cal_Line_2(Cal_rot_x(RAW_RIGHT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
                      Cal_rot_y(RAW_RIGHT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
@@ -573,17 +425,14 @@ static void build_fixed_right_center_for_circle(void)
     Splicing_rightline_center_num = Splicing_rightline_s0s_num;
 }
 
-/* 构建左环 IN_C 补线：从左下角锚点到 C 点，右偏半赛宽成中心线。
- * C 点是圆环最深处的拐点，比固定目标点更准确地描述圆环内侧轮廓。
- * 仅在 circle_C_point.found 时有效。 */
-static void build_circle_left_in_center_by_c(void)
+/* C 点补左线：底部锚点到 C 点，再偏移半赛宽。 */
+static void c_left(void)
 {
     if(!circle_C_point.found)
     {
         return;
     }
-    /* 当前 C 补线是同侧底部 raw anchor -> C，再右偏半赛宽成中心线；
-     * 不是 C -> 外侧直道的双边融合线。 */
+
     point_Cal_Line(Cal_rot_x(RAW_LEFT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
                    Cal_rot_y(RAW_LEFT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
                    Cal_rot_x(circle_C_point.raw_x, circle_C_point.raw_y),
@@ -625,16 +474,14 @@ static void build_circle_left_in_center_by_c(void)
     }
 }
 
-/* 构建右环 IN_C 补线：从右下角锚点到 C 点，左偏半赛宽成中心线。
- * 与左环版本镜像对称。 */
-static void build_circle_right_in_center_by_c(void)
+/* C 点补右线：底部锚点到 C 点，再偏移半赛宽。 */
+static void c_right(void)
 {
     if(!circle_C_point.found)
     {
         return;
     }
-    /* 当前 C 补线是同侧底部 raw anchor -> C，再左偏半赛宽成中心线；
-     * 不是 C -> 外侧直道的双边融合线。 */
+
     point_Cal_Line_2(Cal_rot_x(RAW_RIGHT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
                      Cal_rot_y(RAW_RIGHT_ANCHOR_X, RAW_BOTTOM_ANCHOR_Y),
                      Cal_rot_x(circle_C_point.raw_x, circle_C_point.raw_y),
@@ -676,39 +523,39 @@ static void build_circle_right_in_center_by_c(void)
     }
 }
 
-/* 构建圆环补线：根据圆环状态和参考模式，选择合适的补线策略 */
-static void build_circle_spliced_lines(void)
+/* 圆环补线：BEGIN(IN_C) 用 C 点补线，RUNNING/OUT 用固定点补线。 */
+static void circle_patch(void)
 {
-    /* 补线中心是环岛 BEGIN(IN_C)/OUT/RUNNING 桥接的控制选线来源。
+    /* 补线中心是圆环 BEGIN(IN_C)/OUT/RUNNING 桥接的控制选线来源。
      * 每帧从固定 raw 几何重建，不复用旧帧中线或旧 guide。 */
     Splicing_leftline_center_num = 0;
     Splicing_rightline_center_num = 0;
 
     if(circle_type == CIRCLE_RIGHT_BEGIN && circle_ref_mode == CIRCLE_REF_IN_C)
     {
-        build_circle_right_in_center_by_c();
+        c_right();
     }
     else if(circle_type == CIRCLE_RIGHT_RUNNING &&
-            !circle_right_running_natural_left_ready())
+            !outer_line_ready(0))
     {
-        build_fixed_left_center_for_circle();
+        fixed_left();
     }
     else if(circle_type == CIRCLE_RIGHT_OUT)
     {
-        build_fixed_left_center_for_circle();
+        fixed_left();
     }
     else if(circle_type == CIRCLE_LEFT_BEGIN && circle_ref_mode == CIRCLE_REF_IN_C)
     {
-        build_circle_left_in_center_by_c();
+        c_left();
     }
     else if(circle_type == CIRCLE_LEFT_RUNNING &&
-            !circle_left_running_natural_right_ready())
+            !outer_line_ready(1))
     {
-        build_fixed_right_center_for_circle();
+        fixed_right();
     }
     else if(circle_type == CIRCLE_LEFT_OUT)
     {
-        build_fixed_right_center_for_circle();
+        fixed_right();
     }
 }
 
@@ -721,125 +568,6 @@ static void build_circle_spliced_lines(void)
  *
  * 选线结果记录在 g_selected_line_source，用于日志和调试。
  */
-
-/* 选择十字远线：从远端 L 角点开始，沿边线偏移半赛宽生成中心线。
- * 仅在 CROSS_IN/CROSS_HALF/GARAGE_FOUND 时生效。
- * 返回 1 表示选线成功，0 表示不适用。 */
-static int select_cross_far_line(void)
-{
-    if(cross_type != CROSS_IN &&
-       cross_type != CROSS_HALF &&
-       garage_type != GARAGE_FOUND_LEFT &&
-       garage_type != GARAGE_FOUND_RIGHT)
-    {
-        return 0;
-    }
-
-    if(track_type == TRACK_LEFT)
-    {
-        const int start = range_limit(far_Lpt0_rpts0s_id, 0, far_rpts0s_num);
-        const int count = clipped_count(far_rpts0s_num - start - 1);
-        rpts = rptsc0;
-        track_leftline(far_rpts0s + start,
-                       count,
-                       rpts,
-                       (int)round(angle_dist / sample_dist),
-                       pixel_per_meter * ROAD_WIDTH / 2);
-        rpts_num = clipped_count(far_rpts0s_num - start);
-        g_selected_line_source = "far_left";
-        return 1;
-    }
-
-    const int start = range_limit(far_Lpt1_rpts1s_id, 0, far_rpts1s_num);
-    const int count = clipped_count(far_rpts1s_num - start);
-    rpts = rptsc1;
-    track_rightline(far_rpts1s + start,
-                    count,
-                    rpts,
-                    (int)round(angle_dist / sample_dist),
-                    pixel_per_meter * ROAD_WIDTH / 2);
-    rpts_num = count;
-    g_selected_line_source = "far_right";
-    return 1;
-}
-
-/* 选择圆环线：根据圆环状态和参考模式，选择合适的补线。
- *   BEGIN + IN_C → 用 C 点补线（更准确的入环参考）
- *   RUNNING       → 用固定补线（自然线不足时）或跳过（自然线足够时由 select_normal_line 处理）
- *   OUT           → 用固定补线（出环过渡）
- *   兜底          → OUT 阶段如果补线都没有，强制用 rptsc1 避免崩塌到空线
- * 返回 1 表示选线成功，0 表示不适用。 */
-static int select_circle_line(void)
-{
-    if(circle_type == CIRCLE_LEFT_BEGIN &&
-       circle_ref_mode == CIRCLE_REF_IN_C &&
-       Splicing_leftline_center_num > 0)
-    {
-        rpts = Splicing_leftline_center;
-        rpts_num = Splicing_leftline_center_num;
-        g_selected_line_source = "circle_in_c_left";
-        return 1;
-    }
-    if(circle_type == CIRCLE_RIGHT_BEGIN &&
-       circle_ref_mode == CIRCLE_REF_IN_C &&
-       Splicing_rightline_center_num > 0)
-    {
-        rpts = Splicing_rightline_center;
-        rpts_num = Splicing_rightline_center_num;
-        g_selected_line_source = "circle_in_c_right";
-        return 1;
-    }
-    if((circle_type == CIRCLE_RIGHT_OUT ||
-        circle_type == CIRCLE_RIGHT_RUNNING) &&
-       Splicing_leftline_center_num > 0)
-    {
-        rpts = Splicing_leftline_center;
-        rpts_num = Splicing_leftline_center_num;
-        g_selected_line_source =
-            circle_type == CIRCLE_RIGHT_RUNNING ? "circle_running_fixed_left" :
-            "circle_out_fixed_left";
-        return 1;
-    }
-    if((circle_type == CIRCLE_LEFT_OUT ||
-        circle_type == CIRCLE_LEFT_RUNNING) &&
-       Splicing_rightline_center_num > 0)
-    {
-        rpts = Splicing_rightline_center;
-        rpts_num = Splicing_rightline_center_num;
-        g_selected_line_source =
-            circle_type == CIRCLE_LEFT_RUNNING ? "circle_running_fixed_right" :
-            "circle_out_fixed_right";
-        return 1;
-    }
-    if(circle_type == CIRCLE_LEFT_OUT && rptsc1_num > 0)
-    {
-        /* OUT 无出环中心线时，track_type=TRACK_LEFT 会选到空 rptsc0。
-         * 强制用原始右线 rptsc1，避免立即崩塌到 sel=0/0。 */
-        rpts = rptsc1;
-        rpts_num = rptsc1_num;
-        g_selected_line_source = "out_rptsc1";
-        return 1;
-    }
-
-    return 0;
-}
-
-/* 选择普通线：根据 track_type 选择 rptsc0（左线）或 rptsc1（右线）。
- * track_type 在 choose_track_type_from_near_lines() 中根据点数决定。 */
-static void select_normal_line(void)
-{
-    if(track_type == TRACK_LEFT)
-    {
-        rpts = rptsc0;
-        rpts_num = rptsc0_num;
-        g_selected_line_source = "rptsc0";
-        return;
-    }
-
-    rpts = rptsc1;
-    rpts_num = rptsc1_num;
-    g_selected_line_source = "rptsc1";
-}
 
 /* 记录选线日志：圆环活跃时输出详细的选线来源、A/B/C 点状态、各线点数。
  * 仅在 circle_cal_log_enabled() 时输出，避免正常行驶时刷屏。 */
@@ -882,23 +610,132 @@ static void log_selected_line(void)
 /* 选择控制用线：按优先级尝试十字远线 → 圆环补线 → 普通线 */
 static void select_work_line(void)
 {
+    int selected = 0;
+
     g_selected_line_source = "none";
 
-    if(select_cross_far_line())
+    /* === 十字远线优先 === */
+    if(cross_type == CROSS_IN ||
+       cross_type == CROSS_HALF ||
+       garage_type == GARAGE_FOUND_LEFT ||
+       garage_type == GARAGE_FOUND_RIGHT)
     {
-        log_selected_line();
-        return;
+        if(track_type == TRACK_LEFT)
+        {
+            const int start = range_limit(far_Lpt0_rpts0s_id, 0, far_rpts0s_num);
+            const int count = clipped_count(far_rpts0s_num - start - 1);
+            rpts = rptsc0;
+            track_leftline(far_rpts0s + start,
+                           count,
+                           rpts,
+                           (int)round(angle_dist / sample_dist),
+                           pixel_per_meter * ROAD_WIDTH / 2);
+            rpts_num = clipped_count(far_rpts0s_num - start);
+            g_selected_line_source = "far_left";
+            selected = 1;
+        }
+        else
+        {
+            const int start = range_limit(far_Lpt1_rpts1s_id, 0, far_rpts1s_num);
+            const int count = clipped_count(far_rpts1s_num - start);
+            rpts = rptsc1;
+            track_rightline(far_rpts1s + start,
+                            count,
+                            rpts,
+                            (int)round(angle_dist / sample_dist),
+                            pixel_per_meter * ROAD_WIDTH / 2);
+            rpts_num = count;
+            g_selected_line_source = "far_right";
+            selected = 1;
+        }
     }
 
-    build_circle_spliced_lines();
-
-    if(select_circle_line())
+    /* === 圆环补线其次 ===
+     *
+     * 圆环各阶段的选线策略：
+     *   BEGIN(IN_C)  — 用 C 点构建的补线（circle_in_c_left/right）
+     *   RUNNING      — 自然线足够时用自然线，否则用固定补线兜底（circle_running_fixed_*）
+     *   OUT          — 用固定补线（circle_out_fixed_*），无补线时强制用原始对侧线（out_rptsc1）
+     *
+     * 选线方向：
+     *   左环 → 用右侧补线（Splicing_rightline_center）或右侧原始线（rptsc1）
+     *   右环 → 用左侧补线（Splicing_leftline_center）或左侧原始线（rptsc0）
+     *   因为圆环内侧线被遮挡，外侧线更完整。 */
+    if(!selected)
     {
-        log_selected_line();
-        return;
+        circle_patch();
+
+        /* 左环 BEGIN(IN_C)：用 C 点构建的左侧补线 */
+        if(circle_type == CIRCLE_LEFT_BEGIN &&
+           circle_ref_mode == CIRCLE_REF_IN_C &&
+           Splicing_leftline_center_num > 0)
+        {
+            rpts = Splicing_leftline_center;
+            rpts_num = Splicing_leftline_center_num;
+            g_selected_line_source = "circle_in_c_left";
+            selected = 1;
+        }
+        /* 右环 BEGIN(IN_C)：用 C 点构建的右侧补线 */
+        else if(circle_type == CIRCLE_RIGHT_BEGIN &&
+                circle_ref_mode == CIRCLE_REF_IN_C &&
+                Splicing_rightline_center_num > 0)
+        {
+            rpts = Splicing_rightline_center;
+            rpts_num = Splicing_rightline_center_num;
+            g_selected_line_source = "circle_in_c_right";
+            selected = 1;
+        }
+        /* 右环 RUNNING/OUT：用左侧固定补线 */
+        else if((circle_type == CIRCLE_RIGHT_OUT ||
+                 circle_type == CIRCLE_RIGHT_RUNNING) &&
+                Splicing_leftline_center_num > 0)
+        {
+            rpts = Splicing_leftline_center;
+            rpts_num = Splicing_leftline_center_num;
+            g_selected_line_source =
+                circle_type == CIRCLE_RIGHT_RUNNING ? "circle_running_fixed_left" :
+                "circle_out_fixed_left";
+            selected = 1;
+        }
+        /* 左环 RUNNING/OUT：用右侧固定补线 */
+        else if((circle_type == CIRCLE_LEFT_OUT ||
+                 circle_type == CIRCLE_LEFT_RUNNING) &&
+                Splicing_rightline_center_num > 0)
+        {
+            rpts = Splicing_rightline_center;
+            rpts_num = Splicing_rightline_center_num;
+            g_selected_line_source =
+                circle_type == CIRCLE_LEFT_RUNNING ? "circle_running_fixed_right" :
+                "circle_out_fixed_right";
+            selected = 1;
+        }
+        /* 左环 OUT 无补线时：强制用原始右线，避免崩塌到 sel=0/0 */
+        else if(circle_type == CIRCLE_LEFT_OUT && rptsc1_num > 0)
+        {
+            rpts = rptsc1;
+            rpts_num = rptsc1_num;
+            g_selected_line_source = "out_rptsc1";
+            selected = 1;
+        }
     }
 
-    select_normal_line();
+    /* === 普通线兜底 === */
+    if(!selected)
+    {
+        if(track_type == TRACK_LEFT)
+        {
+            rpts = rptsc0;
+            rpts_num = rptsc0_num;
+            g_selected_line_source = "rptsc0";
+        }
+        else
+        {
+            rpts = rptsc1;
+            rpts_num = rptsc1_num;
+            g_selected_line_source = "rptsc1";
+        }
+    }
+
     log_selected_line();
 }
 
@@ -1065,9 +902,6 @@ static int normalize_selected_line(void)
  * 圆环异常恢复机制：
  *   - stall：环岛状态活跃但无任何选线，连续 ATG_CIRCLE_STALL_FRAMES 帧后复位到 NONE。
  *     这种情况通常是车卡住或视觉丢失，状态机无法推进，需要强制复位。
- *   - timeout：BEGIN 阶段行驶距离超过 ATG_CIRCLE_BEGIN_MAX_DIST_COUNTS 但陀螺仪角度
- *     仍未达到进环门槛，说明是误入（直道伪 L 触发），需要撤回 NONE。
- *     用距离不用帧数，与车速解耦。
  */
 
 /* 全局复位：清空所有状态，恢复默认参数。
@@ -1107,25 +941,6 @@ static void reset_circle_to_none(const char *reason)
     g_circle_begin_last_dist = 0;
 }
 
-/* BEGIN 阶段超时撤销：行驶距离超过 6000 counts（约 1.0m）但陀螺仪角度
- * 仍未达到进环门槛，说明是误入（直道伪 L 触发的假圆环），撤回 NONE。
- * 用距离不用帧数，与车速解耦。 */
-static void revoke_idle_circle_begin(void)
-{
-    if(circle_type == CIRCLE_LEFT_BEGIN &&
-       g_circle_begin_dist > ATG_CIRCLE_BEGIN_MAX_DIST_COUNTS &&
-       !circle_heading_enter_ready())
-    {
-        reset_circle_to_none("LEFT_BEGIN timeout before heading enter,");
-    }
-    else if(circle_type == CIRCLE_RIGHT_BEGIN &&
-            g_circle_begin_dist > ATG_CIRCLE_BEGIN_MAX_DIST_COUNTS &&
-            !circle_heading_enter_ready())
-    {
-        reset_circle_to_none("RIGHT_BEGIN timeout before heading enter,");
-    }
-}
-
 /* 圆环停滞检测：圆环活跃但连续 ATG_CIRCLE_STALL_FRAMES 帧无有效选线时强制复位。
  * line_ok 表示本帧是否有有效导引线（rptsn_num > 0）。
  * 有线则重置停滞计数，无线则累加；达到阈值后打印日志并复位到 NONE。 */
@@ -1159,7 +974,7 @@ static void exit_circle_after_stall(int line_ok)
  *                                          产出 rpts0s/rpts1s（左右边线）
  *   3. find_corners()                     — 角点检测，产出 Lpt0/1_found、is_straight0/1
  *   4. choose_track_type_from_near_lines()— 根据左右线点数选择跟踪哪条线
- *   5. run_atg_elements()                 — 元素状态机（圆环/十字/坡道/环岛/Y路/车库）
+ *   5. 元素处理                          — 直写圆环/十字/坡道/环岛/Y路状态机
  *   6. truncate_cross_half_candidate_...  — 截断未认领的十字半候选近线
  *   7. choose_track_type_from_near_lines()— 元素处理后重新选择跟踪线
  *   8. update_distance_counters()         — 更新所有距离计数器
@@ -1171,25 +986,160 @@ static void exit_circle_after_stall(int line_ok)
  * 返回 1 表示本帧有有效导引线（rptsn_num > 0），0 表示丢失。 */
 int atg_reference_process_frame(uint8_t gray[120][160], int64_t encoder_total)
 {
+    int element_done = 0;
+    int stop_check = 0;
+
     if(gray == NULL)
     {
         return 0;
     }
 
+    /* ================= 本帧准备 ================= */
     g_atg_reference_encoder_total = encoder_total;
     img_raw.data = (uint8 *)gray;
-    clear_frame_outputs();                    /* 清空上一帧输出 */
+    clear_frame_outputs();
 
-    image_handle();                           /* 基础搜线：raw 图 → rpts0s/rpts1s */
-    find_corners();                           /* 角点检测：Lpt0/1_found、is_straight0/1 */
-    choose_track_type_from_near_lines();      /* 根据点数粗选跟踪线 */
-    run_atg_elements();                       /* 元素状态机调度 */
+    image_handle();
+    find_corners();
+    choose_track_type_from_near_lines();
+
+    /* ================= 元素处理 ================= */
+    keep_disabled_elements_idle();
+
+    /* 已激活元素优先继续执行。 */
+#if ATG_ENABLE_CIRCLE
+    if(circle_type != CIRCLE_NONE)
+    {
+        cross_type = CROSS_NONE;  /* 圆环优先：清十字，避免角点干扰 */
+        Lpt0_found_flag = 0;
+        Lpt1_found_flag = 0;
+        run_circle();
+        element_done = 1;
+    }
+#endif
+#if ATG_ENABLE_CROSS
+    if(!element_done &&
+       cross_type != CROSS_NONE && !yroad_type && round_type == ROUND_NONE && !garage_type)
+    {
+        run_cross();
+        element_done = 1;
+    }
+#endif
+#if ATG_ENABLE_RAMP
+    if(!element_done &&
+       ramp_type != RAMP_NONE && !yroad_type && round_type == ROUND_NONE && !garage_type)
+    {
+        Run_Ramp();
+        element_done = 1;
+    }
+#endif
+#if ATG_ENABLE_YROAD
+    if(!element_done &&
+       yroad_type != YROAD_NONE && round_type == ROUND_NONE && !garage_type)
+    {
+        run_yroad();
+        element_done = 1;
+    }
+#endif
+
+    /* 没有活跃元素时，按原优先级检测新元素。 */
+    if(!element_done)
+    {
+#if ATG_ENABLE_CIRCLE
+        if(!cross_type && !yroad_type && !round_type && !ramp_type && !garage_type)
+        {
+            check_circle();
+            if(circle_type != CIRCLE_NONE)
+            {
+                stop_check = 1;
+            }
+        }
+#endif
+#if ATG_ENABLE_CROSS
+        if(!stop_check &&
+           !yroad_type && !ramp_type && !circle_type && !cross_type && !round_type && !garage_type)
+        {
+            check_Half();
+            if(cross_type != CROSS_NONE)
+            {
+                stop_check = 1;
+            }
+        }
+#endif
+#if ATG_ENABLE_ROUND
+        if(!stop_check &&
+           !garage_type && !yroad_type && !ramp_type &&
+           (circle_type == CIRCLE_RIGHT_BEGIN || circle_type == CIRCLE_LEFT_BEGIN || circle_type == CIRCLE_NONE))
+        {
+            check_round();
+        }
+#endif
+#if ATG_ENABLE_RAMP
+        if(!stop_check &&
+           !circle_type && !yroad_type && !garage_type && !ramp_type)
+        {
+            Check_ramp();
+        }
+#endif
+#if ATG_ENABLE_YROAD
+        if(!stop_check &&
+           !circle_type && !ramp_type && !garage_type)
+        {
+            check_yroad();
+        }
+#endif
+
+        /* 新检测到的元素，当帧运行一次。 */
+#if ATG_ENABLE_ROUND
+        if(yroad_type == YROAD_NONE && round_type != ROUND_NONE && ramp_type == RAMP_NONE && !garage_type)
+        {
+            run_round();
+            element_done = 1;
+        }
+#endif
+#if ATG_ENABLE_RAMP
+        if(!element_done &&
+           ramp_type != RAMP_NONE && !circle_type && !yroad_type && !round_type && !garage_type)
+        {
+            Run_Ramp();
+            element_done = 1;
+        }
+#endif
+#if ATG_ENABLE_CROSS
+        if(!element_done &&
+           cross_type != CROSS_NONE && !circle_type && !yroad_type && round_type == ROUND_NONE && !garage_type)
+        {
+            run_cross();
+            element_done = 1;
+        }
+#endif
+#if ATG_ENABLE_CIRCLE
+        if(!element_done &&
+           circle_type != CIRCLE_NONE && !cross_type && !yroad_type && round_type == ROUND_NONE && !garage_type)
+        {
+            run_circle();
+            element_done = 1;
+        }
+#endif
+#if ATG_ENABLE_YROAD
+        if(!element_done &&
+           !circle_type && !cross_type && yroad_type != YROAD_NONE && round_type == ROUND_NONE && !garage_type)
+        {
+            run_yroad();
+            element_done = 1;
+        }
+#endif
+    }
+
+    keep_disabled_elements_idle();
+
+    /* ================= 选控制线 ================= */
     truncate_cross_half_candidate_near_lines(); /* 截断未认领的十字半候选 */
     choose_track_type_from_near_lines();      /* 元素处理后重新选择跟踪线 */
     update_distance_counters(encoder_total);  /* 更新距离计数器 */
-    // revoke_idle_circle_begin();            /* BEGIN 超时撤销（暂时禁用） */
     select_work_line();                       /* 选择控制用线 */
 
+    /* ================= 输出控制用中线 ================= */
     const int ok = normalize_selected_line(); /* 归一化成 rptsn */
     if(circle_cal_log_enabled() && circle_type != CIRCLE_NONE)
     {

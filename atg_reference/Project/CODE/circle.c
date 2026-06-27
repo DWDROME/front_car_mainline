@@ -537,14 +537,6 @@ void update_circle_heading(float yaw_rate_rad_s, int period_ms, int valid)
     circle_heading_rad += yaw_rate_rad_s * ((float)period_ms / 1000.0f);
 }
 
-/* 陀螺仪角度是否达到进环门槛（GYRO_IN_DEG10=600，即 60°）。
- * 用于 BEGIN→RUNNING 的状态转换判断。
- * 被 reference_step.c 的 revoke_idle_circle_begin() 调用。 */
-int circle_heading_enter_ready(void)
-{
-    return circle_heading_abs_ge(GYRO_IN_DEG10);
-}
-
 /* 正常出环收口：恢复巡线参数，计数 +1，抑制重入。
  * 与 reference_step.c 的 reset_circle_to_none() 保持一致。
  * 调用时机：OUT 阶段连续检测到直道后。 */

@@ -89,9 +89,6 @@ void reset_circle_geometry_state(void);
 /* 更新圆环航向角（陀螺仪积分） */
 void update_circle_heading(float yaw_rate_rad_s, int period_ms, int valid);
 
-/* 陀螺仪角度是否达到进环门槛 */
-int circle_heading_enter_ready(void);
-
 /* 圆环调试日志是否启用 */
 int circle_cal_log_enabled(void);
 
