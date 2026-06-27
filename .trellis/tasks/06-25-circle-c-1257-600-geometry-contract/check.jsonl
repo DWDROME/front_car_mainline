@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/tracking/critical-audit-guide.md", "reason": "修改 tracking/ATG 圆环代码需审计:reference contract、current implementation、git regression、spec gate"}
+{"file": ".trellis/spec/tracking/circle-log-analysis.md", "reason": "4 事件日志格式(CircleEntryProbe/CircleEntryAB/CircleState/CircleABC)须符合现有分析脚本的解析模式"}
+{"file": ".trellis/spec/quality/embedded-tracking-guidelines.md", "reason": "无静默降级、无 stale-geometry fallback、无第二真相源;host build + replay 验证"}
+{"file": ".trellis/tasks/06-25-circle-c-1257-600-geometry-contract/research/circle-v2-preimplementation-map.md", "reason": "check v2 是否保留旧 circle.c 外部 ABI、状态合同和构建切换约束"}

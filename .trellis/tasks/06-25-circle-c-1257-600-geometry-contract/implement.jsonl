@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/quality/refactoring-and-diagnostic-discipline.md", "reason": "seed 调试显示同源纪律:assistant 的 circle_entry_scan_seed_raw 必须复用 circle.c 导出的 circle_entry_inner_seed,不允许独立推算"}
+{"file": ".trellis/spec/quality/embedded-tracking-guidelines.md", "reason": "highest code rule(保持简单直接)、evidence-based tracking changes(以当前帧证据而非猜测驱动)、助手显示边界契约"}
+{"file": ".trellis/spec/quality/embedded-tracking-guidelines.md", "reason": "ATG Circle Auxiliary Point Search 小节:prefer hand-rule trace、否则 bounded scan、拒绝 old-frame 重用"}
+{"file": ".trellis/tasks/06-25-circle-c-1257-600-geometry-contract/research/circle-v2-preimplementation-map.md", "reason": "circle_v2 实现前映射:旧函数去向、外部 ABI、状态保留和 CMake 二选一切换方案"}
