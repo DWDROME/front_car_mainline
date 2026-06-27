@@ -182,6 +182,8 @@ void tracking_reset(runtime_t *rt)
     atg_reference_reset();
 }
 
+// ATG wrapper：把 runtime 灰度图/encoder 送进参考算法，
+// 再把 ATG 的 rptsn 转成 rt->vision.mid 和 guide_error。
 int tracking_process_frame(runtime_t *rt)
 {
     if(rt == nullptr)

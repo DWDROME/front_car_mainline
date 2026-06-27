@@ -357,20 +357,19 @@ static void keep_disabled_elements_idle(void)
 
 /* ================= 元素状态机调度 =================
  *
- * 元素优先级：圆环 > 十字 > 坡道 > 环岛 > Y路 > 车库
- * 同一时刻只有一个元素活跃，其他被抑制。
+ * 一帧里只做三件事：
+ *   1. 已经激活的元素继续跑；
+ *   2. 没有活跃元素时，按原优先级检测新元素；
+ *   3. 把刚检测到的元素当帧跑一次。
  *
- * 调度流程：
- *   1. run_active_element()  — 已有活跃元素继续运行
- *   2. check_new_element()   — 没有活跃元素时按优先级检测新元素
- *   3. run_new_element()     — 运行新检测到的元素
- *
- * 圆环优先级最高：一旦圆环活跃，强制清除十字角点标记，防止十字干扰圆环。
- */
-
-/* 运行当前活跃的元素：按优先级尝试，找到一个就返回 */
-static int run_active_element(void)
+ * 这里故意写成直白 if，不做 Element 调度框架。 */
+static void run_atg_elements(void)
 {
+    int stop_check = 0;
+
+    keep_disabled_elements_idle();
+
+    /* === 已激活元素继续执行 === */
 #if ATG_ENABLE_CIRCLE
     if(circle_type != CIRCLE_NONE)
     {
@@ -378,145 +377,121 @@ static int run_active_element(void)
         Lpt0_found_flag = 0;
         Lpt1_found_flag = 0;
         run_circle();
-        return 1;
+        keep_disabled_elements_idle();
+        return;
     }
 #endif
 #if ATG_ENABLE_CROSS
     if(cross_type != CROSS_NONE && !yroad_type && round_type == ROUND_NONE && !garage_type)
     {
         run_cross();
-        return 1;
+        keep_disabled_elements_idle();
+        return;
     }
 #endif
 #if ATG_ENABLE_RAMP
     if(ramp_type != RAMP_NONE && !yroad_type && round_type == ROUND_NONE && !garage_type)
     {
         Run_Ramp();
-        return 1;
+        keep_disabled_elements_idle();
+        return;
     }
 #endif
 #if ATG_ENABLE_YROAD
     if(yroad_type != YROAD_NONE && round_type == ROUND_NONE && !garage_type)
     {
         run_yroad();
-        return 1;
+        keep_disabled_elements_idle();
+        return;
     }
 #endif
 
-    return 0;
-}
-
-/* 检测新元素：按优先级依次检测，发现一个就停止。
- * 圆环最先检测，因为它优先级最高；
- * 环岛比较特殊，允许在圆环 BEGIN 阶段同时检测（环岛可能嵌套在圆环入口附近）。 */
-static void check_new_element(void)
-{
+    /* === 无活跃元素时检测新元素 === */
 #if ATG_ENABLE_CIRCLE
     if(!cross_type && !yroad_type && !round_type && !ramp_type && !garage_type)
     {
         check_circle();
         if(circle_type != CIRCLE_NONE)
         {
-            return;
+            stop_check = 1;
         }
     }
 #endif
 #if ATG_ENABLE_CROSS
-    if(!yroad_type && !ramp_type && !circle_type && !cross_type && !round_type && !garage_type)
+    if(!stop_check &&
+       !yroad_type && !ramp_type && !circle_type && !cross_type && !round_type && !garage_type)
     {
         check_Half();
         if(cross_type != CROSS_NONE)
         {
-            return;
+            stop_check = 1;
         }
     }
 #endif
 #if ATG_ENABLE_ROUND
-    if(!garage_type && !yroad_type && !ramp_type &&
+    if(!stop_check &&
+       !garage_type && !yroad_type && !ramp_type &&
        (circle_type == CIRCLE_RIGHT_BEGIN || circle_type == CIRCLE_LEFT_BEGIN || circle_type == CIRCLE_NONE))
     {
         check_round();
     }
 #endif
 #if ATG_ENABLE_RAMP
-    if(!circle_type && !yroad_type && !garage_type && !ramp_type)
+    if(!stop_check &&
+       !circle_type && !yroad_type && !garage_type && !ramp_type)
     {
         Check_ramp();
     }
 #endif
 #if ATG_ENABLE_YROAD
-    if(!circle_type && !ramp_type && !garage_type)
+    if(!stop_check &&
+       !circle_type && !ramp_type && !garage_type)
     {
         check_yroad();
     }
 #endif
-}
 
-/* 运行新检测到的元素：与 run_active_element 不同的是，
- * 这里环岛和坡道排在十字前面（因为它们是新检测到的，需要优先处理）。
- * 返回 1 表示有元素在运行，0 表示没有。 */
-static int run_new_element(void)
-{
+    /* === 刚激活元素当帧执行 === */
 #if ATG_ENABLE_ROUND
     if(yroad_type == YROAD_NONE && round_type != ROUND_NONE && ramp_type == RAMP_NONE && !garage_type)
     {
         run_round();
-        return 1;
+        keep_disabled_elements_idle();
+        return;
     }
 #endif
 #if ATG_ENABLE_RAMP
     if(ramp_type != RAMP_NONE && !circle_type && !yroad_type && !round_type && !garage_type)
     {
         Run_Ramp();
-        return 1;
+        keep_disabled_elements_idle();
+        return;
     }
 #endif
 #if ATG_ENABLE_CROSS
     if(cross_type != CROSS_NONE && !circle_type && !yroad_type && round_type == ROUND_NONE && !garage_type)
     {
         run_cross();
-        return 1;
+        keep_disabled_elements_idle();
+        return;
     }
 #endif
 #if ATG_ENABLE_CIRCLE
     if(circle_type != CIRCLE_NONE && !cross_type && !yroad_type && round_type == ROUND_NONE && !garage_type)
     {
         run_circle();
-        return 1;
+        keep_disabled_elements_idle();
+        return;
     }
 #endif
 #if ATG_ENABLE_YROAD
     if(!circle_type && !cross_type && yroad_type != YROAD_NONE && round_type == ROUND_NONE && !garage_type)
     {
         run_yroad();
-        return 1;
+        keep_disabled_elements_idle();
+        return;
     }
 #endif
-
-    return 0;
-}
-
-/* 元素调度主入口：
- * 1. 先运行已有活跃元素
- * 2. 没有活跃元素时检测新元素
- * 3. 运行新检测到的元素 */
-static void run_atg_elements(void)
-{
-    keep_disabled_elements_idle();
-
-    if(run_active_element())
-    {
-        keep_disabled_elements_idle();
-        return;
-    }
-
-    check_new_element();
-
-    if(run_new_element())
-    {
-        keep_disabled_elements_idle();
-        return;
-    }
 
     keep_disabled_elements_idle();
 }
@@ -1176,7 +1151,8 @@ static void exit_circle_after_stall(int line_ok)
 
 /* ================= 单帧处理主入口 =================
  *
- * 单帧图像处理主入口，完整处理流程：
+ * ATG 一帧算法入口：保留原始 ATG 风格，全局变量可见，状态流程直接展开。
+ * 完整处理流程：
  *
  *   1. clear_frame_outputs()              — 清空上一帧的所有搜线输出
  *   2. image_handle()                     — 基础搜线，从 raw 图左右 seed 开始，

@@ -1304,6 +1304,7 @@ static int follow_B_begin(int side)
     return 1;
 }
 
+/* 记录 B 跟踪失败日志（仅 circle_cal_log_enabled 时输出） */
 static void log_B_follow_miss(int side)
 {
     if(!circle_cal_log_enabled()) return;
@@ -1318,8 +1319,13 @@ static void log_B_follow_miss(int side)
            circle_seed_line_y[side]);
 }
 
-/* ================= C_begin：BEGIN 阶段从 B 找 C ================= */
+/* ================= C_begin：BEGIN 阶段从 B 找 C =================
+ *
+ * C 是弯道最深处的角点，由局部角度 NMS 检测。
+ * C 比 B 更深、更稳定，找到 C 后可以作为更好的入环参考。
+ * 如果 C 不稳定，用 B 兜底。 */
 
+/* 重置 C 搜索状态 */
 static void C_reset(void)
 {
     clear_anchor(&circle_C_point);
@@ -1340,6 +1346,7 @@ static void C_reset(void)
     C_best_abs_angle = 0.0f;
 }
 
+/* C 搜索前置条件：B 必须已锁定 */
 static int C_has_B(void)
 {
     if(!circle_B_point.found)
@@ -1351,6 +1358,12 @@ static int C_has_B(void)
     return 1;
 }
 
+/* C 搜索的 seed 阶段：
+ *   1. 检查 seed_line 是否有效
+ *   2. 计算对面线的预测斜率
+ *   3. 从 B 点上方 6px 开始向上搜索暗点（C 应该在 B 的上方）
+ *
+ * 搜索范围：B.y - 6 到画面上方（block_size/2 + 5） */
 static int C_seed(int side)
 {
     if(!circle_seed_line_valid[side])
@@ -1382,10 +1395,17 @@ static int C_seed(int side)
     return 1;
 }
 
-/* 搜 trace 并计算局部角度，用 NMS 抑制噪声峰值 */
+/* C 搜索的 trace 阶段：
+ *   1. 从 seed 追线得到 trace
+ *   2. 把 trace 转成 float（供角度计算函数使用）
+ *   3. 计算局部角度序列（前后 3 点的角度差）
+ *   4. 用 NMS（非极大值抑制）抑制噪声峰值
+ *
+ * angle_dist=3：角度计算的前后跨度
+ * nms=7：NMS 抑制窗口大小 */
 static int C_trace(int side)
 {
-    enum { angle_dist = 3, nms = 7 };  /* angle_dist：角度计算的前后跨度；nms：NMS 抑制窗口 */
+    enum { angle_dist = 3, nms = 7 };
 
     if(!circle_trace_from_seed(side, C_seed_x, C_seed_y, C_trace_pts, &C_trace_num))
     {
@@ -1401,8 +1421,13 @@ static int C_trace(int side)
     return 1;
 }
 
-/* 从 trace 中找角度最大的点作为 C。
- * C 必须在 B 上方足够远处，且局部角度超过阈值才认为是真正的角点。 */
+/* 从 trace 中找角度最大的点作为 C：
+ *   - C 必须在 B 上方 >6px（up_min）
+ *   - 局部角度 ≥ 350 mrad（≈20°）才算角点（min_angle_mrad）
+ *   - trace 长度 ≥ 6 点才算有效（min_trace）
+ *
+ * 还要检查 C 与 B 的连接关系（join_ok）：
+ *   trace 够长、C 索引合法、C 确实在 B 上方 */
 static int C_pick(void)
 {
     enum
@@ -1447,6 +1472,7 @@ static int C_pick(void)
     return 1;
 }
 
+/* 锁定 C 点：把最佳候选存入 circle_C_point */
 static void C_lock(void)
 {
     circle_C_point.found = 1;
@@ -1459,6 +1485,7 @@ static void C_lock(void)
     circle_C_search_angle = C_angles_nms[C_best_i];
 }
 
+/* 记录 C 搜索日志（仅 circle_cal_log_enabled 时输出） */
 static void C_log(int side)
 {
     if(circle_cal_log_enabled())
@@ -1520,6 +1547,9 @@ static int circle_update_C(int side)
     return find_C_begin(side);
 }
 
+/* 记录 A/B/C 三锚点的完整状态（仅 circle_cal_log_enabled 时输出）。
+ * 这是最详细的日志，包含所有锚点、搜索状态、streak、参考模式等信息。
+ * 用于调参时分析状态机的整体行为。 */
 static void log_circle_abc(int side, const char *phase, int mouth_ready)
 {
     if(!circle_cal_log_enabled() || circle_type == CIRCLE_NONE) return;
@@ -1776,8 +1806,8 @@ void check_circle(void)
  *
  * 判断逻辑：
  *   rpts 数量 < 2 且无 L 点 → 认为丢失
- *   丢失开始时记录 begin_dist，用于后续判断是否"过晚" */
-/* 更新 BEGIN 阶段的丢失状态。
+ *   丢失开始时记录 begin_dist，用于后续判断是否"过晚"
+ *
  * rpts_max=2：本侧边线点数少于 2 个且无 L 点，认为边线丢失。
  * 丢失时开启距离计数（Count_dis_Flag=1），用于后续判断丢失时机。 */
 static void update_begin_loss(int side)
@@ -1891,16 +1921,11 @@ static void run_circle_begin(int side)
 /* ================= RUNNING 状态：环内行驶，等待出环条件 =================
  *
  * RUNNING 不再找 A/B/C，只靠陀螺仪和对侧 L 点判断是否准备出环。
- * 出环条件（满足其一）：
- *   - 对侧 L 点 id < OUT_LPT_NEAR_ID 且陀螺仪 ≥ GYRO_OUT_DEG10（视觉+陀螺仪联合）
- *   - 陀螺仪 ≥ GYRO_FORCE_OUT_DEG10（强制出环）
- */
-/* RUNNING 状态主函数：环内行驶，等待出环条件。
  *
  * 出环条件（满足其一）：
- *   1. 视觉+陀螺仪联合：对侧 L 点 id < 55 且陀螺仪 ≥ 150°
+ *   1. 视觉+陀螺仪联合：对侧 L 点 id < OUT_LPT_NEAR_ID(55) 且陀螺仪 ≥ GYRO_OUT_DEG10(150°)
  *      这表示"看到出口了，而且转够了"。
- *   2. 强制出环：陀螺仪 ≥ 200°
+ *   2. 强制出环：陀螺仪 ≥ GYRO_FORCE_OUT_DEG10(200°)
  *      即使视觉没看到出口，转了 200° 也该出环了（防止视觉丢失时卡在环里）。
  *
  * 为什么用对侧 L 点？
@@ -1935,13 +1960,11 @@ static void run_circle_running(int side)
 /* ================= OUT 状态：出环后恢复正常巡线 =================
  *
  * 出环后切到对侧巡线，等连续直道检测确认后回到 NONE。
- */
-/* OUT 状态主函数：出环后恢复正常巡线。
  *
  * 出环策略：
  *   1. 切到对侧巡线（左环切右线，右环切左线）
- *   2. 等连续 2 帧检测到对侧是直道 → 确认已出环，回到 NONE
- *   3. 退出后抑制 150 帧，防止立刻重新误触发
+ *   2. 等连续 OUT_STRAIGHT_FRAMES(2) 帧检测到对侧是直道 → 确认已出环，回到 NONE
+ *   3. 退出后抑制 REENTRY_SUPPRESS_FRAMES(150) 帧，防止立刻重新误触发
  *
  * 为什么切到对侧？
  *   出环时车在圆环外侧，对侧线更接近赛道中心。 */
