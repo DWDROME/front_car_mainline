@@ -1,14 +1,32 @@
+/* =====================================================================
+ *  图像处理工具库（imgproc）
+ *
+ *  提供基础图像操作：
+ *    - 图像克隆、清空、阈值化、自适应阈值
+ *    - 逻辑运算（与/或）
+ *    - 形态学（腐蚀/膨胀）
+ *    - 滤波（模糊/Sobel）
+ *    - 沿线追踪（左手/右手法则）
+ *    - 线段逼近（Douglas-Peucker）
+ *    - 点集处理（重采样/角度计算/NMS/偏移）
+ *    - 大津法二值化（OSTU）
+ *    - 绘图工具（线/十字/圆）
+ * ===================================================================== */
 #include "imgproc.h"
 #include "headfile.h"
 #include "common.h"
 #include "math.h"
+
 #define PI               3.14159265358979f
 #define AT                  AT_IMAGE
 #define AT_CLIP(img, x, y)  AT_IMAGE((img), clip((x), 0, (img)->width-1), clip((y), 0, (img)->height-1));
 
 extern int clip(int x, int low, int up);
 
+/* ================= 图像基础操作 ================= */
 
+
+/* 克隆图像：img0 → img1，支持连续内存和非连续内存两种情况 */
 void clone_image(image_t *img0, image_t *img1) {
     if (img0->width == img0->step && img1->width == img1->step) {
         memcpy(img1->data, img0->data, img0->width * img0->height);
@@ -19,6 +37,7 @@ void clone_image(image_t *img0, image_t *img1) {
     }
 }
 
+/* 清空图像：全部置零 */
 void clear_image(image_t *img) {
     if (img->width == img->step) {
         memset(img->data, 0, img->width * img->height);
@@ -30,6 +49,10 @@ void clear_image(image_t *img) {
 }
 
 
+
+/* ================= 阈值化 ================= */
+
+/* 固定阈值二值化：像素 < thres → low_value，否则 → high_value */
 void threshold(image_t *img0, image_t *img1, uint8_t thres, uint8_t low_value, uint8_t high_value) {
     for (int y = 0; y < img0->height; y++) {
         for (int x = 0; x < img0->width; x++) {
@@ -39,6 +62,9 @@ void threshold(image_t *img0, image_t *img1, uint8_t thres, uint8_t low_value, u
 }
 
 
+
+/* 自适应阈值：在 block_size×block_size 窗口内计算局部均值，减去 down_value 作为阈值。
+ * 对光照不均匀的场景效果好于固定阈值。 */
 void adaptive_threshold(image_t *img0, image_t *img1, int block_size, int down_value, uint8_t low_value, uint8_t high_value) {
     int half = block_size / 2;
     for (int y = 0; y < img0->height; y++) {
@@ -57,6 +83,9 @@ void adaptive_threshold(image_t *img0, image_t *img1, int block_size, int down_v
 }
 
 
+/* ================= 逻辑运算 ================= */
+
+/* 图像与运算：两个图像对应像素都非零才输出 255，否则 0 */
 void image_and(image_t *img0, image_t *img1, image_t *img2) {
     for (int y = 0; y < img0->height; y++) {
         for (int x = 0; x < img0->width; x++) {
@@ -66,6 +95,7 @@ void image_and(image_t *img0, image_t *img1, image_t *img2) {
 }
 
 
+/* 图像或运算：两个图像对应像素都为零才输出 0，否则 255 */
 void image_or(image_t *img0, image_t *img1, image_t *img2){
     for (int y = 0; y < img0->height; y++) {
         for (int x = 0; x < img0->width; x++) {
@@ -75,6 +105,9 @@ void image_or(image_t *img0, image_t *img1, image_t *img2){
 }
 
 
+/* ================= 池化与滤波 ================= */
+
+/* 最小池化 2×2：取 2×2 窗口内最小值，输出图像尺寸减半 */
 void minpool2(image_t *img0, image_t *img1){
     uint8_t min_value;
 
@@ -91,6 +124,7 @@ void minpool2(image_t *img0, image_t *img1){
 }
 
 
+/* 3×3 高斯模糊：权核 [1,2,1; 2,4,2; 1,2,1]/16，用于降噪 */
 void blur(image_t *img0, image_t *img1, uint32_t kernel){
 
     for (int y = 1; y < img0->height - 1; y++) {
@@ -103,6 +137,7 @@ void blur(image_t *img0, image_t *img1, uint32_t kernel){
 }
 
 
+/* 3×3 Sobel 边缘检测：计算水平和垂直梯度，输出梯度幅值 */
 void sobel3(image_t *img0, image_t *img1){
     int gx, gy;
     for (int y = 1; y < img0->height - 1; y++) {
@@ -118,6 +153,9 @@ void sobel3(image_t *img0, image_t *img1){
 }
 
 
+/* ================= 形态学 ================= */
+
+/* 3×3 腐蚀：取 3×3 窗口内最小值，用于去除小亮点噪声 */
 void erode3(image_t *img0, image_t *img1) {
     int min_value;
     for (int y = 1; y < img0->height - 1; y++) {
@@ -134,6 +172,7 @@ void erode3(image_t *img0, image_t *img1) {
 }
 
 
+/* 3×3 膨胀：取 3×3 窗口内最大值，用于填充小黑点噪声 */
 void dilate3(image_t *img0, image_t *img1) {
     int max_value;
     for (int y = 1; y < img0->height - 1; y++) {
@@ -149,7 +188,11 @@ void dilate3(image_t *img0, image_t *img1) {
     }
 }
 
-//
+
+/* ================= 重映射 ================= */
+
+/* 图像重映射：根据 mapx/mapy 坐标映射表，把 img0 重映射到 img1。
+ * 用于 IPM（逆透视变换）等坐标变换场景。 */
 void remap(image_t *img0, image_t *img1, fimage_t *mapx, fimage_t *mapy) {
     for (int y = 1; y < img0->height - 1; y++) {
         for (int x = 1; x < img0->width - 1; x++) {
@@ -159,6 +202,12 @@ void remap(image_t *img0, image_t *img1, fimage_t *mapx, fimage_t *mapy) {
 }
 
 
+/* ================= 沿线追踪 ================= */
+
+/* 方向向量表：dir=0/1/2/3 分别对应 上/右/下/左
+ * dir_front：正前方（主方向）
+ * dir_frontleft：左前方（左手追踪用）
+ * dir_frontright：右前方（右手追踪用） */
 const int dir_front[4][2] = {{0,  -1},
                                                             {1,  0},
                                                             {0,  1},
@@ -173,6 +222,12 @@ const int dir_frontright[4][2] = {{1,  -1},
                                                                  {-1, -1}};
 
 
+/* 左手法则沿边线追踪：从 (x,y) 出发，沿黑色边界左侧前进。
+ * 算法：每步计算局部自适应阈值，判断前方和左前方是否为黑线；
+ *   - 前方黑 → 右转（dir+1）
+ *   - 左前方黑 → 直走
+ *   - 都不黑 → 左前方走并左转（dir-1）
+ * 连续右转 6 次认为追踪结束（遇到死角或回环）。 */
 void findline_lefthand_adaptive(image_t *img, int block_size, int clip_value, int x, int y, int pts[][2], int *num) {
     int half = block_size / 2;
     int step = 0, dir = 0, turn = 0;
@@ -216,6 +271,7 @@ void findline_lefthand_adaptive(image_t *img, int block_size, int clip_value, in
 }
 
 
+/* 右手法则沿边线追踪：与左手对称，沿黑色边界右侧前进。 */
 void findline_righthand_adaptive(image_t *img, int block_size, int clip_value, int x, int y, int pts[][2], int *num) {
     int half = block_size / 2;
     int step = 0, dir = 0, turn = 0;
@@ -260,6 +316,11 @@ void findline_righthand_adaptive(image_t *img, int block_size, int clip_value, i
 }
 
 
+/* ================= 线段逼近 ================= */
+
+/* Douglas-Peucker 线段逼近：把折线简化为少量线段。
+ * epsilon 是最大允许偏离距离，越大简化越多。
+ * 递归实现：找到偏离最远的点，分两段递归逼近。 */
 void approx_lines(int pts[][2], int pts_num, float epsilon, int lines[][2], int *lines_num){
     int dx = pts[pts_num - 1][0] - pts[0][0];
     int dy = pts[pts_num - 1][1] - pts[0][1];
@@ -290,6 +351,7 @@ void approx_lines(int pts[][2], int pts_num, float epsilon, int lines[][2], int 
 }
 
 
+/* Douglas-Peucker 线段逼近（float 版本）：与 int 版本逻辑相同 */
 void approx_lines_f(float pts[][2], int pts_num, float epsilon, float lines[][2], int *lines_num) {
     int dx = pts[pts_num - 1][0] - pts[0][0];
     int dy = pts[pts_num - 1][1] - pts[0][1];
@@ -319,6 +381,10 @@ void approx_lines_f(float pts[][2], int pts_num, float epsilon, float lines[][2]
     }
 }
 
+/* ================= 绘图工具 ================= */
+
+/* 在图像上画线：从 pt0 到 pt1，像素值为 value。
+ * 自动选择水平或垂直方向遍历，避免除零。 */
 void draw_line(image_t *img, int pt0[2], int pt1[2], uint8_t value) {
     int dx = pt1[0] - pt0[0];
     int dy = pt1[1] - pt0[1];
@@ -341,6 +407,12 @@ void draw_line(image_t *img, int pt0[2], int pt1[2], uint8_t value) {
 
 
 
+/* ================= 大津法二值化 ================= */
+
+/* 大津法（OSTU）：自动计算最佳二值化阈值。
+ * 遍历所有灰度值，找到使类间方差最大的阈值。
+ * 类间方差 = w0*(u0-u)^2 + w1*(u1-u)^2
+ * 其中 w0/w1 是前景/背景比例，u0/u1 是前景/背景平均灰度。 */
 uint8 otsuThreshold(uint8 *image, uint16 width, uint16 height)
 {
     #define GrayScale 256
@@ -399,6 +471,9 @@ uint8 otsuThreshold(uint8 *image, uint16 width, uint16 height)
 
 
 
+/* 大津法（OSTU）带阈值范围限制：只在 [MinThreshold, MaxThreshold] 范围内搜索。
+ * 用积分图加速，避免重复累加。
+ * 低灰度区（<100）被屏蔽，避免深色背景干扰。 */
 uint16_t getOSTUThreshold(image_t *img, uint8_t MinThreshold, uint8_t MaxThreshold) {
     uint8_t Histogram[256];
     uint16_t OUSTThreshold = 0;
@@ -456,7 +531,9 @@ uint16_t getOSTUThreshold(image_t *img, uint8_t MinThreshold, uint8_t MaxThresho
 }
 
 
-uint8_t Threshold_deal(uint8_t *image, uint16_t col, uint16_t row,uint32_t pixel_threshold)
+/* 大津法变体：带像素阈值上限，只在 [0, pixel_threshold] 灰度范围内计算类间方差。
+ * 找到方差开始下降的点就提前退出，提高效率。 */
+uint8_t Threshold_deal(uint8_t *image, uint16_t col, uint16_t row, uint32_t pixel_threshold)
 {
   #define GrayScale 256
   uint16_t width = col;
@@ -521,20 +598,15 @@ uint8_t Threshold_deal(uint8_t *image, uint16_t col, uint16_t row,uint32_t pixel
   return threshold;
 }
 
-/*
-    函数功能：在对OSTU二值化的图像进行Robert算子边缘增强
-    参数说明：
-        org_in：输入原图，一维数组
-        ostu_out：输出图像，经大津法二值化并进行边缘增强后的图像
-          th_ostu: 大津法阈值
-        th_edge：边缘增强阈值，建议在11左右调试
-        start_rows: 边缘强化起始行，从0开始计数
-        end_row：边缘强化结束行，包括改行
-*/
-#define MAX_COLS 160 /*图像水平分辨率*/
-#define MAX_ROWS 100 /*图像竖直分辨率*/
-//#define TH_EDGE 30     /*该阈值是前个版本的两倍*/
-void Ostu_Robert(unsigned char *org_in, unsigned char *ostu_out, unsigned char th_ostu, unsigned int th_edge, unsigned int start_rows, unsigned int end_rows) //阳光算法2
+/* OSTU + Robert 边缘增强（阳光算法）：
+ * 先用大津法阈值二值化，再用 Robert 算子检测边缘，
+ * 边缘处强制置黑（0），增强车道线边界。
+ * th_edge 是边缘增强阈值，建议在 11 左右调试。
+ * start_rows/end_rows 指定处理的行范围。 */
+#define MAX_COLS 160 /* 图像水平分辨率 */
+#define MAX_ROWS 100 /* 图像竖直分辨率 */
+//#define TH_EDGE 30     /* 该阈值是前个版本的两倍 */
+void Ostu_Robert(unsigned char *org_in, unsigned char *ostu_out, unsigned char th_ostu, unsigned int th_edge, unsigned int start_rows, unsigned int end_rows)
 {
   unsigned int i, col, h, v;
   unsigned int start_pixel, end_pixel;
@@ -548,20 +620,20 @@ void Ostu_Robert(unsigned char *org_in, unsigned char *ostu_out, unsigned char t
   {
     col++;
 
-    if (org_in[i] >= th_ostu) /*等号是否需要根据小车情况进行处理*/
+    if (org_in[i] >= th_ostu) /* 等号是否需要根据小车情况进行处理 */
     {
-      ostu_out[i - start_pixel] = 255; /*置白*/
+      ostu_out[i - start_pixel] = 255; /* 置白 */
     }
     else
     {
-      ostu_out[i - start_pixel] = 0; /*置黑*/
+      ostu_out[i - start_pixel] = 0; /* 置黑 */
     }
 
-    if (col == MAX_COLS) //右边界像素无法用Robert算子，不增强，仅更新列索引
+    if (col == MAX_COLS) /* 右边界像素无法用 Robert 算子，不增强，仅更新列索引 */
     {
       col = 0;
     }
-    else //Robert算子边缘增强
+    else /* Robert 算子边缘增强 */
     {
       pix0 = (unsigned int)org_in[i] & 0xff;
       pix1 = (unsigned int)org_in[i + 1] & 0xff;
@@ -590,11 +662,16 @@ void Ostu_Robert(unsigned char *org_in, unsigned char *ostu_out, unsigned char t
 
       if (h >= th_edge)
       {
-        ostu_out[i - start_pixel] = 0; // 强制置黑
+        ostu_out[i - start_pixel] = 0; /* 边缘处强制置黑，增强车道线边界 */
       }
     }
   }
 }
+
+/* ================= 点集处理 ================= */
+
+/* 点集平滑：三角核加权平均，kernel 控制平滑窗口大小。
+ * 边界点用 clip 钳位索引，避免越界。 */
 void blur_points(float pts_in[][2], int num, float pts_out[][2], int kernel){
     int half = kernel / 2;
     for (int i = 0; i < num; i++) {
@@ -603,12 +680,16 @@ void blur_points(float pts_in[][2], int num, float pts_out[][2], int kernel){
             pts_out[i][0] += pts_in[clip(i + j, 0, num - 1)][0] * (half + 1 - fabs(j));
             pts_out[i][1] += pts_in[clip(i + j, 0, num - 1)][1] * (half + 1 - fabs(j));
         }
+        /* 归一化：三角核权重和 = (2*half+2)*(half+1)/2 */
         pts_out[i][0] /= (2 * half + 2) * (half + 1) / 2;
         pts_out[i][1] /= (2 * half + 2) * (half + 1) / 2;
     }
 }
 
 
+/* 点集等间距重采样：沿折线按 dist 间距插入新点。
+ * 用于把不均匀的边线点转为等间距采样，方便后续计算角度和偏移。
+ * 算法：逐段遍历，用线性插值在当前段内按 dist 间距生成新点。 */
 void resample_points(float pts_in[][2], int num1, float pts_out[][2], int *num2, float dist){
     if (num1 <= 0 || pts_in == 0 || pts_out == 0 || num2 == 0 || *num2 <= 0) {
         if (num2 != 0) {
@@ -652,6 +733,8 @@ void resample_points(float pts_in[][2], int num1, float pts_out[][2], int *num2,
     *num2 = len;
 }
 
+/* 计算点集上每点的局部转角：用前后 dist 个点的方向差算出转角。
+ * angle_out[i] = atan2(cross, dot)，正值左转，负值右转。 */
 void local_angle_points(float pts_in[][2], int num, float angle_out[], int dist){
     for (int i = 0; i < num; i++) {
         if (i <= 0 || i >= num - 1) {
@@ -673,6 +756,8 @@ void local_angle_points(float pts_in[][2], int num, float angle_out[], int dist)
 }
 
 
+/* 角度非极大值抑制（NMS）：在 kernel 窗口内，只保留绝对值最大的角度，
+ * 其他置零。用于提取尖锐的角点（如十字 L 角点、圆环入口角点）。 */
 void nms_angle(float angle_in[], int num, float angle_out[], int kernel){
     int half = kernel / 2;
     for (int i = 0; i < num; i++) {
@@ -686,6 +771,11 @@ void nms_angle(float angle_in[], int num, float angle_out[], int kernel){
     }
 }
 
+/* ================= 线偏移 ================= */
+
+/* 左线偏移：把边线向左偏移 dist 距离，生成中心线。
+ * 用 approx_num 个点的平均方向计算法向量，避免单点噪声。
+ * track_rightline 是镜像版本，向右偏移。 */
 void track_leftline(float pts_in[][2], int num, float pts_out[][2], int approx_num, float dist) {
     for (int i = 0; i < num; i++) {
         float dx = pts_in[clip(i + approx_num, 0, num - 1)][0] - pts_in[clip(i - approx_num, 0, num - 1)][0];
@@ -701,6 +791,7 @@ void track_leftline(float pts_in[][2], int num, float pts_out[][2], int approx_n
 }
 
 
+/* 右线偏移：与左线偏移镜像，向右偏移 dist 距离 */
 void track_rightline(float pts_in[][2], int num, float pts_out[][2], int approx_num, float dist){
     for (int i = 0; i < num; i++) {
         float dx = pts_in[clip(i + approx_num, 0, num - 1)][0] - pts_in[clip(i - approx_num, 0, num - 1)][0];
@@ -713,6 +804,7 @@ void track_rightline(float pts_in[][2], int num, float pts_out[][2], int approx_
     }
 }
 
+/* 画十字标记：在 (x,y) 处画长度为 len 的十字 */
 void draw_x(image_t *img, int x, int y, int len, uint8_t value) {
     for (int i = -len; i <= len; i++) {
                 AT(img, clip(x + i, 0, img->width - 1), clip(y + i, 0, img->height - 1)) = value;
@@ -720,6 +812,7 @@ void draw_x(image_t *img, int x, int y, int len, uint8_t value) {
     }
 }
 
+/* 画圆标记：在 (x,y) 处画半径为 radius 的圆 */
 void draw_o(image_t *img, int x, int y, int radius, uint8_t value) {
     for (float i = -PI; i <= PI; i += PI / 10) {
                 AT(img, clip(x + radius * cosf(i), 0, img->width - 1), clip(y + radius * sinf(i), 0, img->height - 1)) = value;

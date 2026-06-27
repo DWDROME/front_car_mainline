@@ -1,9 +1,30 @@
+/* =====================================================================
+ *  图像处理主框架（shy_Image）
+ *
+ *  核心处理流程（image_handle）：
+ *    1. 种子点搜索：从固定位置向左右找边线起点（自适应阈值暗行检测）
+ *    2. 沿线追踪：左/右手法则追踪边线（findline_lefthand/righthand_adaptive）
+ *    3. 透视变换：原图坐标 → 俯视角坐标（rot_img_process）
+ *    4. 边线滤波：三角核平滑（blur_points）
+ *    5. 等距采样：重采样为等间距点（resample_points）
+ *    6. 角度计算：局部转角 + NMS 提取角点（local_angle_points + nms_angle）
+ *    7. 中线跟踪：左右边线偏移半赛宽生成中心线（track_leftline/rightline）
+ *
+ *  角点检测（find_corners）：
+ *    在等距采样后的边线上找 Y 角点（Y 路）和 L 角点（十字/圆环）
+ *    角点置信度 = |当前角度| - (|前角度|+|后角度|)/2
+ * ===================================================================== */
 #include "shy_Image.h"
 #include <common.h>
 #include "stdlib.h"
 #include "math.h"
+
 #define PI               3.14159265358979f
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
+/* ================= IPM 变换矩阵 =================
+ * rot：原图 → 俯视角（透视变换矩阵）
+ * inv_rot：俯视角 → 原图（逆透视变换矩阵）
+ * 由 tools/ipm_generator 离线标定生成 */
 float pix[2];
 float rot[3][3]={
         //透视变换矩阵，由 tools/ipm_generator 生成
@@ -17,18 +38,22 @@ float inv_rot[3][3]={
         {-4.76549676e-01f, 5.31294421e-01f, 2.85473918e+01f},
         {-6.69572736e-03f, 3.81225039e-05f, 1.00000000e+00f}
 };
-float pix1[2],pix2[2],pix3[2],pix4[2];
-float dw_max,dw_top;
-int16 rot_height=116;
-int16 rot_width =187;//透视变换之后图片的大小
-int16 delta_y= 0;
-int16 delta_x= 0;
-int16 right_bound_x,left_bound_x;
-int8  Image_thres=7;
-float conf1,conf2,conf1_max,conf2_max;//用于记录当前边线计算中的最大角点，方便调试阈值
+/* ================= 全局状态 ================= */
+float pix1[2], pix2[2], pix3[2], pix4[2];
+float dw_max, dw_top;
+int16 rot_height = 116;
+int16 rot_width = 187;                              /* 透视变换之后图片的大小 */
+int16 delta_y = 0;
+int16 delta_x = 0;
+int16 right_bound_x, left_bound_x;
+int8 Image_thres = 7;
+float conf1, conf2, conf1_max, conf2_max;           /* 当前边线最大角点置信度，用于调试阈值 */
 
+/* 种子点搜索结果 */
 int atg_seed0_found, atg_seed1_found;
 int atg_seed0_x = -1, atg_seed0_y = -1, atg_seed1_x = -1, atg_seed1_y = -1;
+
+/* 角点检测结果（用于调试和日志） */
 int atg_lpt0_best_i = -1, atg_lpt1_best_i = -1;
 int atg_lpt0_best_im1 = -1, atg_lpt0_best_ip1 = -1;
 int atg_lpt1_best_im1 = -1, atg_lpt1_best_ip1 = -1;
@@ -39,6 +64,9 @@ float atg_lpt0_best_conf, atg_lpt1_best_conf;
 float atg_lpt0_best_x, atg_lpt0_best_y, atg_lpt1_best_x, atg_lpt1_best_y;
 float atg_lpt0_best_inv_x, atg_lpt0_best_inv_y, atg_lpt1_best_inv_x, atg_lpt1_best_inv_y;
 
+/* ================= 阈值化工具 ================= */
+
+/* 固定阈值二值化（输出 0/1） */
 void thres_hold(uint8 *img_data, uint8 *output_data, int width, int height, int thres)
 {
   for(int y=0; y<height; y++){
@@ -47,6 +75,7 @@ void thres_hold(uint8 *img_data, uint8 *output_data, int width, int height, int 
     }
   }
 }
+/* 固定阈值二值化（输出 0/255） */
 void thres_hold_255(uint8 *img_data, uint8 *output_data, int width, int height, int thres)
 {
   for(int y=0; y<height; y++){
@@ -56,6 +85,7 @@ void thres_hold_255(uint8 *img_data, uint8 *output_data, int width, int height, 
   }
 }
 
+/* 自适应阈值二值化：block×block 窗口内局部均值 - clip_value */
 void adaptiveThreshold(uint8* img_data, uint8* output_data, int width, int height, int block, uint8 clip_value)
 {
     //assert(block % 2 == 1); // block必须为奇数
@@ -76,6 +106,9 @@ void adaptiveThreshold(uint8* img_data, uint8* output_data, int width, int heigh
   }
 }
 
+/* ================= 透视变换工具 ================= */
+
+/* 取四个浮点数的最大值 */
 float rot_max(float a,float b,float c,float d)
 {
     float temp[5];
@@ -85,6 +118,7 @@ float rot_max(float a,float b,float c,float d)
 
 }
 
+/* 取四个浮点数的最小值 */
 float rot_min(float a,float b,float c,float d)
 {
     float temp[5];
@@ -94,6 +128,11 @@ float rot_min(float a,float b,float c,float d)
 
 }
 
+/* ================= 种子点搜索 ================= */
+
+/* 暗行检测：从 (x,y) 沿 dir 方向检查 run 个像素是否都低于局部自适应阈值。
+ * 用于种子点搜索：连续 run 个暗像素说明找到了赛道边界。
+ * 返回 1 表示找到暗行，0 表示未找到。 */
 static int seed_dark_run_found(image_t *img, int x, int y, int dir, int run, int block, int clip_val)
 {
     int dark_num = 0;
@@ -119,12 +158,10 @@ static int seed_dark_run_found(image_t *img, int x, int y, int dir, int run, int
     return dark_num >= run;
 }
 
+/* 透视变换：把原图边线 ipts0/ipts1 转换为俯视角边线 rpts0/rpts1。
+ * 变换公式：rot_x = (a11*x + a12*y + a13) / (a31*x + a32*y + a33) */
 void rot_img_process(void)
 {
-
-    //a[3][3]是根据透视变换公式求出的透视变换矩阵
-    //变换之后的坐标：rot_x = (a11*x+a12*y+a13)/(a31*x+a32*y+1)
-    //变换之后的坐标：rot_y = (a21*x+a22*y+a23)/(a31*x+a32*y+1)
 //    pix1[0]=((rot[0][0]*1+rot[0][1]*1+rot[0][2])/(rot[2][0]*1+rot[2][1]*1+1.0));
 //    pix1[1]=(rot[1][0]*1+rot[1][1]*1+rot[1][2])/(rot[2][0]*1+rot[2][1]*1+1.0);
 //
@@ -155,15 +192,24 @@ void rot_img_process(void)
     rpts1_num = ipts1_num;
 
 }
+/* ================= 图像处理主入口 =================
+ *
+ * image_handle() 是每帧图像处理的主入口，完整流程：
+ *   1. 种子点搜索：从固定位置向左右找边线起点
+ *   2. 沿线追踪：左/右手法则追踪边线
+ *   3. 透视变换：原图 → 俯视角
+ *   4. 边线滤波：三角核平滑
+ *   5. 等距采样：重采样为等间距点
+ *   6. 角度计算：局部转角 + NMS 提取角点
+ *   7. 中线跟踪：左右边线偏移半赛宽生成中心线
+ *
+ * 种子点搜索策略：
+ *   从固定位置（begin_x, begin_y）向左右找边线起点。
+ *   横坐标每移动一次，计算当前点的自适应阈值，并检查连续 seed_dark_run 个暗像素。
+ *   这种方法类似阳光算法，不需要手动调整阈值。
+ */
 void image_handle(void)
 {
-    //搜索边线起始点的方式是给一个固定的搜索起始点横纵坐标，然后向左右在这一行上去找赛道边线的横坐标x1、x2，并利用这个坐标去做边线跟踪
-    //为了达到一个类似于阳光算法的效果（不需要调整阈值之类的），我在这一横向找赛道边界坐标的时候利用自适应二值化的方法
-    //以找左边线起始点坐标为例，横坐标每向左移动一次，就计算当前这个点的自适应阈值
-    //并且为了防止噪点的误判，向左去计算这个点连续三个左点的阈值，这样的话基本上上场调一下自适应算法的两个参数，就可以实现一个类似于阳光算法的效果
-    //在后续实验的过程中我发现这个自适应计算的方法可以用sobel+大津法或canny边缘检测算子代替（本质上都是为了在灰度图的基础上保留边线特征，便于搜边线），但由于临近比赛我不太想再去改动程序了
-
-    //再提供一个可以动态扫描边线的例子,实测是可以用的，便于15cm限制高度的摄像头获取赛道边线信息有限的情况下自动去找边线的起始点，但是要给一定的限制使用条件
     /*
     for(;y1>0;y1--){
         for(x1= img_raw.width / 2 - begin_x;x1>3;x1--){
@@ -267,7 +313,8 @@ void image_handle(void)
     rptsc1_num = rpts1s_num;
 
 }
-void find_Left_line(uint8 *img_data, uint8 *output ,int block_size, int clip_value, int x, int y)
+/* 左侧区域自适应二值化：只处理 x 左侧区域，用于车库检测等场景 */
+void find_Left_line(uint8 *img_data, uint8 *output, int block_size, int clip_value, int x, int y)
 {
     int half = block_size / 2;
     int step = 0, dir = 0, turn = 0;
@@ -291,11 +338,25 @@ void find_Left_line(uint8 *img_data, uint8 *output ,int block_size, int clip_val
 
 }
 
+/* ================= 角点检测 =================
+ *
+ * 在等距采样后的边线上找 Y 角点（Y 路）和 L 角点（十字/圆环）。
+ *
+ * 角点置信度计算：
+ *   conf = |当前角度| - (|前角度| + |后角度|) / 2
+ *   置信度越高，说明这个点越像真正的角点（角度突变）。
+ *
+ * Y 角点阈值：40°~66°，在 0.7m 以内
+ * L 角点阈值：60°~140°（一般）或 50°~140°（回环阶段），在 60 点以内
+ * 长直道判断：点数 > 1.0m 对应的点数
+ *
+ * Y 点二次检查：两个 Y 角点距离应在 0.45m 附近，且角点后张开。
+ */
 void find_corners() {
-    // 识别Y,L拐点
+    /* 识别 Y、L 拐点 */
     Ypt0_found = Ypt1_found = Lpt0_found = Lpt1_found = false;
-    is_straight0 = rpts0s_num > (1.0 / sample_dist);    //长直道判断初始化
-    is_straight1 = rpts1s_num > (1.0 / sample_dist);    //长直道判断初始化
+    is_straight0 = rpts0s_num > (1.0 / sample_dist);    /* 长直道判断：点数 > 1.0m 对应的点数 */
+    is_straight1 = rpts1s_num > (1.0 / sample_dist);    /* 长直道判断 */
     conf1_max =conf2_max = 0;
     atg_lpt0_best_i = atg_lpt1_best_i = -1;
     atg_lpt0_best_im1 = atg_lpt0_best_ip1 = -1;
@@ -327,14 +388,15 @@ void find_corners() {
             atg_lpt0_pass_near = i < 60;
             atg_lpt0_pass_dir = rpts0s[im1][0] > rpts0s[ip1][0] && rpts0s[im1][1] > rpts0s[ip1][1];
         }
-        //Y角点阈值
+        /* Y 角点阈值：40°~66°，在 0.7m 以内 */
         if (Ypt0_found == false && 40. / 180. * PI < conf1 && conf1 < 66. / 180. * PI && i < 0.7 / sample_dist) {
             Ypt0_rpts0s_id = i;
             Ypt0_found = true;
         }
-        //L角点阈值，判断的时候建议用id的值控制车在比较靠近元素时在判断，并对角点及前后两点，这三个点组成的拐点方向进行判定，防止误判，也可用这个方式判别角点的方向
+        /* L 角点阈值：60°~140°（一般）或 50°~140°（回环阶段），在 60 点以内。
+         * 方向判断：前一点 x > 后一点 x 且 前一点 y > 后一点 y，确保角点方向正确。 */
         if(round_type){
-            //回环阶段的单独阈值
+            /* 回环阶段的单独阈值（更宽松） */
             if (Lpt0_found == false && 50. / 180. * PI < conf1 && conf1 < 140. / 180. * PI && i<60
                     &&(rpts0s[im1][0]>rpts0s[ip1][0]&&rpts0s[im1][1]>rpts0s[ip1][1])) {
                 Lpt0_rpts0s_id = i;
@@ -343,7 +405,7 @@ void find_corners() {
             }
         }
         else{
-            //一般情况下的阈值
+            /* 一般情况下的阈值 */
             if (Lpt0_found == false && 60. / 180. * PI < conf1 && conf1 < 140. / 180. * PI && i<60
                     &&(rpts0s[im1][0]>rpts0s[ip1][0]&&rpts0s[im1][1]>rpts0s[ip1][1]))
             {
@@ -354,7 +416,7 @@ void find_corners() {
         }
 
 
-        //长直道阈值
+        /* 长直道判断：在 1.0m 以内出现 >20° 的角度变化 → 不是直道 */
         if (conf1 > 20. / 180. * PI && i < 1.0 / sample_dist) is_straight0 = false;
         if (Ypt0_found == true && Lpt0_found == true && is_straight0 == false) break;
         if(conf1>conf1_max)conf1_max = conf1;
@@ -405,8 +467,9 @@ void find_corners() {
         if(conf2>conf2_max)conf2_max = conf2;
     }
 
-    // Y点二次检查,依据两角点距离及角点后张开特性
-    //但对于无法处理较大尺寸或视野受限的情况下，是无法满足二次检查的要求（因为他要同时看到两个拐点，所以在后续操作中基本用不到二次判断，不用这个个人感觉问题不大）
+    /* Y 点二次检查：依据两角点距离及角点后张开特性。
+     * 两个 Y 角点距离应在 0.45m 附近，且角点后 50 点处应张开（>0.7m）。
+     * 对于视野受限的情况，可能无法同时看到两个拐点，二次检查会失败。 */
     if (Ypt0_found && Ypt1_found) {
         float dx = rpts0s[Ypt0_rpts0s_id][0] - rpts1s[Ypt1_rpts1s_id][0];
         float dy = rpts0s[Ypt0_rpts0s_id][1] - rpts1s[Ypt1_rpts1s_id][1];
@@ -431,6 +494,9 @@ void find_corners() {
 
 
 }
+/* ================= 坡道检测辅助 ================= */
+
+/* 坡道检测：计算近端左右边线距离，用于判断是否上坡 */
 void Check_Ramp()
 {
     float dx ,dy ,dw;
@@ -445,6 +511,7 @@ void Check_Ramp()
 
 
 }
+/* 图像下采样：2×2 取一个像素，输出尺寸减半 */
 void Cut_Image(void)
 {
     for(int i = 1;i<MT9V03X_H;i++)
@@ -454,36 +521,38 @@ void Cut_Image(void)
 
 }
 
+/* ================= 坐标变换 ================= */
+
+/* 透视变换横坐标：原图 (x,y) → 俯视角 x */
 float Cal_rot_x(float x,float y){
-    //透视变换横坐标变换
     float rot_x;
     rot_x = (rot[1][0]*y+rot[1][1]*x+rot[1][2])/(rot[2][0]*y+rot[2][1]*x+rot[2][2]);
     return rot_x;
 }
+/* 透视变换纵坐标：原图 (x,y) → 俯视角 y */
 float Cal_rot_y(float x,float y){
-    //透视变换纵坐标变换
     float rot_y;
     rot_y = (rot[0][0]*y+rot[0][1]*x+rot[0][2])/(rot[2][0]*y+rot[2][1]*x+rot[2][2]);
     return rot_y;
 }
+/* 逆透视变换横坐标：俯视角 (x,y) → 原图 x */
 float Cal_inv_rot_x(float x,float y){
-    //逆透视变换横坐标变换
     float inv_rot_x;
     inv_rot_x = (inv_rot[1][0]*y + inv_rot[1][1]*x + inv_rot[1][2])/(inv_rot[2][0]*y+inv_rot[2][1]*x+1);
     return inv_rot_x;
 
 
 }
+/* 逆透视变换纵坐标：俯视角 (x,y) → 原图 y */
 float Cal_inv_rot_y(float x,float y){
-    //逆透视变换纵坐标变换
     float inv_rot_y;
     inv_rot_y = (inv_rot[0][0]*y + inv_rot[0][1]*x + inv_rot[0][2])/(inv_rot[2][0]*y+inv_rot[2][1]*x+1);
     return inv_rot_y;
 }
 
-void lcd_Show_inv_Line(int num,float matrix[][2],float inv_matrix[][2],uint16 color)
+/* LCD 显示：把俯视角边线逆投影回原图并画到 LCD 上 */
+void lcd_Show_inv_Line(int num, float matrix[][2], float inv_matrix[][2], uint16 color)
 {
-    //输入一条俯视角下的边线数组，输出逆透视原图视角下的边线数组
     for(int i=0;i<num;i++)
     {
         inv_matrix[i][0] = Cal_inv_rot_x(matrix[i][0],matrix[i][1]);

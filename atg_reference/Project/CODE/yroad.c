@@ -1,11 +1,27 @@
+/* =====================================================================
+ *  Y 路检测（yroad）
+ *
+ *  Y 路是指分叉路口，车辆需要选择左或右分支。
+ *  当前状态：废弃（ATG_ENABLE_YROAD=0），代码保留供参考。
+ *
+ *  状态机：
+ *    YROAD_NONE  → YROAD_FOUND  → YROAD_NEAR  → YROAD_LEFT/RIGHT_RUN
+ *                                                    ↓
+ *                                            YROAD_LEFT/RIGHT_OUT → YROAD_NONE
+ *
+ *  检测依据：Ypt0/Ypt1_found（Y 形角点）
+ *  选择逻辑：根据 yroad_cnt 奇偶性交替选择左右分支
+ * ===================================================================== */
 #include "yroad.h"
 #include "motor.h"
 #include "headfile.h"
 
+/* ================= 全局状态 ================= */
+
 int16 yroad_speed;
 enum yroad_type_e yroad_type = YROAD_NONE;
 
-
+/* 状态名称表：用于日志输出 */
 const char *yroad_type_name[YROAD_NUM] = {
         "YROAD_NONE",
         "YROAD_FOUND", "YROAD_NEAR",
@@ -15,83 +31,126 @@ const char *yroad_type_name[YROAD_NUM] = {
 
 extern enum yroad_type_e yroad_type;
 
-// ����������ֹ�ظ����������
+/* 防止重复触发的编码器记录：上次 Y 路触发后至少行驶一段距离才能再次触发 */
 int64_t yroad_encoder = -10000;
 
-// ��¼��һȦ��ת����
+/* 记录上一圈选择的方向（左/右） */
 bool first_right;
 
-// ��¼�ڼ�������
+/* 记录第几次经过 Y 路：用于交替选择左右分支 */
 int8 yroad_cnt = 0;
 
+/* ================= Y 路检测入口 ================= */
 
-void check_yroad() {
+/* 检测 Y 路：Ypt0 或 Ypt1 存在时标记 YROAD_FOUND。
+ * 仅在 YROAD_NONE 状态下触发，防止重复触发。 */
+void check_yroad()
+{
     bool Yfound = Ypt0_found || Ypt1_found;
-    // ״̬�л�
-    //����Y�ǵ������
-    if (yroad_type == YROAD_NONE && Yfound ) {
+
+    /* 状态切换：发现 Y 角点 → YROAD_FOUND */
+    if(yroad_type == YROAD_NONE && Yfound)
+    {
         yroad_type = YROAD_FOUND;
-        Count_dis_Flag=1;
+        Count_dis_Flag = 1;
         //yroad_encoder = get_total_encoder();
     }
 }
 
-void run_yroad() {
-    bool Yfound = Ypt0_found || Ypt1_found;
-    // ״̬�л�
-    if (yroad_type == YROAD_FOUND || yroad_type == YROAD_NEAR) {
-        // wait for openart
+/* ================= Y 路主流程 ================= */
 
+/* Y 路主流程：处理 YROAD_FOUND/NEAR/RUN/OUT 各阶段的状态切换。
+ *
+ * FOUND/NEAR 阶段：
+ *   - 等待 Y 角点靠近（Ypt id < 0.6m 对应的点数）
+ *   - 根据 if_check_ramp 和 yroad_cnt 奇偶性选择跟踪左线或右线
+ *   - 行驶超过 6500 counts 且 Y 角点消失 → 进入 RUN 阶段
+ *
+ * RUN 阶段：
+ *   - 等待 Y 角点再次出现 → 进入 OUT 阶段
+ *
+ * OUT 阶段：
+ *   - 行驶超过 4000 counts 且 Y 角点消失 → 回到 NONE
+ */
+void run_yroad()
+{
+    bool Yfound = Ypt0_found || Ypt1_found;
+
+    /* FOUND/NEAR 阶段：等待靠近并选择分支 */
+    if(yroad_type == YROAD_FOUND || yroad_type == YROAD_NEAR)
+    {
         aim_distance = AIM_DISTENCE;
-        if (Yfound && (Ypt0_rpts0s_id < 0.6 / sample_dist || Ypt1_rpts1s_id < 0.6 / sample_dist)) {
+
+        /* Y 角点足够近 → 进入 NEAR */
+        if(Yfound && (Ypt0_rpts0s_id < 0.6 / sample_dist || Ypt1_rpts1s_id < 0.6 / sample_dist))
+        {
             yroad_type = YROAD_NEAR;
         }
 
-        if(if_check_ramp){
-            if (yroad_cnt % 2 == 0)track_type = TRACK_LEFT;
-            else  track_type = TRACK_LEFT;
+        /* 根据坡道状态和 yroad_cnt 奇偶性选择跟踪线 */
+        if(if_check_ramp)
+        {
+            if(yroad_cnt % 2 == 0) track_type = TRACK_LEFT;
+            else track_type = TRACK_LEFT;
         }
-        else{
-            if (yroad_cnt % 2 == 0)track_type = TRACK_RIGHT;
-            else  track_type = TRACK_LEFT;
+        else
+        {
+            if(yroad_cnt % 2 == 0) track_type = TRACK_RIGHT;
+            else track_type = TRACK_LEFT;
         }
 
-
-
-
-        if(total_distence>=6500&&!Yfound){
-            Count_dis_Flag=0;
-            if(if_check_ramp){
-                if (yroad_cnt % 2 == 0)yroad_type = YROAD_LEFT_RUN;
-                else  yroad_type = YROAD_LEFT_RUN;
+        /* 行驶超过 6500 counts 且 Y 角点消失 → 进入 RUN 阶段 */
+        if(total_distence >= 6500 && !Yfound)
+        {
+            Count_dis_Flag = 0;
+            if(if_check_ramp)
+            {
+                if(yroad_cnt % 2 == 0) yroad_type = YROAD_LEFT_RUN;
+                else yroad_type = YROAD_LEFT_RUN;
             }
-            else{
-                if (yroad_cnt % 2 == 0)yroad_type = YROAD_RIGHT_RUN;
-                else  yroad_type = YROAD_LEFT_RUN;
+            else
+            {
+                if(yroad_cnt % 2 == 0) yroad_type = YROAD_RIGHT_RUN;
+                else yroad_type = YROAD_LEFT_RUN;
             }
 
             yroad_cnt++;
         }
-
-    } else if (yroad_type == YROAD_LEFT_RUN && Yfound ) {
-        yroad_type = YROAD_LEFT_OUT;//begin_y=MT9V03X_H*0.85;
-        Count_dis_Flag=1;
-    } else if (yroad_type == YROAD_RIGHT_RUN && Yfound ) {
-        yroad_type = YROAD_RIGHT_OUT;//begin_y=MT9V03X_H*0.85;
-        Count_dis_Flag=1;
-    } else if (yroad_type == YROAD_LEFT_OUT && !Yfound&&total_distence>=4000) {
-        yroad_type = YROAD_NONE;begin_y=BEGIN_Y;
-        Count_dis_Flag=0;
-    } else if (yroad_type == YROAD_RIGHT_OUT && !Yfound&&total_distence>=4000) {
-        yroad_type = YROAD_NONE;begin_y=BEGIN_Y;
-        Count_dis_Flag=0;
+    }
+    /* LEFT_RUN 阶段：Y 角点再次出现 → 进入 LEFT_OUT */
+    else if(yroad_type == YROAD_LEFT_RUN && Yfound)
+    {
+        yroad_type = YROAD_LEFT_OUT; //begin_y=MT9V03X_H*0.85;
+        Count_dis_Flag = 1;
+    }
+    /* RIGHT_RUN 阶段：Y 角点再次出现 → 进入 RIGHT_OUT */
+    else if(yroad_type == YROAD_RIGHT_RUN && Yfound)
+    {
+        yroad_type = YROAD_RIGHT_OUT; //begin_y=MT9V03X_H*0.85;
+        Count_dis_Flag = 1;
+    }
+    /* LEFT_OUT 阶段：行驶超过 4000 counts 且 Y 角点消失 → 回到 NONE */
+    else if(yroad_type == YROAD_LEFT_OUT && !Yfound && total_distence >= 4000)
+    {
+        yroad_type = YROAD_NONE;
+        begin_y = BEGIN_Y;
+        Count_dis_Flag = 0;
+    }
+    /* RIGHT_OUT 阶段：行驶超过 4000 counts 且 Y 角点消失 → 回到 NONE */
+    else if(yroad_type == YROAD_RIGHT_OUT && !Yfound && total_distence >= 4000)
+    {
+        yroad_type = YROAD_NONE;
+        begin_y = BEGIN_Y;
+        Count_dis_Flag = 0;
     }
 
-    if (yroad_type == YROAD_LEFT_RUN || yroad_type == YROAD_LEFT_OUT) {
+    /* RUN/OUT 阶段强制选择对应方向的线 */
+    if(yroad_type == YROAD_LEFT_RUN || yroad_type == YROAD_LEFT_OUT)
+    {
         track_type = TRACK_LEFT;
-    } else if (yroad_type == YROAD_RIGHT_RUN || yroad_type == YROAD_RIGHT_OUT) {
+    }
+    else if(yroad_type == YROAD_RIGHT_RUN || yroad_type == YROAD_RIGHT_OUT)
+    {
         track_type = TRACK_RIGHT;
     }
 }
-
-

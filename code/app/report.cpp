@@ -293,12 +293,6 @@ const char *cross_enum_name(int value)
         return "CROSS_IN";
     case CROSS_HALF:
         return "CROSS_HALF";
-    case CROSS_HALF_BEGIN:
-        return "CROSS_HALF_BEGIN";
-    case CROSS_HALF_RIGHT:
-        return "CROSS_HALF_RIGHT";
-    case CROSS_HALF_LEFT:
-        return "CROSS_HALF_LEFT";
     default:
         return "CROSS_UNKNOWN";
     }

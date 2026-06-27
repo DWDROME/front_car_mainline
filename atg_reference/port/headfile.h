@@ -1,3 +1,9 @@
+/* =====================================================================
+ *  总头文件（headfile）
+ *
+ *  包含所有模块头文件，定义全局常量和宏，声明所有全局变量。
+ *  所有 .c 文件只需 #include "headfile.h" 即可访问全部功能。
+ * ===================================================================== */
 #ifndef ATG_REFERENCE_PORT_HEADFILE_H
 #define ATG_REFERENCE_PORT_HEADFILE_H
 
@@ -10,6 +16,8 @@
 
 #include "imgproc.h"
 
+/* ================= 通用宏 ================= */
+
 #define ABS(x) (((x) > 0) ? (x) : (-(x)))
 #ifndef MIN
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
@@ -18,20 +26,24 @@
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 #endif
 
-#define MT9V03X_W 160
-#define MT9V03X_H 120
-#define MT9V03X_HH (MT9V03X_H + 50)
+/* ================= 图像与搜线参数 ================= */
 
-#define BEGIN_X 7
-#define BEGIN_Y ((int16)(MT9V03X_H * 0.9f))
-#define AIM_DISTENCE aim_distance_far
-#define AIM_DISTANCE_UP (aim_distance + 0.4f)
-#define AIM_DISTANCE_UP_UP (aim_distance + 0.54f)
+#define MT9V03X_W 160                           /* 图像宽度 */
+#define MT9V03X_H 120                           /* 图像高度 */
+#define MT9V03X_HH (MT9V03X_H + 50)            /* 边线数组最大点数（留余量） */
 
-#define X_zoom 1.86f
-#define Y_zoom 1.875f
-#define Cut_height 119
-#define Cut_Width 187
+#define BEGIN_X 7                               /* 种子点搜索起始 x 偏移 */
+#define BEGIN_Y ((int16)(MT9V03X_H * 0.9f))     /* 种子点搜索起始 y 行 */
+#define AIM_DISTENCE aim_distance_far           /* 主瞄准距离 */
+#define AIM_DISTANCE_UP (aim_distance + 0.4f)   /* 辅助瞄准距离（更远） */
+#define AIM_DISTANCE_UP_UP (aim_distance + 0.54f) /* 辅助瞄准距离（最远） */
+
+#define X_zoom 1.86f                            /* LCD 显示 x 缩放 */
+#define Y_zoom 1.875f                           /* LCD 显示 y 缩放 */
+#define Cut_height 119                          /* 下采样图像高度 */
+#define Cut_Width 187                           /* 下采样图像宽度 */
+
+/* ================= LCD 显示（空实现） ================= */
 
 #define RED 0
 #define GREEN 0
@@ -43,22 +55,28 @@
 #define lcd_showint16(x, y, value) ((void)0)
 #define lcd_showfloat(x, y, value, len, precision) ((void)0)
 
+/* ================= 跟踪方向枚举 ================= */
+
 enum track_type_e
 {
-    TRACK_LEFT,
-    TRACK_RIGHT,
+    TRACK_LEFT,     /* 跟左线 */
+    TRACK_RIGHT,    /* 跟右线 */
 };
+
+/* ================= 车库状态枚举 ================= */
 
 enum atg_port_garage_type_e
 {
-    GARAGE_NONE = 0,
-    GARAGE_IN_LEFT,
-    GARAGE_IN_RIGHT,
-    GARAGE_FOUND_LEFT,
-    GARAGE_FOUND_RIGHT,
-    GARAGE_OUT_LEFT,
-    GARAGE_OUT_RIGHT,
+    GARAGE_NONE = 0,        /* 无车库 */
+    GARAGE_IN_LEFT,         /* 左入库 */
+    GARAGE_IN_RIGHT,        /* 右入库 */
+    GARAGE_FOUND_LEFT,      /* 左车库发现 */
+    GARAGE_FOUND_RIGHT,     /* 右车库发现 */
+    GARAGE_OUT_LEFT,        /* 左出库 */
+    GARAGE_OUT_RIGHT,       /* 右出库 */
 };
+
+/* ================= 包含所有模块头文件 ================= */
 
 #include "round.h"
 #include "cross.h"
@@ -69,14 +87,19 @@ enum atg_port_garage_type_e
 #include "yroad.h"
 #include "road.h"
 
+/* ================= 全局变量声明 ================= */
+
+/* 图像缓冲区 */
 extern uint8 global_Img[MT9V03X_H][MT9V03X_W];
 extern uint8 global_Img2[Cut_height][Cut_Width];
 extern uint8 global_Img3[50][80];
 extern uint8 global_Img4[MT9V03X_H][MT9V03X_W];
 extern uint8 Bin_Image[MT9V03X_H / 2][MT9V03X_W / 2];
 
+/* 原始图像 */
 extern image_t img_raw;
 
+/* 边线数组声明（详见 reference_globals.c） */
 extern int ipts0[MT9V03X_HH][2], ipts1[MT9V03X_HH][2];
 extern float rpts0[MT9V03X_HH][2], rpts1[MT9V03X_HH][2];
 extern float rpts0b[MT9V03X_HH][2], rpts1b[MT9V03X_HH][2];
@@ -94,6 +117,7 @@ extern int rpts0an_num, rpts1an_num;
 extern int rptsc0_num, rptsc1_num;
 extern int rpts_num, rptsn_num;
 
+/* 搜线参数 */
 extern int16 begin_x, begin_y;
 extern int16 thres, thres_temp, thres_up;
 extern int16 block_size, clip_value, line_blur_kernel;
@@ -104,12 +128,14 @@ extern float aim_distance, aim_distance_temp, aim_distance_far, adaptive_aim_dis
 extern int aim_idx, aim_idx_up, aim_idx_up_up;
 extern int16 Up_Error;
 
+/* 角点状态 */
 extern int Lpt0_rpts0s_id, Lpt1_rpts1s_id, Ypt0_rpts0s_id, Ypt1_rpts1s_id;
 extern int inv_Lpt0_rpts0s_id, inv_Lpt1_rpts1s_id;
 extern bool is_straight0, is_straight1, is_straight_far_0, is_straight_far_1;
 extern bool Ypt0_found, Ypt1_found, Lpt0_found, Lpt1_found;
 extern bool is_turn0, is_turn1;
 
+/* 元素与控制状态 */
 extern enum track_type_e track_type;
 
 extern uint16 OSTU_thres;

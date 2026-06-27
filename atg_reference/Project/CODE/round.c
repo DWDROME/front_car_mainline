@@ -1,31 +1,65 @@
+/* =====================================================================
+ *  环岛检测与通过
+ *
+ *  环岛结构：
+ *
+ *         直道
+ *           │
+ *     ┌─────┴─────╥─────────┐
+ *     │           ║         │
+ *  直道入口    环岛圆弧    出口直道
+ *     │         ═══         │
+ *     └─────────╨───────────┘
+ *           │
+ *         直道
+ *
+ *  从直道进入，绕环岛圆弧行驶，选一条直道出去。
+ *
+ *  状态机：
+ *    NONE ──(L角点+对侧直道)──► BEGIN ──(线先丢后有)──► IN ──(L角点)──► END ──(距离+线恢复)──► NONE
+ *
+ *  检测逻辑：
+ *    本侧有 L 角点 + 对侧是直道 → 可能是环岛
+ *    调用 cross_farline_L/R 寻找远端 L 角点：
+ *      - 找到远端 L → 环岛（奇数次）或 车库（偶数次）
+ *      - 没找到 → 不是环岛
+ * ===================================================================== */
 #include "round.h"
+
 #define PI               3.14159265358979f
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 #define MINMAX(input, low, upper) MIN(MAX(input, low), upper)
-enum round_type_e  round_type = ROUND_NONE;
-float round_aim_distance;
-int16 round_speed;
-int16 left_round_cnt,right_round_cnt;
+
+enum round_type_e  round_type = ROUND_NONE;           /* 当前环岛状态 */
+float round_aim_distance;                              /* 环岛内前瞻距离 */
+int16 round_speed;                                     /* 环岛内速度 */
+int16 left_round_cnt,right_round_cnt;                  /* 左/右环岛通过计数 */
+
+/* 环岛入口检测：本侧有 L 角点 + 对侧是直道 */
 void check_round()
 {
-
-        if(round_type == ROUND_NONE && Lpt0_found  && is_straight1&&Lpt0_rpts0s_id<30) check_round_L(); //��һ���ҵ�90��յ㣬��һ��Ϊ��ֱ������90��Ĺյ��㹻����ʱ��ͨ��Lpt0_rpts0s_id�б�յ���Զ�˻��ǽ��ˣ���ʼ�жϻػ�������
+        /* 左侧 L 角点 + 右侧直道 → 检查是否是左环岛 */
+        if(round_type == ROUND_NONE && Lpt0_found  && is_straight1&&Lpt0_rpts0s_id<30) check_round_L();
+        /* 右侧 L 角点 + 左侧直道 → 检查是否是右环岛 */
         if(round_type == ROUND_NONE && Lpt1_found  && is_straight0&&Lpt1_rpts1s_id<30) check_round_R();
-
 
 }
 
+/* 环岛状态机主流程 */
 void run_round()
 {
-
+    /* --- 右环岛 BEGIN：进入环岛入口 ---
+     * 跟左线（内侧），等右线先丢后有 → 进入 IN */
     if(round_type==ROUND_RIGHT_BEGIN) {
 //        cross_farline_R();
         track_type = TRACK_LEFT;
         circle_type = CIRCLE_NONE;
         cross_type = CROSS_NONE;
 
+        /* 右线丢失计数 */
         if (rpts1s_num < 0.2 / sample_dist) { none_right_line++; }
+        /* 右线恢复且之前丢过 → 进入 IN */
         if (rpts1s_num > (1.0 / sample_dist-40 )&& none_right_line > 2) {
             have_right_line++;
             if (have_right_line > 1) {
@@ -35,11 +69,11 @@ void run_round()
             }
         }
 
-
     }
+    /* --- 右环岛 IN：环岛内部 ---
+     * 跟左线，等左侧出现 L 角点（出口位置）→ 进入 END */
     else if(round_type==ROUND_RIGHT_IN)
     {
-
         track_type = TRACK_LEFT;
         if(Lpt0_found&&Lpt0_rpts0s_id<rpts0s_num*0.8)
         {
@@ -47,20 +81,23 @@ void run_round()
             aim_distance = AIM_DISTENCE;
         }
 
-
-
     }
+    /* --- 右环岛 END：驶出环岛 ---
+     * 跟左线，截断到 L 角点位置，等距离+线恢复 → 退出 */
     else if(round_type==ROUND_RIGHT_END)
     {
         //begin_y=MT9V03X_H*0.7;
         aim_distance = round_aim_distance;
         track_type = TRACK_LEFT;
         Count_dis_Flag=1;
+        /* 截断到 L 角点位置 */
         if(Lpt0_found){
                 rpts0s_num = clip(Lpt0_rpts0s_id+8,0,rpts0s_num);
                 rptsc0_num = clip(Lpt0_rpts0s_id+8,0,rpts0s_num);
         }
+        /* 右线丢失计数 */
         if (rpts1s_num < 0.2 / sample_dist)     { none_right_line++; }
+        /* 距离够 + 右线恢复 → 退出环岛 */
         if(total_distence>=3000&&none_right_line>2&&rpts1s_num>65){
             track_type = TRACK_RIGHT;
             Count_dis_Flag=0;
@@ -85,9 +122,9 @@ void run_round()
         }
 
     }
+    /* --- 左环岛 BEGIN：与右环岛对称 --- */
     else if(round_type==ROUND_LEFT_BEGIN)
     {
-
         track_type = TRACK_RIGHT;
         circle_type = CIRCLE_NONE;
         cross_type = CROSS_NONE;
@@ -102,6 +139,7 @@ void run_round()
             }
         }
     }
+    /* --- 左环岛 IN --- */
     else if(round_type==ROUND_LEFT_IN)
     {
         track_type = TRACK_RIGHT;
@@ -111,6 +149,7 @@ void run_round()
             aim_distance = AIM_DISTENCE;
         }
     }
+    /* --- 左环岛 END --- */
     else if(round_type==ROUND_LEFT_END)
     {
         aim_distance = round_aim_distance;
@@ -146,16 +185,19 @@ void run_round()
     //lcd_showstr(1,1,"round_right");
 }
 
+/* 左环岛/车库联合检测：
+ * 调用 cross_farline_L 寻找远端 L 角点。
+ * 奇数次 → 环岛，偶数次 → 车库。 */
 void check_round_L()
 {
 /*
- * cross_farline_L����cross_farline_L�Ǻ���Ԫ�ز�������Զ�����߷ǳ���Ч�ĺ���
- * ������check_round_Lʱ��˵���Ѿ��ҵ��˹յ�ͳ�ֱ�������ʱ����cross_farline_LȥѰ�ҹյ����ڱ����Ϸ�Զ�˵���
- *���ҵ�far_Lpt0_found��˵��һ��ͬʱ������������90��յ㣬�ټ�������һ����ߵĳ�ֱ�����б������������˳���ı����ж������������ھ���ʱ������ͷ���ǲ���һ���ǳ�ֱ������һ������������90��յ�����ӣ���
- * ����ȡ���˻ػ�Ԫ�أ�����������ǵ�ͱ��ߵ�����±�Ȼ�ǳ�����ж���������ֱ������GARAGE_FOUND_LEFT��GARAGE_FOUND_RIGHT
- * ͨ����������ļ����Լ������ķ�������������ʱ�䣬ѭ�������Ļ�û������·�ڵڶ��ο�������͸�GARAGE_IN_LEFT����GARAGE_IN_RIGHT
- * ��round_type��صľͿ��Բ��ÿ��ˣ�û�����Ԫ����
- * check_round_Rͬ��
+ * cross_farline_L����cross_farline_L�Ǻ���Ԫ�ز�������Զ�����߷ǳ���Ч�ĺ���
+ * ������check_round_Lʱ��˵���Ѿ��ҵ��˹յ�ͳ�ֱ�������ʱ����cross_farline_LȥѰ�ҹյ����ڱ����Ϸ�Զ�˵���
+ *���ҵ�far_Lpt0_found��˵��һ��ͬʱ������������90��յ㣬�ټ�������һ����ߵĳ�ֱ�����б������������˳���ı����ж������������ھ���ʱ������ͷ���ǲ���һ���ǳ�ֱ������һ������������90��յ�����ӣ���
+ * ����ȡ���˻ػ�Ԫ�أ�����������ǵ�ͱ��ߵ�����±�Ȼ�ǳ�����ж���������ֱ������GARAGE_FOUND_LEFT��GARAGE_FOUND_RIGHT
+ * ͨ����������ļ����Լ������ķ�������������ʱ�䣬ѭ�������Ļ�û������·�ڵڶ��ο�������͸�GARAGE_IN_LEFT����GARAGE_IN_RIGHT
+ * ��round_type��صľͿ��Բ��ÿ��ˣ�û�����Ԫ����
+ * check_round_Rͬ��
  * */
     cross_farline_L();
     if(far_Lpt0_found) {

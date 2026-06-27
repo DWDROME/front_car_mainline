@@ -1,9 +1,16 @@
+/* =====================================================================
+ *  图像处理工具库接口（imgproc）
+ *
+ *  提供基础图像操作：阈值化、滤波、形态学、沿线追踪、线段逼近、
+ *  点集处理（重采样/角度/NMS/偏移）、大津法、绘图工具
+ * ===================================================================== */
 #ifndef IMGPROC_H
 #define IMGPROC_H
 
 #include <stdint.h>
 #include "utils.h"
 
+/* 图像结构体：data 为像素数据，width/height 为尺寸，step 为行步长 */
 typedef struct image {
     uint8_t *data;
     uint32_t width;

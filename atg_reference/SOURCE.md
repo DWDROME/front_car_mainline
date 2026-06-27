@@ -1,27 +1,26 @@
-# ATG2022 Reference Source
+# ATG2022 参考源码
 
-This directory contains the purchased ATG2022 reference algorithm source used as
-the new tracking and element-recognition migration target.
+本目录存放已购入的 ATG2022 参考算法源码，作为新赛道循迹与元素识别
+迁移目标。
 
-Source root on the local machine:
+本地机器上的源码根路径：
 
 ```text
 /mnt/c/Users/ds_ev/Downloads/Compressed/智能车比赛资料v1.2/智能车比赛资料v1.2/ATG2022_Master/ATG2022_Master V1.2
 ```
 
-Copied source groups:
+已复制的源码分组：
 
-| Destination | Source | Purpose |
+| 目标目录 | 来源 | 用途 |
 | --- | --- | --- |
-| `Project/CODE/` | `CODE/*.c`, `CODE/*.h` selected algorithm files | Line search, perspective helpers, corners, cross, half-cross, circle, patching, y-road, ramp, road classification |
-| `Project/USER/` | `USER/Cpu0_Main.c`, `USER/Cpu0_Main.h` | Main-loop evidence and selected-line logic reference |
-| `port/` | local files only | LS2K adapter layer, no TC264 peripherals |
+| `Project/CODE/` | `CODE/*.c`, `CODE/*.h` 精选算法文件 | 边线搜索、透视变换辅助、角点检测、十字、半十字、圆环、补线、Y 字路、坡道、赛道分类 |
+| `Project/USER/` | `USER/Cpu0_Main.c`, `USER/Cpu0_Main.h` | 主循环证据与选线逻辑参考 |
+| `port/` | 仅本地文件 | LS2K 适配层，不含 TC264 外设 |
 
-Mechanical cleanup already applied after copy:
+复制后已执行的机械清理：
 
-- CRLF converted to LF.
-- Trailing spaces and tabs removed.
+- CRLF 转换为 LF。
+- 清除行尾空格与制表符。
 
-The copied algorithm files are otherwise intended to stay close to the source.
-Port-specific definitions, hardware replacement, and report bridging belong in
-`atg_reference/port/` or `code/tracking/`.
+复制后的算法文件原则上保持与原始源码接近。移植相关定义、硬件替换
+及上报桥接属于 `atg_reference/port/` 或 `code/tracking/` 的职责。

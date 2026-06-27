@@ -1,3 +1,8 @@
+/* =====================================================================
+ *  通用类型定义（common）
+ *
+ *  定义固定宽度整数类型的短别名，方便在嵌入式代码中使用。
+ * ===================================================================== */
 #ifndef ATG_REFERENCE_PORT_COMMON_H
 #define ATG_REFERENCE_PORT_COMMON_H
 
@@ -14,4 +19,4 @@ typedef uint16_t uint16;
 typedef uint32_t uint32;
 typedef uint64_t uint64;
 
-#endif
+#endif /* ATG_REFERENCE_PORT_COMMON_H */

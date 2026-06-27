@@ -1,17 +1,39 @@
+/* =====================================================================
+ *  å¡é“æ£€æµ‹ä¸é€šè¿‡
+ *
+ *  æ•´ä½“æµç¨‹ï¼š
+ *    NONE â”€â”€(æ¿€å…‰+è·ç¦»)â”€â”€â–º NEAR â”€â”€(æ¿€å…‰è¿œ)â”€â”€â–º UP â”€â”€(æ¿€å…‰è¿‘)â”€â”€â–º DOWN â”€â”€(æ¿€å…‰è¿œ)â”€â”€â–º NONE
+ *
+ *  æ£€æµ‹ä¾æ®ï¼š
+ *    - æ¿€å…‰æµ‹è·ä»ªï¼ˆTFmini_Plusï¼‰ï¼šè·ç¦»å’Œä¿¡å·å¼ºåº¦
+ *    - è¾¹çº¿çŠ¶æ€ï¼šis_straight0/1ï¼ˆä¸¤ä¾§éƒ½æ˜¯ç›´é“ï¼‰
+ *    - åç§»é‡ï¼šUp_Error åœ¨åˆç†èŒƒå›´å†…
+ *    - è§’åº¦ï¼šconf1/conf2 åœ¨åˆç†èŒƒå›´å†…
+ *    - ç´¯è®¡è·ç¦»ï¼šRamp_total_distence > 900 ç¡®è®¤è¿›å…¥
+ *
+ *  å„é˜¶æ®µä»»åŠ¡ï¼š
+ *    NEARï¼šæ¥è¿‘å¡é“ï¼Œå‡é€Ÿï¼Œç­‰å¾…æ¿€å…‰ä¿¡å·å˜åŒ–ç¡®è®¤
+ *    UPï¼šä¸Šå¡ï¼Œé™ä½é€Ÿåº¦ï¼Œç­‰å¾…æ¿€å…‰æ£€æµ‹åˆ°å¡é¡¶
+ *    DOWNï¼šä¸‹å¡ï¼Œç­‰å¾…æ¿€å…‰æ£€æµ‹åˆ°å¡åº•ï¼Œæ¢å¤çŠ¶æ€
+ * ===================================================================== */
 #include "Ramp.h"
-enum ramp_type_e  ramp_type;
-int16 Ramp_Count;
-int ramp_numb;
-int16 Ramp_speed;
 
+enum ramp_type_e  ramp_type;                           /* å½“å‰å¡é“çŠ¶æ€ */
+int16 Ramp_Count;                                      /* çŠ¶æ€ç¨³å®šè®¡æ•° */
+int ramp_numb;                                         /* ç´¯è®¡é€šè¿‡çš„å¡é“æ•° */
+int16 Ramp_speed;                                      /* å¡é“è¡Œé©¶é€Ÿåº¦ */
+
+/* å¡é“æ£€æµ‹ï¼šæ¯å¸§è°ƒç”¨ï¼Œæ¿€å…‰+è¾¹çº¿çŠ¶æ€è”åˆåˆ¤æ–­ */
 void Check_ramp()
-//ÎÒµÄÏë·¨ÊÇ£¬¼ì²âÁ½²à±ßÏßµÄÆ«²î¶¼¿ØÖÆÔÚÒ»¶¨·¶Î§ÄÚ£¬±àÂëÆ÷ÀÛ¼Æ¾àÀë·ÀÖ¹ÎóÅĞ£¬ÒÔ¼°²â¾àµÄÌõ¼şÀ´ÅĞ¶¨ÊÇ·ñ½Ó½üÆÂµÀ£¬µ«18½ìÖĞ»¹´æÔÚÕÏ°­Îï£¬ºÍÆÂµÀÊÇ·ñ»á·¢ÉúÎóÅĞÊÇÒ»¸öÖµµÃÌ½ÌÖµÄÎÊÌâ£º£©
 {
-    if((TFmini_Plus_Dis<=200&&TFmini_Plus_Dis>0&&TFmini_Plus_Strong>120&&is_straight1&&is_straight0&&ramp_type==RAMP_NONE&&Up_Error>-25&&Up_Error<25&&rpts0s_num>50&&rpts1s_num>40&&conf1<18&&conf1>-18&&conf2>-18&&conf2<18)||(TFmini_Plus_Dis<=50&&TFmini_Plus_Dis>0&&TFmini_Plus_Strong>100))//&&rpts0s_num>50&&rpts1s_num>50
+    /* æ£€æµ‹æ¡ä»¶ï¼š
+     *   æ¿€å…‰è·ç¦» 200mm å†… + ä¿¡å·å¼º + ä¸¤ä¾§ç›´é“ + åç§»å° + è§’åº¦å°
+     *   æˆ–è€…æ¿€å…‰è·ç¦» 50mm å†…ï¼ˆæè¿‘è·ç¦»ï¼Œå¼ºåˆ¶è¿›å…¥ï¼‰ */
+    if((TFmini_Plus_Dis<=200&&TFmini_Plus_Dis>0&&TFmini_Plus_Strong>120&&is_straight1&&is_straight0&&ramp_type==RAMP_NONE&&Up_Error>-25&&Up_Error<25&&rpts0s_num>50&&rpts1s_num>40&&conf1<18&&conf1>-18&&conf2>-18&&conf2<18)||(TFmini_Plus_Dis<=50&&TFmini_Plus_Dis>0&&TFmini_Plus_Strong>100))
     {
-
         Clean_Time_count_flag=1;
-        if(Ramp_total_distence>900||(TFmini_Plus_Dis<=50&&TFmini_Plus_Dis>0&&TFmini_Plus_Strong>100))//
+        /* ç´¯è®¡è·ç¦» > 900 æˆ–æè¿‘è·ç¦» â†’ ç¡®è®¤è¿›å…¥å¡é“ */
+        if(Ramp_total_distence>900||(TFmini_Plus_Dis<=50&&TFmini_Plus_Dis>0&&TFmini_Plus_Strong>100))
         {
             Clean_Time_count_flag = 0;
             ramp_type=RAMP_NEAR;
@@ -19,19 +41,23 @@ void Check_ramp()
         }
 
     }
-    if(Clean_Time_count>3500&&ramp_type==RAMP_NONE||TFmini_Plus_Dis>450)//ÈôÎóÅĞÔòÇå³ı±êÖ¾Î»
+    /* è¶…æ—¶æˆ–æ¿€å…‰å¤ªè¿œ â†’ é‡ç½®æ£€æµ‹æ ‡å¿— */
+    if(Clean_Time_count>3500&&ramp_type==RAMP_NONE||TFmini_Plus_Dis>450)
     {
         Clean_Time_count_flag = 0;
-
     }
 
 }
+
+/* å¡é“é€šè¿‡çŠ¶æ€æœº */
 void Run_Ramp()
 {
-    //Ç¿ÁÒ½¨Òé18½ìÔÚÆÂµÀ½×¶ÎÊ¹ÓÃÍ¼ÏñºÍ²â¾àÅĞ±ğµ«ÓÃµç´Åµ¼º½£¡
+    /* --- NEARï¼šæ¥è¿‘å¡é“ ---
+     * å‡é€Ÿï¼Œç­‰æ¿€å…‰ä¿¡å·å˜åŒ–ç¡®è®¤ï¼š
+     *   æ¿€å…‰çªç„¶å˜è¿œï¼ˆâ‰¥800ï¼‰æˆ–ä¿¡å·å¼± â†’ ä¸Šå¡äº†
+     *   ç´¯è®¡è·ç¦» > 3500 â†’ ä¹Ÿè®¤ä¸ºä¸Šå¡ */
     if(ramp_type==RAMP_NEAR)
     {
-        //µÚÒ»¸ö½×¶ÎÔÚ½Ó½üÆÂµÀ£¬¸Õ¸ÕÉÏÆÂÊ±£¬²â¾àÍ»È»±äÔ¶£¬»òÕß²â¾àĞÅºÅÇ¿¶È·Ç³£Èõ£¬ÔòËµÃ÷¿´µ½Ìì»¨°å»òÕß³¬³ö²â¾à·¶Î§ÁË£¬ÔÙ¼ÓÉÏ±àÂëÆ÷ÀÛ¼Æ£¬¿ÉÒÔÌø×ªµ½ÉÏÆÂ½×¶Î
         Count_dis_Flag = 1;
         LAimSpeed = Ramp_speed;
         RAimSpeed = Ramp_speed;
@@ -47,15 +73,17 @@ void Run_Ramp()
 
         }
     }
+    /* --- UPï¼šä¸Šå¡ ---
+     * é™ä½é€Ÿåº¦ï¼Œç­‰æ¿€å…‰æ£€æµ‹åˆ°å¡é¡¶ï¼ˆè·ç¦»å˜è¿‘+ä¿¡å·å¼ºï¼‰ */
     else if(ramp_type==RAMP_UP)
     {
         Count_dis_Flag  = 1;
-        LAimSpeed = Ramp_speed-40;//0
-        RAimSpeed = Ramp_speed-40;//
+        LAimSpeed = Ramp_speed-40;
+        RAimSpeed = Ramp_speed-40;
         aim_distance = 0.35;
         if(TFmini_Plus_Dis<180&&TFmini_Plus_Strong>150||total_distence>=3000)
         {
-            //ÉÏÆÂ×ªÏÂÆÂ£¬²â¾à¾àÀëĞ¡ÓÚÒ»¶¨¾àÀë£¬±àÂëÆ÷¼ÇÂ¼³¤¶È£¬»ò±àÂëÆ÷×ã¹»³¤Ç¿ÖÆÌø×ª±êÖ¾Î»
+            /* æ£€æµ‹åˆ°å¡é¡¶ï¼Œå‡†å¤‡ä¸‹å¡ */
             LAimSpeed = 175;
             RAimSpeed = 175;
             Ramp_Count++;
@@ -68,22 +96,21 @@ void Run_Ramp()
 
         }
     }
+    /* --- DOWNï¼šä¸‹å¡ ---
+     * ç­‰æ¿€å…‰æ£€æµ‹åˆ°å¡åº•ï¼ˆè·ç¦»å˜è¿œï¼‰ï¼Œæ¢å¤çŠ¶æ€ */
     else if(ramp_type==RAMP_DOWN)
     {
-        //begin_y=MT9V03X_H-15;
-        //LAimSpeed = AimSpeed-20;
-        //RAimSpeed = AimSpeed-20;
         aim_distance = 0.35;
         Count_dis_Flag=1;
-        if(TFmini_Plus_Dis>210)//||(TFmini_Plus_Dis==0&&TFmini_Plus_Strong<150)
+        if(TFmini_Plus_Dis>210)
         {
             SetSpeed = AimSpeed;
             Ramp_Count++;
 
         }
-        if(Ramp_Count>=6||total_distence>=1500)//&&total_distence>=500
+        /* ç¨³å®šè®¡æ•°è¶³å¤Ÿæˆ–è·ç¦»å¤Ÿ â†’ é€€å‡ºå¡é“ */
+        if(Ramp_Count>=6||total_distence>=1500)
             {
-            //³¤¶È´óÓÚÒ»¶¨¾àÀë£¬»ò±àÂëÆ÷Ç¿ÖÆÇå³ıÀë¿ªÆÂµÀ
                 Ramp_Count = 0;
                 begin_y=BEGIN_Y;
                 road_type = ROAD_NORMAL;
