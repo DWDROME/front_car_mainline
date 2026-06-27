@@ -11,6 +11,7 @@
 1. **Commit 边界纪律** —— 重构提交不得混合算法行为改动。
 2. **调试显示同源** —— 上位机显示坐标必须从算法模块导出,禁止独立推算。
 3. **诊断提取+门控模式** —— 每帧诊断应提取为独立函数再套环境变量门控,而非散落 `if-env` 在各调用点。
+4. **ATG 诊断边界** —— app/report/assistant 只读 tracking adapter 的 snapshot/view,不直接 include ATG/port 内部头。
 
 ---
 
@@ -189,3 +190,60 @@ static void print_circle_something_diag(...)
 - 该函数在打印前必须检查对应域的环境变量门控。
 - 禁止在算法逻辑中间散落 `if(env_gate) printf(...)`。
 - 现有诊断:如果发现某处散落 `if-env` + `printf`,提取为独立函数再加统一 gate。
+
+---
+
+## 4. Convention: App Diagnostics Must Use The Tracking Adapter Boundary
+
+### What
+
+`code/app` 里的 report、replay、assistant、control input 只能 include 项目头
+`tracking/atg_reference_mainline.hpp` 读取 ATG-derived 状态。
+
+允许的边界 API:
+
+```cpp
+atg_replay_snapshot_t atg_replay_snapshot();
+atg_report_snapshot_t atg_report_snapshot();
+atg_line_points_view_t atg_line_points(atg_line_points_id id);
+atg_raw_points_view_t atg_raw_points(atg_raw_points_id id);
+int atg_circle_entry_scan_seed_raw(int *seed_x, int *seed_y);
+```
+
+`headfile.h`、`atg_reference_step.h`、`shy_Image.h` 和 ATG/port 全局变量只允许出现在
+`code/tracking/atg_reference_mainline.cpp` 这个 adapter 边界内。
+
+### Why
+
+app 层直读 ATG 全局会制造三类问题:
+
+- app 变成第二个 ATG port,后续移动 `atg_reference/` 时调用面爆炸。
+- report/assistant 容易保存自己的坐标公式或枚举解释,形成第二真相源。
+- 诊断字段散落在多个 app 文件里,行为保持重构时难以确认输出是否同源。
+
+### Wrong
+
+```cpp
+#include "headfile.h"
+#include "shy_Image.h"
+
+printf("atg_rpts0s_num=%d\n", rpts0s_num);
+```
+
+### Correct
+
+```cpp
+#include "tracking/atg_reference_mainline.hpp"
+
+const atg_report_snapshot_t atg = atg_report_snapshot();
+printf("atg_rpts0s_num=%d\n", atg.rpts0s_num);
+```
+
+### Enforcement
+
+- 改 app 诊断前先搜索:
+  ```bash
+  rg -n "#include \"(headfile|atg_reference_step|shy_Image)\\.h\"" code/app code/tracking
+  ```
+- 预期命中只能在 `code/tracking/atg_reference_mainline.cpp`。
+- assistant 新增显示点时,优先扩展 adapter view/snapshot;如果点的公式属于算法语义,在算法模块导出,再由 adapter 转发。

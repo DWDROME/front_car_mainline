@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/tracking/critical-audit-guide.md", "reason": "reference_step/circle/cross/shy_Image/imgproc/control tracking work must preserve current-frame geometry contracts and avoid fallback-style behavior changes."}
+{"file": ".trellis/spec/quality/embedded-tracking-guidelines.md", "reason": "embedded C/C++ tracking edits must stay simple, local, evidence-backed, and must not hide missing geometry or add silent fallback logic."}

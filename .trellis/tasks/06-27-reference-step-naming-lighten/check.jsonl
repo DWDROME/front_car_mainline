@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/tracking/critical-audit-guide.md", "reason": "quality check must verify no algorithm/state/control behavior changed accidentally during naming or slimming work."}
+{"file": ".trellis/spec/quality/embedded-tracking-guidelines.md", "reason": "quality check must reject stale-geometry fallbacks, hidden state masking, broad rewrites, and unverified claims."}
