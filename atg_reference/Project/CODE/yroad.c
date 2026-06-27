@@ -46,14 +46,13 @@ int8 yroad_cnt = 0;
  * 仅在 YROAD_NONE 状态下触发，防止重复触发。 */
 void check_yroad()
 {
-    bool Yfound = Ypt0_found || Ypt1_found;
+    bool y_found = Ypt0_found || Ypt1_found;
 
     /* 状态切换：发现 Y 角点 → YROAD_FOUND */
-    if(yroad_type == YROAD_NONE && Yfound)
+    if(yroad_type == YROAD_NONE && y_found)
     {
         yroad_type = YROAD_FOUND;
         Count_dis_Flag = 1;
-        //yroad_encoder = get_total_encoder();
     }
 }
 
@@ -74,7 +73,7 @@ void check_yroad()
  */
 void run_yroad()
 {
-    bool Yfound = Ypt0_found || Ypt1_found;
+    bool y_found = Ypt0_found || Ypt1_found;
 
     /* FOUND/NEAR 阶段：等待靠近并选择分支 */
     if(yroad_type == YROAD_FOUND || yroad_type == YROAD_NEAR)
@@ -82,7 +81,7 @@ void run_yroad()
         aim_distance = AIM_DISTENCE;
 
         /* Y 角点足够近 → 进入 NEAR */
-        if(Yfound && (Ypt0_rpts0s_id < 0.6 / sample_dist || Ypt1_rpts1s_id < 0.6 / sample_dist))
+        if(y_found && (Ypt0_rpts0s_id < 0.6 / sample_dist || Ypt1_rpts1s_id < 0.6 / sample_dist))
         {
             yroad_type = YROAD_NEAR;
         }
@@ -100,7 +99,7 @@ void run_yroad()
         }
 
         /* 行驶超过 6500 counts 且 Y 角点消失 → 进入 RUN 阶段 */
-        if(total_distence >= 6500 && !Yfound)
+        if(total_distence >= 6500 && !y_found)
         {
             Count_dis_Flag = 0;
             if(if_check_ramp)
@@ -118,26 +117,26 @@ void run_yroad()
         }
     }
     /* LEFT_RUN 阶段：Y 角点再次出现 → 进入 LEFT_OUT */
-    else if(yroad_type == YROAD_LEFT_RUN && Yfound)
+    else if(yroad_type == YROAD_LEFT_RUN && y_found)
     {
         yroad_type = YROAD_LEFT_OUT; //begin_y=MT9V03X_H*0.85;
         Count_dis_Flag = 1;
     }
     /* RIGHT_RUN 阶段：Y 角点再次出现 → 进入 RIGHT_OUT */
-    else if(yroad_type == YROAD_RIGHT_RUN && Yfound)
+    else if(yroad_type == YROAD_RIGHT_RUN && y_found)
     {
         yroad_type = YROAD_RIGHT_OUT; //begin_y=MT9V03X_H*0.85;
         Count_dis_Flag = 1;
     }
     /* LEFT_OUT 阶段：行驶超过 4000 counts 且 Y 角点消失 → 回到 NONE */
-    else if(yroad_type == YROAD_LEFT_OUT && !Yfound && total_distence >= 4000)
+    else if(yroad_type == YROAD_LEFT_OUT && !y_found && total_distence >= 4000)
     {
         yroad_type = YROAD_NONE;
         begin_y = BEGIN_Y;
         Count_dis_Flag = 0;
     }
     /* RIGHT_OUT 阶段：行驶超过 4000 counts 且 Y 角点消失 → 回到 NONE */
-    else if(yroad_type == YROAD_RIGHT_OUT && !Yfound && total_distence >= 4000)
+    else if(yroad_type == YROAD_RIGHT_OUT && !y_found && total_distence >= 4000)
     {
         yroad_type = YROAD_NONE;
         begin_y = BEGIN_Y;

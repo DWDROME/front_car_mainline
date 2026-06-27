@@ -3,15 +3,11 @@
 #include "app/options.hpp"
 #include "clip.hpp"
 #include "core/config.hpp"
+#include "tracking/atg_reference_mainline.hpp"
 
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
-
-extern "C" {
-#include "atg_reference_step.h"
-#include "headfile.h"
-}
 
 namespace
 {
@@ -59,7 +55,7 @@ void apply_cross_half_relay(control_input_t *input, int line_found)
     {
         return;
     }
-    if(cross_type != CROSS_HALF || line_found)
+    if(!atg_cross_half_active() || line_found)
     {
         g_cross_half_relay_frames = 0;
         g_cross_half_relay_timeout_reported = 0;
@@ -86,7 +82,7 @@ void apply_cross_half_relay(control_input_t *input, int line_found)
         {
             std::printf("ATGCrossHalfRelay: timeout frames=%d cross_type=%d, stop on no-line\n",
                         g_cross_half_relay_frames,
-                        (int)cross_type);
+                        atg_cross_type_value());
             g_cross_half_relay_timeout_reported = 1;
         }
         return;
@@ -112,13 +108,7 @@ control_input_t control_input_from_current_frame(const runtime_t *rt, int line_f
 
     input.line_found = line_found ? 1 : 0;
     input.guide_error = rt->vision.guide_error;
-    input.element_active =
-        (cross_type != CROSS_NONE ||
-         circle_type != CIRCLE_NONE ||
-         round_type != ROUND_NONE ||
-         yroad_type != YROAD_NONE ||
-         ramp_type != RAMP_NONE ||
-         garage_type != GARAGE_NONE) ? 1 : 0;
+    input.element_active = atg_element_active() ? 1 : 0;
     input.stop_line = 0;
 
     apply_cross_half_relay(&input, line_found);

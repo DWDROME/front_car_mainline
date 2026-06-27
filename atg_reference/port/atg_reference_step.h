@@ -26,16 +26,16 @@ int atg_reference_process_frame(uint8_t gray[120][160], int64_t encoder_total);
 /* ================= 查询接口 ================= */
 
 /* 是否有有效导引线（rptsn_num > 0） */
-int atg_reference_track_line_found(void);
+int line_found(void);
 
 /* 设置车辆参考点 x 坐标（原图坐标） */
-void atg_reference_set_vehicle_raw_ref_x(float raw_x);
+void set_car_x(float x);
 
 /* 获取车辆参考点 x 坐标 */
-float atg_reference_vehicle_raw_ref_x(void);
+float car_x(void);
 
 /* 原图坐标 → 俯视角坐标（IPM 变换） */
-void atg_reference_raw_ref_to_ipm(float raw_x, float raw_y, float *ipm_x, float *ipm_y);
+void raw_to_ipm(float raw_x, float raw_y, float *ipm_x, float *ipm_y);
 
 /* 获取圆环 BEGIN 阶段累计行驶距离 */
 int64_t atg_reference_circle_begin_dist(void);
@@ -44,10 +44,10 @@ int64_t atg_reference_circle_begin_dist(void);
 int64_t atg_reference_circle_begin_last_dist(void);
 
 /* 获取选线来源名称（用于日志） */
-const char *atg_reference_selected_line_source(void);
+const char *line_src(void);
 
 /* 获取选线来源数字 id（用于数据记录） */
-int atg_reference_selected_line_source_id(void);
+int line_src_id(void);
 
 #ifdef __cplusplus
 }

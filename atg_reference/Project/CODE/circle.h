@@ -93,9 +93,9 @@ void update_circle_heading(float yaw_rate_rad_s, int period_ms, int valid);
 int circle_cal_log_enabled(void);
 
 /* 圆环入口 inner-hit 种子坐标（供 assistant 显示线复用）
- * left_side: 1=左环, 0=右环
+ * side: 0=左, 1=右
  * 返回 1 表示有效 */
-int circle_entry_inner_seed(int left_side, int *seed_x, int *seed_y,
+int circle_entry_inner_seed(int side, int *seed_x, int *seed_y,
                             float *seed_raw_x, float *seed_raw_y);
 
 /* 圆环主流程：处理 ENTRY/BEGIN/RUNNING/OUT 各阶段 */

@@ -40,7 +40,7 @@
  *    C — 弯道最深处角点，由局部角度 NMS 检测
  *
  *  坐标系：raw_x/raw_y 是逆旋转后的图像坐标（raw 图空间）。
- *  左环 = CIRCLE_SIDE_LEFT，右环 = CIRCLE_SIDE_RIGHT。
+ *  方向编码：0=左，1=右。
  * ===================================================================== */
 #include "circle.h"
 #include "atg_reference_step.h"
@@ -55,21 +55,14 @@
 
 /* ================= 左右方向工具 ================= */
 
-/* side 参数统一编码：0 = RIGHT，1 = LEFT。
- * 所有 side_* 函数都通过 side_index() 做归一化，避免调用方记错编码。
+/* side 参数统一编码：0=左，1=右。
  *
  * 关键映射：
  *   side_lpt_found/id  →  Lpt0/1_found, Lpt0/1_rpts0/1s_id（本侧 L 点）
  *   side_rpts_num      →  rpts0/1s_num（本侧线点数）
  *   side_opposite_*    →  对侧 L 点和直道状态
- *   side_begin_track   →  左环跟右线，右环跟左线（跟内侧）
+ *   side_begin_track   →  左环跟右线，右环跟左线
  *   side_out_track     →  切到对侧巡线 */
-enum circle_side_e
-{
-    CIRCLE_SIDE_RIGHT = 0,
-    CIRCLE_SIDE_LEFT = 1,
-};
-
 typedef struct circle_point_s
 {
     int x;
@@ -227,15 +220,11 @@ static float C_slope;
 static int C_best_i;                                 /* 角度最大的点索引 */
 static float C_best_abs_angle;
 
-/* side 参数统一编码：0 = RIGHT，1 = LEFT。
- * 所有 side_* 函数通过 side_index() 归一化，调用方只需传入 CIRCLE_SIDE_LEFT/RIGHT。
- * side_lpt / side_rpts 等映射到 imgproc 模块的全局变量。 */
-/* side 参数归一化：0 = RIGHT，1 = LEFT，其他值也安全映射 */
-static int side_index(int side) { return side ? CIRCLE_SIDE_LEFT : CIRCLE_SIDE_RIGHT; }
+/* side 参数统一编码：0=左，1=右。 */
 /* side 转字符，用于日志输出 */
-static char side_char(int side) { return side ? 'L' : 'R'; }
+static char side_char(int side) { return side ? 'R' : 'L'; }
 /* side 是否为左环 */
-static int side_is_left(int side) { return side_index(side) == CIRCLE_SIDE_LEFT; }
+static int side_is_left(int side) { return side == 0; }
 /* 本侧 L 点是否找到（Lpt0 对应左线，Lpt1 对应右线） */
 static int side_lpt_found(int side) { return side_is_left(side) ? (Lpt0_found ? 1 : 0) : (Lpt1_found ? 1 : 0); }
 
@@ -418,10 +407,10 @@ static void set_seed_line_from_B(int side, const circle_anchor_point_t *B)
  * 调用时机：投票通过后、投票失败时、抑制期间。 */
 void reset_circle_entry_votes(void)
 {
-    circle_entry_votes[CIRCLE_SIDE_RIGHT] = 0;
-    circle_entry_votes[CIRCLE_SIDE_LEFT] = 0;
-    clear_anchor(&circle_entry_pending_A[CIRCLE_SIDE_RIGHT]);
-    clear_anchor(&circle_entry_pending_A[CIRCLE_SIDE_LEFT]);
+    circle_entry_votes[1] = 0;
+    circle_entry_votes[0] = 0;
+    clear_anchor(&circle_entry_pending_A[1]);
+    clear_anchor(&circle_entry_pending_A[0]);
 }
 
 /* 抑制入环检测指定帧数。
@@ -468,8 +457,8 @@ void reset_circle_begin_flags(void)
     none_right_line = 0;
     have_left_line = 0;
     have_right_line = 0;
-    circle_begin_lost_streak[CIRCLE_SIDE_RIGHT] = 0;
-    circle_begin_lost_streak[CIRCLE_SIDE_LEFT] = 0;
+    circle_begin_lost_streak[1] = 0;
+    circle_begin_lost_streak[0] = 0;
 }
 
 /* 重置圆环几何状态：清除所有锚点、seed_line、搜索状态等。
@@ -480,19 +469,19 @@ void reset_circle_geometry_state(void)
     clear_anchor(&circle_A_point);
     clear_anchor(&circle_B_point);
     clear_anchor(&circle_C_point);
-    clear_anchor(&circle_entry_pending_A[CIRCLE_SIDE_RIGHT]);
-    clear_anchor(&circle_entry_pending_A[CIRCLE_SIDE_LEFT]);
-    circle_entry_ever_valid_B[CIRCLE_SIDE_RIGHT] = 0;
-    circle_entry_ever_valid_B[CIRCLE_SIDE_LEFT] = 0;
-    clear_seed_line(CIRCLE_SIDE_RIGHT);
-    clear_seed_line(CIRCLE_SIDE_LEFT);
-    circle_out_straight_streak[CIRCLE_SIDE_RIGHT] = 0;
-    circle_out_straight_streak[CIRCLE_SIDE_LEFT] = 0;
+    clear_anchor(&circle_entry_pending_A[1]);
+    clear_anchor(&circle_entry_pending_A[0]);
+    circle_entry_ever_valid_B[1] = 0;
+    circle_entry_ever_valid_B[0] = 0;
+    clear_seed_line(1);
+    clear_seed_line(0);
+    circle_out_straight_streak[1] = 0;
+    circle_out_straight_streak[0] = 0;
     circle_B_streak = 0;
     circle_C_streak = 0;
     circle_C_join_ok = 0;
-    circle_B_follow_fail_streak[CIRCLE_SIDE_RIGHT] = 0;
-    circle_B_follow_fail_streak[CIRCLE_SIDE_LEFT] = 0;
+    circle_B_follow_fail_streak[1] = 0;
+    circle_B_follow_fail_streak[0] = 0;
     circle_B_search_reason = CIRCLE_POINT_SEARCH_OK;
     circle_B_search_detail = "reset";
     circle_B_search_num = 0;
@@ -567,8 +556,8 @@ static void abort_circle_begin(const char *reason)
     reset_circle_begin_flags();
     reset_circle_geometry_state();
     reset_circle_entry_votes();
-    circle_loss_start_begin_dist[CIRCLE_SIDE_RIGHT] = -1;
-    circle_loss_start_begin_dist[CIRCLE_SIDE_LEFT] = -1;
+    circle_loss_start_begin_dist[1] = -1;
+    circle_loss_start_begin_dist[0] = -1;
     suppress_circle_reentry_after_exit();
 }
 
@@ -761,10 +750,10 @@ static void raw_trace_to_float(int trace[][2], int trace_num, float out[][2])
 /* 从 L 点偏移得到内侧暗点搜索起点（仅日志/调试用）。
  * 偏移量：左环 (+2, -5)，右环 (+5, -5)。
  * 这个偏移是为了让搜索起点更靠近圆环内侧的边界。 */
-int circle_entry_inner_seed(int left_side, int *seed_x, int *seed_y,
+int circle_entry_inner_seed(int side, int *seed_x, int *seed_y,
                             float *seed_raw_x, float *seed_raw_y)
 {
-    const int side = side_index(left_side);
+    side = side ? 1 : 0;
     const int found_lpt = side_lpt_found(side);
     const int lpt_num = side_rpts_num(side);
     int id = 0;
@@ -1762,7 +1751,7 @@ void check_circle(void)
     }
     if(circle_entry_suppressed()) return;
 
-    for(int side = CIRCLE_SIDE_RIGHT; side <= CIRCLE_SIDE_LEFT; side++)
+    for(int side = 1; side >= 0; side--)
     {
         circle_point_t A = {0, 0};
         if(circle_entry_detect(side, &A))
@@ -1780,7 +1769,7 @@ void check_circle(void)
         }
     }
 
-    for(int side = CIRCLE_SIDE_RIGHT; side <= CIRCLE_SIDE_LEFT; side++)
+    for(int side = 1; side >= 0; side--)
     {
         if(circle_entry_votes[side] >= ENTRY_OK_FRAMES)
         {
@@ -1984,14 +1973,14 @@ void run_circle(void)
 {
     switch(circle_type)
     {
-    case CIRCLE_LEFT_ENTRY: run_circle_entry(CIRCLE_SIDE_LEFT); break;
-    case CIRCLE_RIGHT_ENTRY: run_circle_entry(CIRCLE_SIDE_RIGHT); break;
-    case CIRCLE_LEFT_BEGIN: run_circle_begin(CIRCLE_SIDE_LEFT); break;
-    case CIRCLE_RIGHT_BEGIN: run_circle_begin(CIRCLE_SIDE_RIGHT); break;
-    case CIRCLE_LEFT_RUNNING: run_circle_running(CIRCLE_SIDE_LEFT); break;
-    case CIRCLE_RIGHT_RUNNING: run_circle_running(CIRCLE_SIDE_RIGHT); break;
-    case CIRCLE_LEFT_OUT: run_circle_out(CIRCLE_SIDE_LEFT); break;
-    case CIRCLE_RIGHT_OUT: run_circle_out(CIRCLE_SIDE_RIGHT); break;
+    case CIRCLE_LEFT_ENTRY: run_circle_entry(0); break;
+    case CIRCLE_RIGHT_ENTRY: run_circle_entry(1); break;
+    case CIRCLE_LEFT_BEGIN: run_circle_begin(0); break;
+    case CIRCLE_RIGHT_BEGIN: run_circle_begin(1); break;
+    case CIRCLE_LEFT_RUNNING: run_circle_running(0); break;
+    case CIRCLE_RIGHT_RUNNING: run_circle_running(1); break;
+    case CIRCLE_LEFT_OUT: run_circle_out(0); break;
+    case CIRCLE_RIGHT_OUT: run_circle_out(1); break;
     default: break;
     }
 }

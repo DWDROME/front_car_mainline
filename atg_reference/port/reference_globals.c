@@ -98,18 +98,10 @@ uint8 if_check_ramp;
 
 /* ================= 工具函数 ================= */
 
-int64_t g_atg_reference_encoder_total;
-
 /* 钳位整数到 [low, up] 范围 */
 int range_limit(int x, int low, int up)
 {
     return x > up ? up : x < low ? low : x;
-}
-
-/* 获取编码器累计值 */
-int64_t get_total_encoder(void)
-{
-    return g_atg_reference_encoder_total;
 }
 
 /* 清除距离计数器 */

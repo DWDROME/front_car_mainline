@@ -24,11 +24,6 @@
 
 #include <opencv2/imgcodecs.hpp>
 
-extern "C" {
-#include "atg_reference_step.h"
-#include "headfile.h"
-}
-
 // ==== 路径参数检查 ====
 int path_present(const char *path)
 {
@@ -177,11 +172,11 @@ int live(runtime_t *rt)
                                                 default_control_center_x(),
                                                 0,
                                                 RAW_W - 1);
-    atg_reference_set_vehicle_raw_ref_x(
+    atg_set_vehicle_raw_ref_x(
         static_cast<float>(read_env_int_clamped("FRONT_CAR_VEHICLE_RAW_REF_X",
                                                 static_cast<int>(std::lround(control_config().vehicle_raw_ref_x)),
                                                 0,
-                                                MT9V03X_W - 1)));
+                                                RAW_W - 1)));
     if(div < 1)
     {
         div = 1;
@@ -234,9 +229,9 @@ int live(runtime_t *rt)
         control_feedback_t fb = {};
         drive_output_read_feedback(&fb, control_period_ms);
         rt->encoder_total += atg_distance_counts_from_encoder_delta(fb);
-        update_circle_heading(static_cast<float>(fb.actual_yaw_rate_mrad_s) / 1000.0F,
-                              fb.period_ms,
-                              fb.actual_yaw_rate_valid);
+        atg_update_circle_heading(static_cast<float>(fb.actual_yaw_rate_mrad_s) / 1000.0F,
+                                  fb.period_ms,
+                                  fb.actual_yaw_rate_valid);
         if(spin_angle_deg != 0 && spin_yaw_mrad_s != 0 && fb.actual_yaw_rate_valid)
         {
             const double dt_s = fb.period_ms > 0 ? static_cast<double>(fb.period_ms) / 1000.0 : 0.0;

@@ -165,8 +165,8 @@ void reset_cross_state()
 
 /* 入口检测：双 L 角点同时出现 → 进入 BEGIN */
 void check_cross() {
-    bool Xfound = Lpt0_found && Lpt1_found;
-    if (cross_type == CROSS_NONE && Xfound) cross_type = CROSS_BEGIN;
+    bool x_found = Lpt0_found && Lpt1_found;
+    if (cross_type == CROSS_NONE && x_found) cross_type = CROSS_BEGIN;
 }
 /* 十字状态机主流程：
  *
@@ -177,7 +177,7 @@ void check_cross() {
  */
 void run_cross()
 {
-    bool Xfound = Lpt0_found && Lpt1_found;
+    bool x_found = Lpt0_found && Lpt1_found;
 
     /* --- BEGIN：近线截断 --- */
     if (cross_type == CROSS_BEGIN) {
@@ -191,7 +191,7 @@ void run_cross()
         //aim_distance = AIM_DISTENCE;
         aim_distance = 0.4; // 参考的
         /* 近角点太短（id < 0.1/sample_dist）→ 进入远线控制 */
-        if ((Xfound && (Lpt0_rpts0s_id < 0.1 / sample_dist || Lpt1_rpts1s_id < 0.1 / sample_dist))/* || (rpts1_num <30 && rpts0_num<30)*/) {
+        if ((x_found && (Lpt0_rpts0s_id < 0.1 / sample_dist || Lpt1_rpts1s_id < 0.1 / sample_dist))/* || (rpts1_num <30 && rpts0_num<30)*/) {
             cross_type = CROSS_IN;
         }
     }
