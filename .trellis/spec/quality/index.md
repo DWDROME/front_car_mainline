@@ -7,6 +7,7 @@ repository.
 ## Pre-Development Checklist
 
 - Read [Embedded Tracking Guidelines](./embedded-tracking-guidelines.md).
+- Read [Smartcar Competition Code Style](./smartcar-code-style.md).
 - If the work touches `code/tracking/`, tracking-derived control input, or
   tracking report output, also read
   [Tracking Critical Audit Guide](../tracking/critical-audit-guide.md).
@@ -29,4 +30,5 @@ repository.
 | Guide | Description | Status |
 | --- | --- | --- |
 | [Embedded Tracking Guidelines](./embedded-tracking-guidelines.md) | C/C++ quality, parsing, tracking evidence, and validation contracts | Active |
+| [Smartcar Competition Code Style](./smartcar-code-style.md) | 比赛代码主链、命名、函数边界和禁止工程化方向 | Active |
 | [Refactoring And Diagnostic Discipline](./refactoring-and-diagnostic-discipline.md) | Commit boundary purity, debug display seed source consistency, extract-and-gate diagnostic pattern | Active |
