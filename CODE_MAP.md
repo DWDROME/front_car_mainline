@@ -12,13 +12,16 @@ code/app/main.cpp
 code/app/runners.cpp
 ```
 
+`code/app/` 只放主流程入口、调度和控制输入：`main`、`runners`、
+`control_input_builder`。摄像头参数、实时运行参数和帧周期计时由
+`runners.cpp` 在 live 边界集中处理。
+
 实时处理链：
 
 ```text
-code/app/frame_pipeline.cpp
+code/app/runners.cpp
+code/app/vision_step.c
 code/app/control_input_builder.cpp
-code/tracking/atg_reference_mainline.cpp
-atg_reference/port/reference_step.c
 code/core/control.cpp
 code/drivers/drive_output.cpp
 ```
@@ -28,8 +31,7 @@ code/drivers/drive_output.cpp
 ```text
 code/drivers/drive_output.cpp
 code/app/runners.cpp
-code/tracking/atg_reference_mainline.cpp
-atg_reference/port/reference_step.c
+code/app/vision_step.c
 ```
 
 ## ATG 算法核心
@@ -37,7 +39,7 @@ atg_reference/port/reference_step.c
 当前参与主目标编译的核心文件在：
 
 ```text
-atg_reference/Project/CODE/
+code/core/
 ```
 
 重点文件：
@@ -56,18 +58,40 @@ shy_Image.c
 utils.c
 ```
 
-适配层：
+视觉主流程：
 
 ```text
-atg_reference/port/reference_step.c
-atg_reference/port/reference_globals.c
+code/app/vision_step.c
+code/app/vision_step.h
 ```
 
-运行包装层：
+`vision_step.c` 是当前比赛视觉一帧主线：采到灰度图后按 ATG 顺序跑
+`image_handle()`、`find_corners()`、元素处理、选线和归一化。`runners.cpp`
+和 `control_input_builder.cpp` 需要当前视觉结果时，直接读 `rptsn`、`Guide`、
+`cx/cy`、`circle_type`、`cross_type` 等 ATG 全局变量；不要再给这些全局变量套
+`vision_*` 查询函数。
+
+视觉全局状态：
 
 ```text
-code/tracking/atg_reference_mainline.cpp
-code/tracking/perspective.cpp
+code/app/vision_globals.c
+```
+
+`atg_reference/` 现在只作为原始参考目录，不作为 `front_car_mainline` 的构建输入。
+`code/app/headfile.h` 是当前主线可见的 ATG 全局总头，暂时保留 ATG 类型别名、
+宏、LCD 空实现和全局 `extern` 声明。`code/port/` 已不再承载当前主线文件。
+
+运行与诊断包装：
+
+```text
+code/core/perspective.cpp
+code/report/vision_view.cpp
+```
+
+诊断、回放摘要、上位机显示和参数解析：
+
+```text
+code/report/
 ```
 
 ## 工具和测试
@@ -76,6 +100,7 @@ code/tracking/perspective.cpp
 
 ```text
 code/tools/key_supervisor.cpp
+code/test/motor_pulse.cpp
 ```
 
 host 测试：
@@ -105,9 +130,10 @@ atg_reference/Project/CODE/data.h
 docs/archive/
 docs/reference/
 .reference/
+docs/archive/source-notes/code-app-main.old.cpp
 ```
 
-`code/drivers/motor_pulse.cpp` 和 `code/drivers/motor_pulse.hpp` 当前未进主目标，先按旧诊断/候选工具看待，不要当成编码器主线。
+开环电机脉冲诊断已移到 `code/test/motor_pulse.cpp`，由 CMake 单独生成 `motor_pulse` 命令行工具；主线电机输出只走 `code/drivers/drive_output.cpp`。
 
 ## 不应进仓库的运行产物
 
@@ -116,14 +142,18 @@ docs/reference/
 ```text
 logs/
 build-host/
-code/build/
-code/build-host/
 .diag/
 .diag.zip
 .runtime/
 .trellis/.runtime/
 .trellis/scripts/common/__pycache__/
 ```
+
+`code/` 是源码区；`code/test.sh` 会把 CMake 产物放到仓库根目录的
+`build/` 和 `build-host/`，不要在 `code/` 下重新生成 `build/` 或
+`build-host/`。
+临时备份、旧入口快照等不参与当前 CMake 目标的文件也不要留在 `code/app/`
+里；需要保留证据时放到 `docs/archive/source-notes/`。
 
 日志如果要保留，只保留明确可 replay 的少量样例，并在删除前列出 exact keep/remove 清单。
 当前保留的 replay 样例在 `test/replay/live-circle/`。

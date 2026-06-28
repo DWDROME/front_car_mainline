@@ -11,7 +11,8 @@
 1. **Commit 边界纪律** —— 重构提交不得混合算法行为改动。
 2. **调试显示同源** —— 上位机显示坐标必须从算法模块导出,禁止独立推算。
 3. **诊断提取+门控模式** —— 每帧诊断应提取为独立函数再套环境变量门控,而非散落 `if-env` 在各调用点。
-4. **ATG 诊断边界** —— app/report/assistant 只读 tracking adapter 的 snapshot/view,不直接 include ATG/port 内部头。
+4. **视觉主链与诊断边界分开** —— runners 可直接跑
+   `vision_step()`；report/replay/assistant 只读 `vision_view` 的 snapshot/view。
 
 ---
 
@@ -46,7 +47,7 @@
 ### Correct
 
 ```git
-commit A: refactor(runners): split into frame_pipeline/control_input_builder/...
+commit A: refactor(runners): split report/control_input_builder/...
 commit B: fix(circle): right B-arc scanning skips edge-line false target
 ```
 
@@ -193,33 +194,121 @@ static void print_circle_something_diag(...)
 
 ---
 
-## 4. Convention: App Diagnostics Must Use The Tracking Adapter Boundary
+## 4. Convention: Vision Step Is App Mainline, Diagnostics Use Vision View
 
 ### What
 
-`code/app` 里的 report、replay、assistant、control input 只能 include 项目头
-`tracking/atg_reference_mainline.hpp` 读取 ATG-derived 状态。
+当前主链按比赛代码心智模型保持扁平:
 
-允许的边界 API:
-
-```cpp
-atg_replay_snapshot_t atg_replay_snapshot();
-atg_report_snapshot_t atg_report_snapshot();
-atg_line_points_view_t atg_line_points(atg_line_points_id id);
-atg_raw_points_view_t atg_raw_points(atg_raw_points_id id);
-int atg_circle_entry_scan_seed_raw(int *seed_x, int *seed_y);
+```text
+main -> runners -> vision_step -> control -> drive/report
 ```
 
-`headfile.h`、`atg_reference_step.h`、`shy_Image.h` 和 ATG/port 全局变量只允许出现在
-`code/tracking/atg_reference_mainline.cpp` 这个 adapter 边界内。
+`code/app/vision_step.c` 是当前比赛视觉一帧主流程，不再放在 `code/port/`。
+`code/app/runners.cpp` 直接调用 `vision_step()`，再直接读取 ATG 当前帧全局变量
+写入 `runtime_t::vision` 和控制输入。允许 app 主链 include `vision_step.h`、
+`headfile.h` 以及必要的元素头；比赛代码优先直白，不为每个全局变量增加
+`vision_*` 查询函数。
+
+`code/app/vision_step.h` 只保留动作入口和少量直接全局出口:
+
+```c
+void vision_reset(void);
+int vision_step(uint8_t gray[120][160], int64_t encoder_total);
+void vision_set_car_x(float x);
+void vision_update_circle_heading(float yaw_rate_rad_s, int period_ms, int valid);
+void raw_to_ipm(float raw_x, float raw_y, float *ipm_x, float *ipm_y);
+
+extern const char *src;
+extern int src_id;
+extern int64_t begin_dist;
+extern int64_t last_begin_dist;
+extern float car_raw_x;
+```
+
+不要新增这类 getter/query adapter:
+
+```c
+vision_selected_line();
+vision_ipm_cx();
+vision_pixel_per_meter();
+vision_element_active();
+vision_circle_begin_dist();
+line_src();
+line_src_id();
+```
+
+外部需要 `rptsn`、`Guide`、`cx/cy`、`pixel_per_meter`、`circle_type`、
+`cross_type`、`road_type` 等当前帧状态时，直接 include 已有 ATG 头并读全局。
+
+`code/report` 里的 report、replay、assistant 仍必须通过
+`report/vision_view.hpp` 读取诊断快照、点列和坐标辅助，不能各自重新解释 ATG
+全局变量。
+
+允许的诊断边界 API:
+
+```cpp
+vision_snapshot_t vision_snapshot();
+vision_line_view_t vision_line(vision_line_id id);
+vision_raw_view_t vision_raw_line(vision_raw_id id);
+void vision_raw_to_ipm(float raw_x, float raw_y, float *ipm_x, float *ipm_y);
+void vision_ipm_to_raw(float ipm_x, float ipm_y, float *raw_x, float *raw_y);
+int vision_circle_entry_seed(int *seed_x, int *seed_y);
+```
+
+#### Vision Adapter Boundary Contract
+
+1. Scope / Trigger: applies whenever `code/report` needs ATG-derived diagnostics,
+   line views, raw/IPM conversion, or element state from `report/vision_view.hpp`.
+   The active runtime chain is allowed to use `vision_step()` directly.
+2. Signatures: `vision_snapshot()` is the only snapshot出口; point lists use
+   `vision_line(vision_line_id)` and `vision_raw_line(vision_raw_id)`;
+   coordinate helpers use `vision_raw_to_ipm()` / `vision_ipm_to_raw()`;
+   entry seed display uses `vision_circle_entry_seed()`.
+3. Contracts: report code may keep output labels such as `atg_*` for report
+   compatibility, but C++ API names and public types at this boundary use
+   `vision_*`; single-value diagnostics such as type names, selected-line
+   source, begin distance, and vehicle raw ref live in `vision_snapshot_t`
+   fields instead of public getters.
+4. Validation & Error Matrix: missing/null point views return `{nullptr, 0}`;
+   invalid seed output pointers return `0`; unsupported enum values map to
+   empty views or `*_UNKNOWN` type-name fields, not app-side fallback formulas.
+5. Good/Base/Bad Cases: good = app mainline directly reads current-frame ATG
+   globals after `vision_step()` and report/replay/assistant read one
+   `vision_snapshot_t`; bad = adding public single-value `vision_*` getters or
+   report/assistant recreating `Cal_inv_rot_*`/line-source/type-name logic.
+6. Tests Required: after boundary changes run `git diff --check`,
+   `bash test.sh --host`, `bash test.sh`, and `rg` checks proving old public
+   ATG-named legacy snapshot/view/IPM helper APIs are absent from report code
+   and the public header.
+7. Wrong vs Correct:
+
+```cpp
+// Wrong: app owns a second public ATG getter path.
+const char *src = vision_line_src();
+
+// Correct in app mainline: read the current-frame global directly.
+const char *name = src;
+
+// Correct in report/assistant: use the diagnostic snapshot.
+const vision_snapshot_t vision = vision_snapshot();
+const char *report_name = vision.line_src_name;
+```
+
+`headfile.h` 和 ATG 全局变量允许出现在 `code/app/runners.cpp`、
+`code/app/control_input_builder.cpp`、`code/app/vision_step.c` 以及
+`code/report/vision_view.cpp`。report/assistant/replay 的其它文件不直接 include
+这些底层头。
 
 ### Why
 
-app 层直读 ATG 全局会制造三类问题:
+诊断层各自直读 ATG 全局会制造三类问题:
 
-- app 变成第二个 ATG port,后续移动 `atg_reference/` 时调用面爆炸。
+- report/assistant 变成第二个 ATG port,后续移动视觉核心时调用面爆炸。
 - report/assistant 容易保存自己的坐标公式或枚举解释,形成第二真相源。
-- 诊断字段散落在多个 app 文件里,行为保持重构时难以确认输出是否同源。
+- 诊断字段散落在多个文件里,行为保持重构时难以确认输出是否同源。
+
+app 主链不同：它是实时边界，读当前帧全局变量比再包一层查询接口更清楚。
 
 ### Wrong
 
@@ -233,17 +322,109 @@ printf("atg_rpts0s_num=%d\n", rpts0s_num);
 ### Correct
 
 ```cpp
-#include "tracking/atg_reference_mainline.hpp"
+#include "report/vision_view.hpp"
 
-const atg_report_snapshot_t atg = atg_report_snapshot();
+const vision_snapshot_t atg = vision_snapshot();
 printf("atg_rpts0s_num=%d\n", atg.rpts0s_num);
 ```
 
 ### Enforcement
 
-- 改 app 诊断前先搜索:
+- 改 app 或 report 诊断前先搜索:
   ```bash
-  rg -n "#include \"(headfile|atg_reference_step|shy_Image)\\.h\"" code/app code/tracking
+  rg -n "#include \"(headfile|common|motor|shy_Image)\\.h\"|#include <common\\.h>" code/app code/report
   ```
-- 预期命中只能在 `code/tracking/atg_reference_mainline.cpp`。
+- 预期 `code/app/runners.cpp`、`code/app/control_input_builder.cpp` 和
+  `code/app/vision_step.c` 可以直接使用底层视觉头；`code/report` 只有
+  `vision_view.cpp` 需要底层视觉头。
 - assistant 新增显示点时,优先扩展 adapter view/snapshot;如果点的公式属于算法语义,在算法模块导出,再由 adapter 转发。
+
+---
+
+## 5. Convention: `code/` Is Source Tree, Not Build Tree
+
+### 1. Scope / Trigger
+
+适用于修改 `test.sh`、`code/test.sh`、`tools/*.sh`、CMake 配置或任何会创建
+CMake build tree 的脚本。
+
+### 2. Signatures
+
+项目保留两个测试入口:
+
+```bash
+bash test.sh [--host|--reconfigure|--clean|--upload]
+bash code/test.sh [--host|--reconfigure|--clean|--upload]
+```
+
+`test.sh` 是顶层短入口,转发到 `code/test.sh`。`code/test.sh` 的源码根是
+`code/`,但构建输出目录是仓库根目录:
+
+```text
+build/       # cross build
+build-host/  # host build
+```
+
+### 3. Contracts
+
+- `code/` 只放源码、测试源码、CMake 输入和少量源码相关脚本。
+- 不在 `code/` 下生成或长期保留 `build/`、`build-host/`、临时备份入口或
+  CMake cache。
+- `code/test.sh --reconfigure` 必须清理当前 build dir 里的
+  `CMakeCache.txt`、`CMakeFiles`、`Makefile`、`cmake_install.cmake`,再重新
+  `cmake`。否则从旧目录迁移来的 build tree 会继续记住旧路径。
+- `tools/*.sh` 如果需要 host 二进制,统一从仓库根目录 `build-host/` 读取。
+
+### 4. Validation & Error Matrix
+
+| Condition | Expected |
+| --- | --- |
+| `code/build/` 或 `code/build-host/` 存在 | 迁出或删除生成产物,不要提交 |
+| 脚本引用 `code/build-host` | 改为 `${ROOT}/build-host` |
+| 移动过 build tree 后运行 `--reconfigure` | 先清 CMake cache,再配置 |
+| `bash test.sh --host` | 在 `build-host/` 构建并运行 host tests |
+| `bash test.sh` | 在 `build/` 构建交叉目标 |
+
+### 5. Good/Base/Bad Cases
+
+- Good: `code/test.sh` 使用 `CODE_ROOT` 作为 CMake source dir,使用 repo
+  `ROOT` 下的 `build/` 和 `build-host/` 作为 binary dir。
+- Base: 顶层 `test.sh` 只转发参数,不维护第二套构建逻辑。
+- Bad: `BUILD="${ROOT}/code/build-host"` 或把 `main.old.cpp` 这类旧入口备份
+  留在 `code/app/`。
+
+### 6. Tests Required
+
+修改构建入口或相关工具脚本后至少运行:
+
+```bash
+find code -maxdepth 2 -type d \( -name build -o -name build-host \) -print
+rg -n "code/build|code/build-host|BUILD=\"\$\{ROOT\}/code/build" . --glob '!build/**' --glob '!build-host/**'
+bash -n test.sh code/test.sh tools/*.sh
+bash test.sh --host
+```
+
+如果改动影响 cross build 路径,还要运行:
+
+```bash
+bash test.sh --reconfigure
+```
+
+### 7. Wrong vs Correct
+
+Wrong:
+
+```bash
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BUILD_HOST="${ROOT}/build-host"   # 在 code/test.sh 里等价于 code/build-host
+cmake "${ROOT}"
+```
+
+Correct:
+
+```bash
+CODE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "${CODE_ROOT}/.." && pwd)"
+BUILD_HOST="${ROOT}/build-host"
+cmake "${CODE_ROOT}"
+```
