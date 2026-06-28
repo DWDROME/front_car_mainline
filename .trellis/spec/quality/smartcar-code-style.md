@@ -193,6 +193,8 @@ raw_to_ipm
 不要为了几行 `if / else` 拆函数：
 
 ```text
+program_name
+help_requested
 run_active_element
 check_new_element
 run_new_element
@@ -210,6 +212,31 @@ update_vehicle_ref_ipm
 重复但语义不同可以复制；
 不要为了复用搞 mode 参数；
 不要为了名字漂亮多跳一层。
+```
+
+简单判断直接写在调用点，不要为了“语义完整”拆 helper：
+
+```cpp
+const char *prog = "front_car_mainline";
+if(argc > 0 && argv && argv[0])
+{
+    prog = argv[0];
+}
+
+if(argc == 2 &&
+   (std::strcmp(argv[1], "-h") == 0 ||
+    std::strcmp(argv[1], "--help") == 0))
+{
+    print_usage(prog);
+    return 0;
+}
+```
+
+不需要写成：
+
+```cpp
+const char *program_name(int argc, char **argv);
+int help_requested(int argc, char **argv);
 ```
 
 ---
@@ -230,6 +257,8 @@ src_id
 line_begin
 norm_line
 choose_line
+print_frame
+car_ipm
 ```
 
 避免：
@@ -240,9 +269,19 @@ tracking_process_frame
 truncate_cross_half_candidate_near_lines
 atg_reference_vehicle_raw_ref_x
 CIRCLE_FIXED_LEFT_IN_TARGET_RAW_X_OFFSET
+publish_completed_live_frame
+normalize_selected_line
+update_vehicle_ref_ipm
+atg_reference_selected_line_source_id
+selected_line_source_id
+vehicle_raw_reference_x
+candidate_cross_half_near_line_count
+current_runtime_tracking_process_result
 ```
 
-局部变量可以短：`x`、`y`、`dx`、`dy`、`n`、`id`、`ok`、`cnt`、`src`。
+局部变量可以短：`x`、`y`、`dx`、`dy`、`n`、`id`、`ok`、`cnt`、
+`src`、`src_id`、`line`、`line_n`、`car_x`、`frame`。
+如果变量只在 20 行内使用，短名通常更顺眼。
 
 注释偏好中文分区：
 
@@ -256,9 +295,114 @@ CIRCLE_FIXED_LEFT_IN_TARGET_RAW_X_OFFSET
 
 注释解释原因，不解释语法。避免 Doxygen 风格大段 `@brief/@return/@note`。
 
+项目整体更像 C + 少量 C++ runtime。C++ 小工具优先用 `static` 函数，不必到处
+用匿名 namespace 包起来：
+
+```cpp
+static int abs_i(int x)
+{
+    return x < 0 ? -x : x;
+}
+```
+
 ---
 
-## 6. Forbidden Directions
+## 6. Includes And Direct Reads
+
+include 尽量直白。如果文件本来就要直接读 `Guide`、`rptsn`、`circle_type`，
+就 include 对应全局声明，不要绕 getter。
+
+偏好：
+
+```cpp
+#include "app/runners.hpp"
+#include "core/config.hpp"
+#include "core/control.hpp"
+#include "drivers/device.hpp"
+#include "drivers/drive_output.hpp"
+#include "vision_step.h"
+#include "headfile.h"
+```
+
+不要为了“模块边界”到处 include 一堆 wrapper 头。
+
+简单判断可以土一点、摊开一点。比起压成一行，清楚更重要：
+
+```cpp
+if(paths->report_path && paths->report_path[0])
+{
+    if(!write_report(rt, paths->report_path))
+    {
+        std::printf("WARN: write report failed: %s\n", paths->report_path);
+    }
+}
+```
+
+---
+
+## 7. Local Numbers
+
+全局宏只放真正状态门：
+
+```c
+#define ATG_ENABLE_CROSS 1
+#define ATG_ENABLE_CIRCLE 1
+```
+
+经验阈值如果只在一处用，就写死。变量名本身也是负担，不要为了“规范”
+给每个数字起名字。
+
+偏好：
+
+```c
+/* B 点至少要比 A 高一点 */
+if(dy < 8)
+{
+    continue;
+}
+
+/* B 点要向圆环内侧偏移 */
+if(dx < 6)
+{
+    continue;
+}
+
+/* trace 横向突跳太大，认为是假点 */
+if(last_x >= 0 && abs(x - last_x) > 18)
+{
+    return -1;
+}
+```
+
+不需要写成：
+
+```c
+enum
+{
+    min_dy = 8,
+    min_dx = 6,
+    max_step = 18,
+};
+```
+
+不要把所有小数字都提成很长的全局常量：
+
+```text
+CIRCLE_ENTRY_B_CANDIDATE_MIN_INNER_DELTA_X
+```
+
+总结：
+
+```text
+状态门提出来；
+局部经验数写死；
+注释解释为什么；
+不要为每个数字起名字。
+```
+
+---
+
+## 8. Forbidden Directions
 
 不要引入：
 
@@ -268,6 +412,14 @@ Config
 Pipeline
 Scheduler
 ElementOps
+process
+adapter
+snapshot
+dispatch
+selector
+normalizer
+provider
+builder
 统一 Element 对象
 大型状态机框架
 通用 point search pipeline
@@ -280,7 +432,7 @@ mode 参数大函数
 
 ---
 
-## 7. Review Checklist
+## 9. Review Checklist
 
 改代码前后检查：
 
@@ -292,3 +444,7 @@ mode 参数大函数
 - report/assistant 是否仍是旁路，没有反向污染主链？
 - 是否新增了 `Pipeline`、`Context`、`Scheduler`、`ElementOps` 这类工程化结构？
 - 是否为了“减少重复”引入了 mode 参数或更难读的抽象？
+- 简单判断是否可以直接写在调用点？
+- 小工具是否可以用 `static` C 风格函数，而不是匿名 namespace 包装？
+- 局部变量名是否短而顺眼？
+- 一处使用的经验阈值是否直接写数字，并用中文注释解释原因？
