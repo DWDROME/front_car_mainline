@@ -1,4 +1,13 @@
-#include "app/options.hpp"
+/*
+ * options_parsing_test.c —— 选项解析与环境变量读取的单元测试
+ *
+ * 覆盖：
+ *   - init_options / parse_options / default_*_path
+ *   - read_env_int / read_env_int_clamped / read_env_text / read_env_flag
+ *   - 正常输入、空/空指针 argv、非法值、溢出、缺失值、未知参数
+ */
+
+#include "report/options.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -6,6 +15,9 @@
 
 namespace
 {
+// ---- 测试辅助断言（匿名命名空间，不暴露给翻译单元） ----
+
+/** 断言 int 相等 */
 void expect_int(const char *name, int actual, int expected, int *failed)
 {
     if(actual != expected)
@@ -15,6 +27,7 @@ void expect_int(const char *name, int actual, int expected, int *failed)
     }
 }
 
+/** 断言字符串相等（任一侧为 nullptr 视为不等） */
 void expect_text(const char *name, const char *actual, const char *expected, int *failed)
 {
     if(actual == nullptr || expected == nullptr || std::strcmp(actual, expected) != 0)
@@ -28,6 +41,7 @@ void expect_text(const char *name, const char *actual, const char *expected, int
     }
 }
 
+/** 断言指针为 nullptr */
 void expect_null(const char *name, const char *actual, int *failed)
 {
     if(actual != nullptr)
@@ -37,6 +51,7 @@ void expect_null(const char *name, const char *actual, int *failed)
     }
 }
 
+/** 断言条件为 true */
 void expect_true(const char *name, int actual, int *failed)
 {
     if(!actual)
@@ -46,6 +61,7 @@ void expect_true(const char *name, int actual, int *failed)
     }
 }
 
+/** 断言条件为 false */
 void expect_false(const char *name, int actual, int *failed)
 {
     if(actual)
@@ -54,22 +70,24 @@ void expect_false(const char *name, int actual, int *failed)
         *failed = 1;
     }
 }
-}
+} // namespace
 
 int main()
 {
     int failed = 0;
 
+    // ---- 1. 默认值 ----
     options_t opt = {};
     init_options(&opt);
     expect_null("default capture_path", opt.capture_path, &failed);
     expect_null("default input_path", opt.input_path, &failed);
     expect_null("default analyze_path", opt.analyze_path, &failed);
     expect_null("default replay_path", opt.replay_path, &failed);
-    expect_text("default ipm_path", opt.ipm_path, default_ipm_path(), &failed);
-    expect_text("default report_path", opt.report_path, default_report_path(), &failed);
+    expect_text("default ipm_path", opt.ipm_path, kDefaultIpmPath, &failed);
+    expect_text("default report_path", opt.report_path, kDefaultReportPath, &failed);
     expect_int("default replay_count", opt.replay_count, 1, &failed);
 
+    // ---- 2. 正常解析：--input / --replay / --ipm / --report ----
     char arg0[] = "front_car_mainline";
     char input_flag[] = "--input";
     char input_path[] = "frame.png";
@@ -102,12 +120,14 @@ int main()
     expect_text("parsed ipm_path", opt.ipm_path, ipm_path, &failed);
     expect_text("parsed report_path", opt.report_path, report_path, &failed);
 
+    // ---- 3. nullptr argv：parse 失败，保持默认 ----
     options_t null_argv = {};
     init_options(&null_argv);
     expect_false("null argv fails", parse_options(3, nullptr, &null_argv), &failed);
     expect_null("null argv keeps input null", null_argv.input_path, &failed);
-    expect_text("null argv keeps report default", null_argv.report_path, default_report_path(), &failed);
+    expect_text("null argv keeps report default", null_argv.report_path, kDefaultReportPath, &failed);
 
+    // ---- 4. null / 空字符串作为参数值：parse 失败，保持默认 ----
     options_t null_value = {};
     init_options(&null_value);
     char empty_value[] = "";
@@ -118,8 +138,9 @@ int main()
                                &null_value),
                  &failed);
     expect_null("null input value ignored", null_value.input_path, &failed);
-    expect_text("empty ipm value ignored", null_value.ipm_path, default_ipm_path(), &failed);
+    expect_text("empty ipm value ignored", null_value.ipm_path, kDefaultIpmPath, &failed);
 
+    // ---- 5. 标志字面量（如 --capture-frame）被当作参数值：parse 失败 ----
     options_t flag_value = {};
     init_options(&flag_value);
     char capture_flag[] = "--capture-frame";
@@ -127,14 +148,14 @@ int main()
     char *flag_value_argv[] = {
         arg0,
         input_flag,
-        replay_flag,
+        replay_flag,      // --replay 的下一个 token 是 --replay 本身（重复标志）
         replay_path,
         ipm_flag,
         ipm_path,
         report_flag,
         report2_path,
         capture_flag,
-        report_flag,
+        report_flag,      // --report 后面又是 --report（标志当值）
     };
     expect_false("flag token value fails",
                  parse_options(static_cast<int>(sizeof(flag_value_argv) / sizeof(flag_value_argv[0])),
@@ -143,9 +164,10 @@ int main()
                  &failed);
     expect_null("flag token not input path", flag_value.input_path, &failed);
     expect_null("missing replay count ignored", flag_value.replay_path, &failed);
-    expect_text("later report not parsed after failure", flag_value.report_path, default_report_path(), &failed);
+    expect_text("later report not parsed after failure", flag_value.report_path, kDefaultReportPath, &failed);
     expect_null("flag token not capture path", flag_value.capture_path, &failed);
 
+    // ---- 6. replay_count 非数字字符串 ----
     options_t bad_replay = {};
     init_options(&bad_replay);
     char bad_count[] = "bad";
@@ -156,6 +178,7 @@ int main()
     expect_text("bad replay path parsed before failure", bad_replay.replay_path, replay_path, &failed);
     expect_int("bad replay count keeps default", bad_replay.replay_count, 1, &failed);
 
+    // ---- 7. replay_count = 0（无效范围） ----
     options_t zero_replay = {};
     init_options(&zero_replay);
     char zero_count[] = "0";
@@ -166,6 +189,7 @@ int main()
     expect_text("zero replay path parsed before failure", zero_replay.replay_path, replay_path, &failed);
     expect_int("zero replay count keeps default", zero_replay.replay_count, 1, &failed);
 
+    // ---- 8. replay_count = -3（负数，无效范围） ----
     options_t negative_replay = {};
     init_options(&negative_replay);
     char negative_count[] = "-3";
@@ -178,6 +202,7 @@ int main()
     expect_text("negative replay path parsed before failure", negative_replay.replay_path, replay_path, &failed);
     expect_int("negative replay count keeps default", negative_replay.replay_count, 1, &failed);
 
+    // ---- 9. 不认识的可选项 --disable-cross ----
     options_t unknown_arg = {};
     init_options(&unknown_arg);
     char disable_cross_flag[] = "--disable-cross";
@@ -189,6 +214,7 @@ int main()
                  &failed);
     expect_null("unknown arg keeps analyze null", unknown_arg.analyze_path, &failed);
 
+    // ---- 10. --analyze 后面没有值 ----
     options_t missing_value = {};
     init_options(&missing_value);
     char *missing_value_argv[] = {arg0, analyze_flag};
@@ -199,6 +225,7 @@ int main()
                  &failed);
     expect_null("missing analyze value keeps null", missing_value.analyze_path, &failed);
 
+    // ---- 11. read_env_int 边界 ----
     unsetenv("FRONT_CAR_TEST_INT");
     expect_int("null env int fallback", read_env_int(nullptr, 42), 42, &failed);
     expect_int("empty env int fallback", read_env_int("", 42), 42, &failed);
@@ -212,6 +239,7 @@ int main()
     setenv("FRONT_CAR_TEST_INT", "-3", 1);
     expect_int("clamped env int", read_env_int_clamped("FRONT_CAR_TEST_INT", 42, 1, 10), 1, &failed);
 
+    // ---- 12. read_env_text 边界 ----
     unsetenv("FRONT_CAR_TEST_TEXT");
     expect_text("null env text fallback", read_env_text(nullptr, "fallback"), "fallback", &failed);
     expect_text("empty env text fallback", read_env_text("", "fallback"), "fallback", &failed);
@@ -221,6 +249,7 @@ int main()
     setenv("FRONT_CAR_TEST_TEXT", "value", 1);
     expect_text("valid env text", read_env_text("FRONT_CAR_TEST_TEXT", "fallback"), "value", &failed);
 
+    // ---- 13. read_env_flag 边界 ----
     unsetenv("FRONT_CAR_TEST_FLAG");
     expect_int("null flag fallback", read_env_flag(nullptr, 1), 1, &failed);
     expect_int("empty flag fallback", read_env_flag("", 1), 1, &failed);
@@ -238,6 +267,7 @@ int main()
     setenv("FRONT_CAR_TEST_FLAG", "off", 1);
     expect_int("invalid off flag stays fallback false", read_env_flag("FRONT_CAR_TEST_FLAG", 0), 0, &failed);
 
+    // 清理环境变量
     unsetenv("FRONT_CAR_TEST_INT");
     unsetenv("FRONT_CAR_TEST_TEXT");
     unsetenv("FRONT_CAR_TEST_FLAG");

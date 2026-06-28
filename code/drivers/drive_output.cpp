@@ -1,16 +1,18 @@
 #include "drive_output.hpp"
 
-#include "clip.hpp"
 #include "config.hpp"
 #include "imu_feedback.hpp"
 #include "zf_driver_encoder.hpp"
 #include "zf_driver_gpio.hpp"
 #include "zf_driver_pwm.hpp"
 
+#include <algorithm>
 #include <cstdint>
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <ctime>
 #include <fcntl.h>
-#include <cmath>
 
 namespace
 {
@@ -43,40 +45,19 @@ int64_t monotonic_ms()
     return static_cast<int64_t>(ts.tv_sec) * 1000LL + static_cast<int64_t>(ts.tv_nsec) / 1000000LL;
 }
 
-// 百分比占空 -> PWM 原始 duty 值。先强制钳到 kHardwareDutyLimitPercent(35%) 硬件安全上限：
-// 这是独立于 yaml max_duty_percent 的最后一道闸，任何上层算出的占空都不能突破它。
-int abs_i(int value)
-{
-    return value < 0 ? -value : value;
-}
-
 uint16_t percent_to_duty(zf_driver_pwm &pwm, int percent)
 {
-    percent = clip_i(abs_i(percent), 0, kHardwareDutyLimitPercent);
+    percent = std::clamp(std::abs(percent), 0, kHardwareDutyLimitPercent);
     pwm_info info = {};
     pwm.get_dev_info(&info);
     return static_cast<uint16_t>(static_cast<uint32_t>(info.duty_max) *
                                  static_cast<uint32_t>(percent) / 100U);
 }
 
-// 两路方向 GPIO 置前进电平(0)；本工程只跑前进，不做倒车。
-void set_forward_direction()
-{
-    g_motor_dir_1.set_level(kMotorForwardLevel);
-    g_motor_dir_2.set_level(kMotorForwardLevel);
-}
-
 void set_signed_direction(zf_driver_gpio &dir, int percent)
 {
     const int reverse_level = kMotorForwardLevel == 0 ? 1 : 0;
     dir.set_level(percent >= 0 ? kMotorForwardLevel : reverse_level);
-}
-
-// 清零左右编码器计数，配合"每周期读增量再清零"的用法。
-void clear_encoders()
-{
-    g_encoder_left.clear_count();
-    g_encoder_right.clear_count();
 }
 }
 
@@ -85,13 +66,19 @@ int drive_output_init(int enabled)
     g_drive_enabled = enabled ? 1 : 0;
     g_imu_ready = imu_feedback_init(control_config().gyro_raw_to_rad_s) ? 1 : 0;
     g_last_feedback_ms = monotonic_ms();
-    set_forward_direction();
+    g_motor_dir_1.set_level(kMotorForwardLevel);
+    g_motor_dir_2.set_level(kMotorForwardLevel);
     drive_output_stop();
-    clear_encoders();
+    g_encoder_left.clear_count();
+    g_encoder_right.clear_count();
+    std::printf("驱动: 电机输出=%s IMU=%s 左电机=PWM2 右电机=PWM1 左编码器=QUAD1 右编码器=QUAD2 占空硬限=%d%%\n",
+                g_drive_enabled ? "开" : "关",
+                g_imu_ready ? "就绪" : "未就绪",
+                kHardwareDutyLimitPercent);
     return g_drive_enabled;
 }
 
-void drive_output_stop()
+void drive_output_stop(void)
 {
     g_motor_pwm_1.set_duty(0);
     g_motor_pwm_2.set_duty(0);
@@ -122,7 +109,7 @@ void drive_output_read_feedback(control_feedback_t *fb, int period_ms)
         if(imu_feedback_read(&gy))
         {
             fb->actual_yaw_rate_mrad_s =
-                static_cast<int>(std::lround(gy.rad_s * 1000.0));
+                static_cast<int>(std::lround(gy.rad_s_y * 1000.0));
             fb->actual_yaw_rate_valid = 1;
         }
     }
@@ -139,7 +126,8 @@ void drive_output_read_feedback(control_feedback_t *fb, int period_ms)
     // 编码器方向在此统一修正（左轮取反）；控制层拿到的就是"前进为正"，不要再改符号。
     fb->left_speed_count = cnt0 * kEncoderLeftSign;
     fb->right_speed_count = cnt1 * kEncoderRightSign;
-    clear_encoders();
+    g_encoder_left.clear_count();
+    g_encoder_right.clear_count();
 }
 
 void drive_output_apply(const control_state_t *ctrl)
@@ -161,7 +149,8 @@ void drive_output_apply(const control_state_t *ctrl)
     }
     else
     {
-        set_forward_direction();
+        g_motor_dir_1.set_level(kMotorForwardLevel);
+        g_motor_dir_2.set_level(kMotorForwardLevel);
     }
     // 硬件映射：左轮 -> PWM2，右轮 -> PWM1（与文件头硬件合同一致，勿写反）。
     g_motor_pwm_2.set_duty(percent_to_duty(g_motor_pwm_2, ctrl->left_duty));

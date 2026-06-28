@@ -135,8 +135,8 @@ bool sample_bias_fd(int fd, int *bias, int *valid, int *min_value, int *max_valu
     system_delay_ms(kBiasWarmupDelayMs);
     for(int i = 0; i < kBiasDiscardCount; ++i)
     {
-        int unused = 0;
-        read_int32_fd(fd, &unused);
+        int discard = 0;
+        read_int32_fd(fd, &discard);
         system_delay_ms(kBiasSampleDelayMs);
     }
 
@@ -239,7 +239,7 @@ bool imu_feedback_init(double gyro_raw_to_rad_s)
     return true;
 }
 
-// 读取三轴陀螺仪，扣零漂并换算为 rad/s；兼容字段 raw/bias/delta/rad_s 仍取 Y 轴。
+// 读取三轴陀螺仪，扣零漂并换算为 rad/s。
 bool imu_feedback_read(gyro_sample_t *sample)
 {
     if(!g_imu_ready || sample == nullptr)
@@ -269,12 +269,5 @@ bool imu_feedback_read(gyro_sample_t *sample)
     sample->rad_s_x = static_cast<double>(sample->delta_x) * g_raw_to_rad_s;
     sample->rad_s_y = static_cast<double>(sample->delta_y) * g_raw_to_rad_s;
     sample->rad_s_z = static_cast<double>(sample->delta_z) * g_raw_to_rad_s;
-
-    // 兼容单轴字段：当前车体装配下 yaw 轴对应 IMU 的 Y 轴，故 rad_s 取 Y 轴。
-    // 若 IMU 安装方向改变，应改这里选用的轴，而不是在控制层补符号。
-    sample->raw = y;
-    sample->bias = g_gyro_y_bias;
-    sample->delta = sample->delta_y;
-    sample->rad_s = sample->rad_s_y;
     return true;
 }

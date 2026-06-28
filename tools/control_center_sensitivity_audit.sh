@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BUILD="${ROOT}/code/build-host"
+BUILD="${ROOT}/build-host"
 BIN="${BUILD}/front_car_mainline"
 OUT="${ROOT}/.diag/control_center_sensitivity"
 CENTERS="${SMARTCAR_CENTER_SWEEP:-60 80}"

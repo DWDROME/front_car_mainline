@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BUILD="${ROOT}/code/build-host"
+BUILD="${ROOT}/build-host"
 BIN="${BUILD}/front_car_mainline"
 OUT="${ROOT}/.diag/board_current"
 REMOTE_IP="${REMOTE_IP:-ls2k0300}"

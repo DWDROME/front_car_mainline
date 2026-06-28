@@ -1,5 +1,5 @@
 /* =====================================================================
- *  ATG 参考线处理主框架
+ *  视觉一帧主线
  *
  *  单帧处理流程：
  *
@@ -18,7 +18,7 @@
  *    2. 圆环补线
  *    3. 普通线（rptsc0/rptsc1）
  * ===================================================================== */
-#include "atg_reference_step.h"
+#include "vision_step.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -34,8 +34,9 @@
 /* ================= 全局状态与开关 ================= */
 
 static int64_t last_enc;
-static float car_raw_x = MT9V03X_W / 2.0f;
-static const char *src = "none";
+float car_raw_x = MT9V03X_W / 2.0f;
+const char *src = "none";
+int src_id;
 static int line_begin;
 
 /* 圆环状态停滞出口：本车 line_found=0 即停车，状态机无法继续靠视觉/陀螺推进。
@@ -47,8 +48,8 @@ enum
 };
 static int circle_stall;
 
-static int64_t begin_dist;
-static int64_t last_begin_dist;
+int64_t begin_dist;
+int64_t last_begin_dist;
 
 /* ================= 元素使能开关 =================
  * 编译时开关：1=启用，0=禁用。禁用的元素每帧被 keep_disabled_idle() 强制清零。 */
@@ -68,17 +69,17 @@ static int64_t last_begin_dist;
 #define ATG_ENABLE_RAMP 0
 #endif
 
-/* 环岛（废弃） */
+/* 环岛（默认关闭） */
 #ifndef ATG_ENABLE_ROUND
 #define ATG_ENABLE_ROUND 0
 #endif
 
-/* Y 路（废弃） */
+/* Y 路（默认关闭） */
 #ifndef ATG_ENABLE_YROAD
 #define ATG_ENABLE_YROAD 0
 #endif
 
-/* 倒车入库（废弃） */
+/* 倒车入库（默认关闭） */
 #ifndef ATG_ENABLE_GARAGE
 #define ATG_ENABLE_GARAGE 0
 #endif
@@ -124,12 +125,6 @@ static void reset_params(void)
     round_aim_distance = aim_distance_far;
 }
 
-/* 钳位点数到 [0, MT9V03X_H]：防止越界访问图像缓冲区 */
-static int clip_n(int n)
-{
-    return range_limit(n, 0, MT9V03X_H);
-}
-
 /* 清空本帧所有搜线输出，每帧开头调用 */
 static void clear_frame(void)
 {
@@ -169,7 +164,6 @@ static void reset_elem(void)
     none_right_line = 0;
     have_left_line = 0;
     have_right_line = 0;
-    circle_count = 0;
     Count_dis_Flag = 0;
     total_distence = 0;
     begin_dist = 0;
@@ -240,14 +234,9 @@ static void update_dist(int64_t encoder_total)
     }
 }
 
-int64_t atg_reference_circle_begin_dist(void)
+void vision_update_circle_heading(float yaw_rate_rad_s, int period_ms, int valid)
 {
-    return begin_dist;
-}
-
-int64_t atg_reference_circle_begin_last_dist(void)
-{
-    return last_begin_dist;
+    update_circle_heading(yaw_rate_rad_s, period_ms, valid);
 }
 
 /* 根据左右线点数选择跟踪哪条线：线少的一侧说明是内侧（被圆环/十字遮挡），跟对侧。
@@ -299,13 +288,13 @@ static void cut_half_line(void)
      * 这里只是防止未认领的十字半候选泄漏到普通选线。 */
     if(Lpt0_found && far_Lpt0_found && Lpt0_rpts0s_id < lpt_max)
     {
-        const int n = range_limit(Lpt0_rpts0s_id - 1, 0, rpts0s_num);
+        const int n = clip(Lpt0_rpts0s_id - 1, 0, rpts0s_num);
         rpts0s_num = n;
         rptsc0_num = n;
     }
     if(Lpt1_found && far_Lpt1_found && Lpt1_rpts1s_id < lpt_max)
     {
-        const int n = range_limit(Lpt1_rpts1s_id - 1, 0, rpts1s_num);
+        const int n = clip(Lpt1_rpts1s_id - 1, 0, rpts1s_num);
         rpts1s_num = n;
         rptsc1_num = n;
     }
@@ -569,8 +558,8 @@ static void log_line(void)
                "spL=%d spR=%d near=%d/%d center=%d/%d far=%d/%d A=%d@%d,%d#%d B=%d@%d,%d#%d C=%d@%d,%d#%d\n",
                (int)circle_type,
                (int)circle_ref_mode,
-               line_src(),
-               line_src_id(),
+               src,
+               src_id,
                track_type,
                rpts_num,
                rptsn_num,
@@ -603,6 +592,7 @@ static void choose_line(void)
     int sel = 0;
 
     src = "none";
+    src_id = 0;
 
     /* === 十字远线优先 === */
     if(cross_type == CROSS_IN ||
@@ -612,8 +602,8 @@ static void choose_line(void)
     {
         if(track_type == TRACK_LEFT)
         {
-            const int start = range_limit(far_Lpt0_rpts0s_id, 0, far_rpts0s_num);
-            const int count = clip_n(far_rpts0s_num - start - 1);
+            const int start = clip(far_Lpt0_rpts0s_id, 0, far_rpts0s_num);
+            const int count = clip(far_rpts0s_num - start - 1, 0, MT9V03X_H);
             rpts = rptsc0;
             track_leftline(far_rpts0s + start,
                            count,
@@ -622,12 +612,13 @@ static void choose_line(void)
                            pixel_per_meter * ROAD_WIDTH / 2);
             rpts_num = count;
             src = "far_left";
+            src_id = 12;
             sel = 1;
         }
         else
         {
-            const int start = range_limit(far_Lpt1_rpts1s_id, 0, far_rpts1s_num);
-            const int count = clip_n(far_rpts1s_num - start);
+            const int start = clip(far_Lpt1_rpts1s_id, 0, far_rpts1s_num);
+            const int count = clip(far_rpts1s_num - start, 0, MT9V03X_H);
             rpts = rptsc1;
             track_rightline(far_rpts1s + start,
                             count,
@@ -636,6 +627,7 @@ static void choose_line(void)
                             pixel_per_meter * ROAD_WIDTH / 2);
             rpts_num = count;
             src = "far_right";
+            src_id = 13;
             sel = 1;
         }
     }
@@ -663,6 +655,7 @@ static void choose_line(void)
             rpts = Splicing_leftline_center;
             rpts_num = Splicing_leftline_center_num;
             src = "circle_in_c_left";
+            src_id = 15;
             sel = 1;
         }
         /* 右环 BEGIN(IN_C)：用 C 点构建的右侧补线 */
@@ -673,6 +666,7 @@ static void choose_line(void)
             rpts = Splicing_rightline_center;
             rpts_num = Splicing_rightline_center_num;
             src = "circle_in_c_right";
+            src_id = 16;
             sel = 1;
         }
         /* 右环 RUNNING/OUT：用左侧固定补线 */
@@ -685,6 +679,7 @@ static void choose_line(void)
             src =
                 circle_type == CIRCLE_RIGHT_RUNNING ? "circle_running_fixed_left" :
                 "circle_out_fixed_left";
+            src_id = circle_type == CIRCLE_RIGHT_RUNNING ? 1 : 3;
             sel = 1;
         }
         /* 左环 RUNNING/OUT：用右侧固定补线 */
@@ -697,6 +692,7 @@ static void choose_line(void)
             src =
                 circle_type == CIRCLE_LEFT_RUNNING ? "circle_running_fixed_right" :
                 "circle_out_fixed_right";
+            src_id = circle_type == CIRCLE_LEFT_RUNNING ? 4 : 6;
             sel = 1;
         }
         /* 左环 OUT 无补线时：强制用原始右线，避免崩塌到 sel=0/0 */
@@ -705,6 +701,7 @@ static void choose_line(void)
             rpts = rptsc1;
             rpts_num = rptsc1_num;
             src = "out_rptsc1";
+            src_id = 9;
             sel = 1;
         }
     }
@@ -717,12 +714,14 @@ static void choose_line(void)
             rpts = rptsc0;
             rpts_num = rptsc0_num;
             src = "rptsc0";
+            src_id = 10;
         }
         else
         {
             rpts = rptsc1;
             rpts_num = rptsc1_num;
             src = "rptsc1";
+            src_id = 11;
         }
     }
 
@@ -896,7 +895,7 @@ static int norm_line(void)
 
 /* 全局复位：清空所有状态，恢复默认参数。
  * 调用时机：系统启动、出错恢复、或手动复位。 */
-void atg_reference_reset(void)
+void vision_reset(void)
 {
     reset_params();
     last_enc = 0;
@@ -955,7 +954,7 @@ static void exit_stall(int line_ok)
 
 /* ================= 单帧处理主入口 =================
  *
- * ATG 一帧算法入口：保留原始 ATG 风格，全局变量可见，状态流程直接展开。
+ * 视觉一帧算法入口：保留原始 ATG 风格，全局变量可见，状态流程直接展开。
  * 完整处理流程：
  *
  *   1. clear_frame()              — 清空上一帧的所有搜线输出
@@ -973,7 +972,7 @@ static void exit_stall(int line_ok)
  *  12. check_road()                       — 道路类型检测（直道/弯道）
  *
  * 返回 1 表示本帧有有效导引线（rptsn_num > 0），0 表示丢失。 */
-int atg_reference_process_frame(uint8_t gray[120][160], int64_t encoder_total)
+int vision_step(uint8_t gray[120][160], int64_t encoder_total)
 {
     int ran = 0;
     int found = 0;
@@ -1134,8 +1133,8 @@ int atg_reference_process_frame(uint8_t gray[120][160], int64_t encoder_total)
         printf("ATGCircleNormDiag: circle=%d ref=%d src=%s(%d) ok=%d rpts=%d rptsn=%d aim=%d inv_aim=%.1f,%.1f cxcy=%.1f,%.1f Guide=%.1f/%.1f/%.1f pure=%.2f/%.2f/%.2f\n",
                (int)circle_type,
                (int)circle_ref_mode,
-               line_src(),
-               line_src_id(),
+               src,
+               src_id,
                ok,
                rpts_num,
                rptsn_num,
@@ -1159,53 +1158,17 @@ int atg_reference_process_frame(uint8_t gray[120][160], int64_t encoder_total)
     return ok;
 }
 
-/* ================= 外部查询与坐标辅助 =================
+/* ================= 外部动作与坐标辅助 =================
  *
- * 提供给外部模块的查询接口：
- *   - line_found()      — 是否有有效导引线
- *   - line_src()   — 选线来源名称（用于日志）
- *   - line_src_id()— 选线来源数字 id（用于数据记录）
- *   - car_x()      — 车辆参考点 x 坐标
- *   - set_car_x()  — 设置车辆参考点 x 坐标
+ * 提供给外部模块的动作接口：
+ *   - vision_set_car_x()  — 设置车辆参考点 x 坐标
  *   - raw_to_ipm()         — 原图坐标 → 俯视角坐标（IPM 变换）
  */
-
-int line_found(void)
-{
-    return rptsn_num > 0;
-}
-
-const char *line_src(void)
-{
-    return src != NULL ? src : "none";
-}
-
-/* 选线来源数字 id：用于数据记录和分析。
- * 1-6 是圆环固定补线，9 是 OUT 兜底，10-11 是普通线，12-13 是十字远线，15-16 是 C 点补线。
- * 未知来源返回 0。 */
-int line_src_id(void)
-{
-    const char *s = line_src();
-    if(strcmp(s, "circle_running_fixed_left") == 0) return 1;
-    if(strcmp(s, "circle_in_fixed_left") == 0) return 2;
-    if(strcmp(s, "circle_out_fixed_left") == 0) return 3;
-    if(strcmp(s, "circle_running_fixed_right") == 0) return 4;
-    if(strcmp(s, "circle_in_fixed_right") == 0) return 5;
-    if(strcmp(s, "circle_out_fixed_right") == 0) return 6;
-    if(strcmp(s, "circle_in_c_left") == 0) return 15;
-    if(strcmp(s, "circle_in_c_right") == 0) return 16;
-    if(strcmp(s, "out_rptsc1") == 0) return 9;
-    if(strcmp(s, "rptsc0") == 0) return 10;
-    if(strcmp(s, "rptsc1") == 0) return 11;
-    if(strcmp(s, "far_left") == 0) return 12;
-    if(strcmp(s, "far_right") == 0) return 13;
-    return 0;
-}
 
 /* 设置车辆参考点 x 坐标（原图坐标），用于控制线归一化。
  * 控制模块可以通过这个接口动态调整车辆在画面中的参考位置。
  * 钳位到 [0, MT9V03X_W-1] 防止越界。 */
-void set_car_x(float x)
+void vision_set_car_x(float x)
 {
     if(x < 0.0f)
     {
@@ -1216,11 +1179,6 @@ void set_car_x(float x)
         x = (float)(MT9V03X_W - 1);
     }
     car_raw_x = x;
-}
-
-float car_x(void)
-{
-    return car_raw_x;
 }
 
 /* 原图坐标 → 俯视角坐标（IPM 逆透视变换）。

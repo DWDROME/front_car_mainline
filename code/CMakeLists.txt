@@ -27,67 +27,51 @@ message(STATUS "OpenCV_INCLUDE: ${OpenCV_INCLUDE_DIRS}, OpenCV_LIBS: ${OpenCV_LI
 aux_source_directory(../../../libraries/zf_common ZF_COMMON_SRCS)
 aux_source_directory(../../../libraries/zf_device ZF_DEVICE_SRCS)
 aux_source_directory(../../../libraries/zf_driver ZF_DRIVER_SRCS)
-aux_source_directory(../../../libraries/zf_components/seekfree_assistant ZF_ASSISTANT_SRCS)
-
+aux_source_directory(../../../libraries/zf_components/seekfree_assistant SEEKFREE_ASSISTANT_SRCS)
 set(DIR_SRCS
     app/main.cpp
-    app/assistant.cpp
-    app/options.cpp
-    app/report.cpp
-    app/camera_config.cpp
+    report/options.cpp
+    report/report.cpp
+    report/assistant.cpp
     app/control_input_builder.cpp
-    app/frame_pipeline.cpp
-    app/live_profile.cpp
-    app/replay_log.cpp
     app/runners.cpp
     drivers/device.cpp
     drivers/drive_output.cpp
     drivers/imu_feedback.cpp
-    tracking/perspective.cpp
-    tracking/atg_reference_mainline.cpp
-    ../atg_reference/port/reference_globals.c
-    ../atg_reference/port/reference_step.c
-    ../atg_reference/Project/CODE/shy_Image.c
-    ../atg_reference/Project/CODE/imgproc.c
-    ../atg_reference/Project/CODE/utils.c
-    ../atg_reference/Project/CODE/cross.c
-    ../atg_reference/Project/CODE/Half_check.c
-    ../atg_reference/Project/CODE/circle.c
-    ../atg_reference/Project/CODE/Patching_Line.c
-    ../atg_reference/Project/CODE/round.c
-    ../atg_reference/Project/CODE/yroad.c
-    ../atg_reference/Project/CODE/Ramp.c
-    ../atg_reference/Project/CODE/road.c
+    core/perspective.cpp
+    report/vision_view.cpp
+    app/vision_globals.c
+    app/vision_step.c
+    core/shy_Image.c
+    core/imgproc.c
+    core/utils.c
+    core/cross.c
+    core/Half_check.c
+    core/circle.c
+    core/Patching_Line.c
+    core/round.c
+    core/yroad.c
+    core/Ramp.c
+    core/road.c
     core/control.cpp
     core/config.cpp
-    ${ZF_ASSISTANT_SRCS}
     ${ZF_COMMON_SRCS}
     ${ZF_DEVICE_SRCS}
     ${ZF_DRIVER_SRCS}
+    ${SEEKFREE_ASSISTANT_SRCS}
 )
 
 add_executable(${PROJ_NAME} ${DIR_SRCS})
 target_include_directories(${PROJ_NAME} PRIVATE
     ${OpenCV_INCLUDE_DIRS}
     .
-    ..
-    ../utils
     app
     drivers
-    tracking
     core
-    ../atg_reference/port
-    ../atg_reference/Project/CODE
-    telemetry
-    upper_monitor
-    utils
-    test
-    scripts
-    tools
-    ../../../libraries/zf_components/seekfree_assistant
     ../../../libraries/zf_common
     ../../../libraries/zf_device
     ../../../libraries/zf_driver
+    ../../../libraries/zf_components/seekfree_assistant
 )
 set_target_properties(${PROJ_NAME} PROPERTIES
     INSTALL_RPATH "/opt/ls_2k0300_env/opencv_4_10_build/lib"
@@ -122,13 +106,26 @@ target_link_libraries(
     m
 )
 
+add_executable(motor_pulse
+    test/motor_pulse.cpp
+    ${ZF_COMMON_SRCS}
+    ${ZF_DRIVER_SRCS}
+)
+target_include_directories(motor_pulse PRIVATE
+    ../../../libraries/zf_common
+    ../../../libraries/zf_driver
+)
+target_link_libraries(
+    motor_pulse
+    pthread
+    m
+)
+
 if(NOT SMARTCAR_CROSS_COMPILE)
     function(add_host_plain_test TARGET_NAME)
         add_executable(${TARGET_NAME} ${ARGN})
         target_include_directories(${TARGET_NAME} PRIVATE
             .
-            ..
-            app
             core
         )
         target_link_libraries(
@@ -144,6 +141,6 @@ if(NOT SMARTCAR_CROSS_COMPILE)
 
     add_host_plain_test(options_parsing_test
         test/options_parsing_test.cpp
-        app/options.cpp
+        report/options.cpp
     )
 endif()

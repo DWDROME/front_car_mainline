@@ -1,5 +1,7 @@
 #pragma once
 
+#include "types.hpp"
+
 // 命令行和运行模式参数。控制环参数不在这里，控制参数走 config.hpp 和 yaml。
 struct options_t
 {
@@ -13,15 +15,12 @@ struct options_t
     int replay_count;
 };
 
-// 默认运行参数。UVC 宽高/fps 是入口参数，实际尺寸仍由 device_capture_gray() 校验。
-const char *default_uvc_path();
-int default_uvc_width();
-int default_uvc_height();
-int default_uvc_fps();
-const char *default_ipm_path();
-const char *default_report_path();
-int default_live_print_divider();
-int default_control_center_x();
+// 默认运行参数。
+constexpr const char *kDefaultUvcPath = "/dev/video0";
+constexpr const char *kDefaultIpmPath = "/tmp/front_car_ipm.png";
+constexpr const char *kDefaultReportPath = "/tmp/front_car_report.txt";
+constexpr int kDefaultLivePrintDivider = 8;
+constexpr int kDefaultControlCenterX = CONTROL_CENTER_X;
 
 // 环境变量读取只用于运行模式、显示、上位机和开关参数；不要把控制 yaml 参数混到这里。
 const char *read_env_text(const char *name, const char *fallback);

@@ -1,281 +1,470 @@
+/*
+ * runners.cpp —— 应用层运行器：单图分析 / 回放 / 离线 / 实时跑车 / 抓帧
+ *
+ * 职责：组合摄像头、视觉识别、控制求解、电机输出、打印报告，
+ *       从顶层组织一次运行的完整流程。
+ *
+ * 运行模式（由 main 根据命令行参数选择其一）：
+ *   analyze     单帧分析 → 写 IPM 预览 + 报告
+ *   replay      同一帧重复跑 N 次 → 写报告
+ *   offline     单帧处理（仅输出到终端）
+ *   live        实时循环：采图→识别→控制→输出
+ *   capture     从摄像头抓一帧存为 PNG
+ */
+
 #include "app/runners.hpp"
 
-#include "app/assistant.hpp"
-#include "app/camera_config.hpp"
 #include "app/control_input_builder.hpp"
-#include "app/frame_pipeline.hpp"
-#include "app/live_profile.hpp"
-#include "app/options.hpp"
-#include "app/replay_log.hpp"
-#include "app/report.hpp"
-#include "clip.hpp"
+#include "report/options.hpp"
+#include "report/report.hpp"
+#include "report/assistant.hpp"
 #include "core/config.hpp"
 #include "core/control.hpp"
 #include "drivers/device.hpp"
 #include "drivers/drive_output.hpp"
-#include "tracking/atg_reference_mainline.hpp"
-#include "tracking/perspective.hpp"
+#include "core/perspective.hpp"
 
-#include <chrono>
+extern "C" {
+#include "vision_step.h"
+#include "headfile.h"
+}
+
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
-#include <cmath>
+#include <cstring>
+#include <ctime>
 #include <unistd.h>
 
 #include <opencv2/imgcodecs.hpp>
 
-// ==== 路径参数检查 ====
-int path_present(const char *path)
+/* ================= 小工具 ================= */
+
+constexpr double kEncoderCountsPerRev = 1024.0 * 4.0;
+constexpr double kAtgEncoderCountsPerMeter = 5800.0;
+
+/** 路径是否非空 */
+static int has_path(const char *path)
 {
     return path != nullptr && path[0] != '\0';
 }
 
-// 每帧识别前写入图像有效标记和本车控制参考中心。
-void init_frame(runtime_t *rt)
+static const char *camera_path_param()
 {
-    rt->gray_valid = 1;
-    rt->control_center_x = read_env_int_clamped("SMARTCAR_CONTROL_CENTER_X",
-                                                default_control_center_x(),
-                                                0,
-                                                RAW_W - 1);
+    return read_env_text("SMARTCAR_UVC_PATH", kDefaultUvcPath);
 }
 
-namespace
+static int control_center_x_param()
 {
-int abs_i_local(int value)
-{
-    return value < 0 ? -value : value;
+    return read_env_int_clamped("SMARTCAR_CONTROL_CENTER_X",
+                                kDefaultControlCenterX,
+                                0,
+                                RAW_W - 1);
 }
 
-int sign_i_local(int value)
+/** 单调时钟微秒（不随系统时间跳变） */
+static uint64_t monotonic_us()
 {
-    return value < 0 ? -1 : 1;
+    timespec ts = {};
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000ULL + (uint64_t)ts.tv_nsec / 1000ULL;
 }
 
-//-------------------------------------------------------------------------------------------------------------------
-//  @brief      实时主循环的同步发布点：识别/反馈/控制/驱动全部完成后，按分频打印 runtime 快照
-//  @return     void
-//  @note       这里只做同步点输出，不重新计算 tracking 或 control。
-//-------------------------------------------------------------------------------------------------------------------
-void publish_completed_live_frame(uint32_t frame_id, const runtime_t *rt, int div, live_profile_t *prof)
+/** 帧内剩余时间 sleep，保持帧率稳定 */
+static void sleep_remaining_frame_time(uint64_t t0, int period_us)
 {
-    // 同步点：识别、反馈读取、控制求解和电机下发都完成后，调试输出只消费这一份 runtime 快照。
-    const uint64_t t0 = (prof != nullptr && prof->enabled) ? monotonic_us() : 0;
-    print_live(frame_id, rt, div);
-    if(prof != nullptr && prof->enabled)
+    if(period_us <= 0)
     {
-        const uint64_t t1 = monotonic_us();
-        profile_add(&prof->print_us, t0, t1);
+        return;
+    }
+
+    uint64_t now = monotonic_us();
+    uint64_t used = now >= t0 ? now - t0 : 0;
+    if(used < (uint64_t)period_us)
+    {
+        usleep((useconds_t)((uint64_t)period_us - used));
     }
 }
+
+/** 从全局 rptsn 数组复制中线点到 runtime 结构 */
+static void copy_vision_midline(runtime_t *rt)
+{
+    midline_t *mid = &rt->vision.mid;
+    point_t ref = rt->vision.control_ref;
+    int last_x = ref.x;
+    int last_y = ref.y;
+    int dist = 0;
+
+    mid->step = rptsn_num < POINT_MAX ? rptsn_num : POINT_MAX;
+    for(int i = 0; i < mid->step; ++i)
+    {
+        int x = std::clamp((int)std::lround(rptsn[i][0]), 0, IPM_W - 1);
+        int y = std::clamp((int)std::lround(rptsn[i][1]), 0, IPM_H - 1);
+
+        mid->pts[i].x = x;
+        mid->pts[i].y = y;
+
+        if(i == 0)
+        {
+            mid->dist[i] = 0;
+        }
+        else
+        {
+            double dx = (double)(x - last_x);
+            double dy = (double)(y - last_y);
+            dist += (int)std::lround(std::hypot(dx, dy));
+            mid->dist[i] = dist;
+        }
+
+        last_x = x;
+        last_y = y;
+    }
 }
 
-//-------------------------------------------------------------------------------------------------------------------
-//  @brief      分析模式：单张图片识别一遍，并按需输出 IPM 预览图和分析报告
-//  @return     int          0 成功 / 1 失败（参数缺失或处理失败）
-//  @note       只用于离线检查，不进入 drive_output_apply()。
-//-------------------------------------------------------------------------------------------------------------------
+/**
+ * 从中线点的前视窗口计算 guide error（度）
+ *
+ * 流程：
+ *   1. 在前视距离附近取一个小窗口（±lookahead/5，最小 4 像素）
+ *   2. 若窗口内有有效点 → 均值法计算方向角
+ *   3. 若无有效点 → 回退到最近邻单点
+ * 角度 = -atan2(dx, dy)，dx 以 cx（图像中心 x）为基准。
+ */
+static double guide_error_from_midline(const midline_t *mid)
+{
+    if(mid == nullptr || mid->step <= 0)
+    {
+        return 0.0;
+    }
+
+    int lookahead = control_lookahead_dist_px(pixel_per_meter);
+    int window = lookahead / 5;
+    if(window < 4)
+    {
+        window = 4;
+    }
+
+    double sum_x = 0.0;
+    double sum_y = 0.0;
+    int count = 0;
+    for(int i = 0; i < mid->step; ++i)
+    {
+        if(mid->dist[i] < lookahead - window ||
+           mid->dist[i] > lookahead + window)
+        {
+            continue;
+        }
+
+        sum_x += (double)mid->pts[i].x;
+        sum_y += (double)mid->pts[i].y;
+        count++;
+    }
+
+    if(count > 0)
+    {
+        double dx = sum_x / (double)count - (double)cx;
+        double dy = (double)cy - sum_y / (double)count + ROAD_HALF_WIDTH * 8.0 / 9.0;
+        return -atan2(dx, dy) * 180.0 / 3.14159265358979323846;
+    }
+
+    /* 回退：找最接近前视距离的单点 */
+    int best = 0;
+    int best_err = 1 << 30;
+    for(int i = 0; i < mid->step; ++i)
+    {
+        if(mid->dist[i] <= 0)
+        {
+            continue;
+        }
+
+        int err = mid->dist[i] - lookahead;
+        if(err < 0)
+        {
+            err = -err;
+        }
+        if(err < best_err)
+        {
+            best_err = err;
+            best = i;
+        }
+    }
+
+    double dx = (double)mid->pts[best].x - (double)cx;
+    double dy = (double)cy - (double)mid->pts[best].y + ROAD_HALF_WIDTH * 8.0 / 9.0;
+    return -atan2(dx, dy) * 180.0 / 3.14159265358979323846;
+}
+
+/**
+ * 将视觉步骤的完整结果复制到 runtime，包括：
+ *   - guide_error（含 bias 修正 + 赛道特殊缩放）
+ *   - line_found 标志
+ *
+ * 赛道特殊缩放（经验标定值）：
+ *   圆环入 / 圆环出          → ×0.75（削弱视觉误差的陡变）
+ *   圆环 RUNNING 阶段        → ×0.81，钳位 ±35°
+ */
+static int copy_vision_result(runtime_t *rt, int step_ok)
+{
+    std::memset(&rt->vision, 0, sizeof(rt->vision));
+    rt->vision.control_ref.x = std::clamp(rt->control_center_x, 0, RAW_W - 1);
+    rt->vision.control_ref.y = START_HIGH;
+    rt->vision.line_found = step_ok && rptsn_num > 0 ? 1 : 0;
+    if(!rt->vision.line_found)
+    {
+        return 0;
+    }
+
+    copy_vision_midline(rt);
+    rt->vision.guide_error =
+        guide_error_from_midline(&rt->vision.mid) -
+        (double)control_config().guide_error_bias_deg;
+
+    if(road_type == CURVE_NEAR && control_config().curve_entry_bias_deg != 0.0F)
+    {
+        double curve_sign = pure_angle < 0 ? 1.0 : (pure_angle > 0 ? -1.0 : 0.0);
+        rt->vision.guide_error += curve_sign * (double)control_config().curve_entry_bias_deg;
+    }
+    if((circle_type == CIRCLE_LEFT_BEGIN || circle_type == CIRCLE_RIGHT_BEGIN) &&
+       circle_ref_mode == CIRCLE_REF_IN_C)
+    {
+        rt->vision.guide_error *= 0.75;
+    }
+    else if(circle_type == CIRCLE_RIGHT_OUT)
+    {
+        rt->vision.guide_error *= 0.75;
+    }
+    else if(circle_type == CIRCLE_LEFT_RUNNING || circle_type == CIRCLE_RIGHT_RUNNING)
+    {
+        rt->vision.guide_error *= 0.81;
+        if(rt->vision.guide_error < -35.0)
+        {
+            rt->vision.guide_error = -35.0;
+        }
+        if(rt->vision.guide_error > 35.0)
+        {
+            rt->vision.guide_error = 35.0;
+        }
+    }
+
+    return 1;
+}
+
+/** 加载一张图片并完成视觉 → 控制全流程，可选打印详细输出 */
+static int process_loaded_frame(runtime_t *rt, const char *image_path, int print_detail_enabled)
+{
+    if(rt == nullptr || !has_path(image_path))
+    {
+        std::fprintf(stderr, "错误: 图片输入参数无效\n");
+        return 0;
+    }
+
+    if(!device_load_gray(image_path, rt->gray))
+    {
+        std::fprintf(stderr, "错误: 图片读取失败: %s\n", image_path);
+        return 0;
+    }
+
+    rt->gray_valid = 1;
+    rt->control_center_x = control_center_x_param();
+
+    int step_ok = vision_step(rt->gray, rt->encoder_total);
+    int line_found = copy_vision_result(rt, step_ok);
+
+    control_input_t control_input = control_input_from_current_frame(rt, line_found);
+    solve_control_input(&control_input, nullptr, &rt->control);
+
+    if(print_detail_enabled)
+    {
+        print_detail(rt);
+    }
+    return 1;
+}
+
+/* ================= 单图分析 ================= */
+
+/** 分析模式：处理一幅图像 → 写 IPM 预览 + 分析报告 */
 int analyze(runtime_t *rt, const analyze_paths_t *paths)
 {
-    if(paths == nullptr || !path_present(paths->image_path))
+    if(paths == nullptr || !has_path(paths->image_path))
     {
-        std::fprintf(stderr, "ERROR: analyze image path missing\n");
+        std::fprintf(stderr, "错误: 单图分析缺少图片路径\n");
         return 1;
     }
 
-    if(!process_frame(rt, paths->image_path))
+    if(!process_loaded_frame(rt, paths->image_path, 1))
     {
         return 1;
     }
 
     cv::Mat ipm;
     perspective_preview(rt->gray, &ipm);
-    if(!ipm.empty() && path_present(paths->ipm_path) && !cv::imwrite(paths->ipm_path, ipm))
+    if(!ipm.empty() && has_path(paths->ipm_path) && !cv::imwrite(paths->ipm_path, ipm))
     {
-        std::fprintf(stderr, "WARN: write ipm failed: %s\n", paths->ipm_path);
+        std::fprintf(stderr, "警告: IPM 预览图写入失败: %s\n", paths->ipm_path);
     }
 
-    if(path_present(paths->report_path) && !write_report(rt, paths->report_path))
+    if(has_path(paths->report_path) && !write_report(rt, paths->report_path))
     {
-        std::fprintf(stderr, "WARN: write report failed: %s\n", paths->report_path);
+        std::fprintf(stderr, "警告: 分析报告写入失败: %s\n", paths->report_path);
     }
     return 0;
 }
 
-//-------------------------------------------------------------------------------------------------------------------
-//  @brief      回放模式：对同一张图反复处理 count 次，模拟连续帧并打印每帧摘要
-//  @return     int          0 成功 / 1 参数无效或处理失败
-//  @note       可观察 cross/ring 跨帧状态推进，但输入图像不变化。
-//-------------------------------------------------------------------------------------------------------------------
+/* ================= 回放 ================= */
+
+/** 回放模式：同一幅图反复跑 count 次，打印每帧回放日志，可选写报告 */
 int replay(runtime_t *rt, const char *image_path, int count, const char *report_path)
 {
-    if(rt == nullptr || !path_present(image_path) || count <= 0)
+    if(rt == nullptr || !has_path(image_path) || count <= 0)
     {
-        std::fprintf(stderr, "ERROR: replay arguments invalid\n");
+        std::fprintf(stderr, "错误: 回放参数无效\n");
         return 1;
     }
 
     for(int frame = 0; frame < count; ++frame)
     {
-        if(!process_frame_quiet(rt, image_path))
+        if(!process_loaded_frame(rt, image_path, 0))
         {
             return 1;
         }
         print_replay_frame(frame, rt);
     }
 
-    if(path_present(report_path) && !write_report(rt, report_path))
+    if(has_path(report_path) && !write_report(rt, report_path))
     {
-        std::fprintf(stderr, "WARN: write report failed: %s\n", report_path);
+        std::fprintf(stderr, "警告: 回放报告写入失败: %s\n", report_path);
     }
     return 0;
 }
 
-//-------------------------------------------------------------------------------------------------------------------
-//  @brief      离线模式：处理单张图片并打印详细信息
-//  @return     int          0 成功 / 1 失败
-//  @note       只跑 tracking + 无反馈控制，不下发电机。
-//-------------------------------------------------------------------------------------------------------------------
+/* ================= 离线单图 ================= */
+
+/** 离线模式：处理一张图，结果输出到终端（用于调试单帧） */
 int offline(runtime_t *rt, const char *image_path)
 {
-    if(!process_frame(rt, image_path))
+    if(!process_loaded_frame(rt, image_path, 1))
     {
         return 1;
     }
     return 0;
 }
 
-//-------------------------------------------------------------------------------------------------------------------
-//  @brief      实时模式主循环：开摄像头 → 采集 → 读反馈/里程 → ATG识别 → 薄输入控制 → 下发电机 → 同步打印
-//  @return     int          摄像头初始化失败时返回 1，正常情况下进入死循环不返回
-//  @note       Linux 实时运行层只管采集、反馈、tracking、control、drive、print，不写 ATG 元素算法。
-//  @note       drive 是否真正输出由 FRONT_CAR_ENABLE_DRIVE 控制，默认不开电机。
-//-------------------------------------------------------------------------------------------------------------------
+/* ================= 实时跑车 ================= */
+
+/**
+ * 实时模式主循环
+ *
+ * 流程：
+ *   1. 启动摄像头 + 电机初始化
+ *   2. 循环：采图 → 读反馈（里程/陀螺仪）→ 视觉识别 → 控制求解 → 电机输出
+ *   3. 到达 run_ms 上限或手动退出时停车
+ */
 int live(runtime_t *rt)
 {
     if(rt == nullptr)
     {
-        std::fprintf(stderr, "ERROR: live runtime missing\n");
+        std::fprintf(stderr, "错误: live 缺少 runtime\n");
         return 1;
     }
 
-    const camera_options_t camera = read_camera_options();
-    int div = read_env_int_clamped("FRONT_CAR_PRINT_DIV", default_live_print_divider(), 1, 10000);
-    int drive_enabled = read_env_flag("FRONT_CAR_ENABLE_DRIVE", 0);
-    int process_fps = read_env_int_clamped("FRONT_CAR_PROCESS_FPS", camera.fps, 1, 120);
-    int run_ms = read_env_int_clamped("FRONT_CAR_RUN_MS", 0, 0, 60000);
-    const int spin_yaw_mrad_s = read_env_int("FRONT_CAR_SPIN_YAW_MRAD_S", 0);
-    const int spin_angle_deg = read_env_int_clamped("FRONT_CAR_SPIN_ANGLE_DEG", 0, -360, 360);
-    const int period_us = frame_period_us_from_fps(process_fps);
-    int control_period_ms = live_control_period_ms();
-    rt->control_center_x = read_env_int_clamped("SMARTCAR_CONTROL_CENTER_X",
-                                                default_control_center_x(),
-                                                0,
-                                                RAW_W - 1);
-    atg_set_vehicle_raw_ref_x(
-        static_cast<float>(read_env_int_clamped("FRONT_CAR_VEHICLE_RAW_REF_X",
-                                                static_cast<int>(std::lround(control_config().vehicle_raw_ref_x)),
-                                                0,
-                                                RAW_W - 1)));
-    if(div < 1)
+    /* ================= 启动外设 ================= */
+
+    const char *camera_path = camera_path_param();
+    const int drive_on = read_env_flag("FRONT_CAR_ENABLE_DRIVE", 0);
+    const int process_fps = read_env_int_clamped("FRONT_CAR_PROCESS_FPS", 30, 1, 120);
+    const int period_us = 1000000 / process_fps;
+    const int print_div = read_env_int_clamped("FRONT_CAR_PRINT_DIV",
+                                               kDefaultLivePrintDivider,
+                                               1,
+                                               10000);
+    const int run_ms = read_env_int_clamped("FRONT_CAR_RUN_MS", 0, 0, 60000);
+    int control_ms = control_config().control_period_ms;
+    if(control_ms < 1)
     {
-        div = 1;
+        std::printf("配置警告: control_period_ms=%d 小于实时范围，改用 1\n", control_ms);
+        control_ms = 1;
     }
-    live_profile_t prof = {};
-    prof.enabled = read_env_flag("FRONT_CAR_PROFILE", 0);
-    prof.divider = read_env_int_clamped("FRONT_CAR_PROFILE_DIV", 30, 1, 10000);
-    if(!device_open_camera(camera.path, camera.width, camera.height, camera.fps))
+    if(control_ms > 100)
     {
-        std::fprintf(stderr, "ERROR: camera init failed\n");
+        std::printf("配置警告: control_period_ms=%d 大于实时范围，改用 100\n", control_ms);
+        control_ms = 100;
+    }
+    rt->control_center_x = control_center_x_param();
+    vision_set_car_x((float)read_env_int_clamped("FRONT_CAR_VEHICLE_RAW_REF_X",
+                                                 (int)std::lround(control_config().vehicle_raw_ref_x),
+                                                 0,
+                                                 RAW_W - 1));
+
+    if(!device_open_camera(camera_path))
+    {
+        std::fprintf(stderr,
+                "错误: 摄像头启动失败 path=%s\n",
+                camera_path);
         return 1;
     }
 
-    drive_output_init(drive_enabled);
+    drive_output_init(drive_on);
     assistant_init();
-    std::printf("front_car_mainline: live %s %dx%d@%d process_fps=%d drive=%s\n",
-                camera.path,
-                camera.width,
-                camera.height,
-                camera.fps,
-                process_fps,
-                drive_enabled ? "on" : "off");
-    if(spin_angle_deg != 0 && spin_yaw_mrad_s == 0)
-    {
-        std::printf("SpinAngleWarn: FRONT_CAR_SPIN_ANGLE_DEG requires FRONT_CAR_SPIN_YAW_MRAD_S\n");
-    }
+
+    std::printf("实时: 摄像头=%s 处理fps=%d 电机=%s\n",
+           camera_path,
+           process_fps,
+           drive_on ? "开" : "关");
+
+    /* ================= 主循环 ================= */
     uint32_t frame_id = 0;
-    const uint64_t run_t0 = (run_ms > 0 || spin_angle_deg != 0) ? monotonic_us() : 0;
-    double spin_yaw_deg = 0.0;
-    const int spin_angle_sign = spin_angle_deg != 0 ? sign_i_local(spin_angle_deg) : 0;
-    const int spin_angle_abs = abs_i_local(spin_angle_deg);
+    uint64_t start_us = monotonic_us();
     while(1)
     {
-        if(run_ms > 0 && monotonic_us() - run_t0 >= static_cast<uint64_t>(run_ms) * 1000ULL)
+        uint64_t t0 = monotonic_us();
+
+        if(run_ms > 0 && t0 - start_us >= (uint64_t)run_ms * 1000ULL)
         {
             drive_output_stop();
             break;
         }
-        // 实时主链按真实顺序展开；t0~t6 是 profile 各阶段计时点。
-        const uint64_t t0 = (prof.enabled || period_us > 0) ? monotonic_us() : 0;
-        // [t0->t1] 采集一帧 RAW_W x RAW_H 灰度
+
+        /* 采图 */
         if(!device_capture_gray(rt->gray))
         {
-            std::fprintf(stderr, "WARN: capture failed\n");
+            std::fprintf(stderr, "警告: 采图失败\n");
             continue;
         }
-        const uint64_t t1 = prof.enabled ? monotonic_us() : 0;
 
-        // [t1->t2] 读编码器/IMU 反馈，并把左右编码器均值累加到 ATG 里程输入。
+        /* 读反馈，更新里程和圆环陀螺仪 */
         control_feedback_t fb = {};
-        drive_output_read_feedback(&fb, control_period_ms);
-        rt->encoder_total += atg_distance_counts_from_encoder_delta(fb);
-        atg_update_circle_heading(static_cast<float>(fb.actual_yaw_rate_mrad_s) / 1000.0F,
-                                  fb.period_ms,
-                                  fb.actual_yaw_rate_valid);
-        if(spin_angle_deg != 0 && spin_yaw_mrad_s != 0 && fb.actual_yaw_rate_valid)
+        drive_output_read_feedback(&fb, control_ms);
+        const int64_t wheel_delta =
+            (static_cast<int64_t>(fb.left_speed_count) +
+             static_cast<int64_t>(fb.right_speed_count)) / 2;
+        if(wheel_delta != 0)
         {
-            const double dt_s = fb.period_ms > 0 ? static_cast<double>(fb.period_ms) / 1000.0 : 0.0;
-            spin_yaw_deg += static_cast<double>(fb.actual_yaw_rate_mrad_s) / 1000.0 *
-                            dt_s * 180.0 / 3.14159265358979323846;
-            if(static_cast<double>(spin_angle_sign) * spin_yaw_deg >= static_cast<double>(spin_angle_abs))
-            {
-                drive_output_stop();
-                std::printf("SpinAngleResult: reached=1 target_deg=%d yaw_deg=%.2f elapsed_ms=%llu actual_yaw=%d\n",
-                            spin_angle_deg,
-                            spin_yaw_deg,
-                            static_cast<unsigned long long>((monotonic_us() - run_t0) / 1000ULL),
-                            fb.actual_yaw_rate_mrad_s);
-                break;
-            }
+            const double wheel_m = static_cast<double>(wheel_delta) / kEncoderCountsPerRev *
+                                   3.14159265358979323846 *
+                                   static_cast<double>(control_config().encoder_gear_diameter_m);
+            rt->encoder_total += static_cast<int64_t>(
+                std::llround(wheel_m * kAtgEncoderCountsPerMeter));
         }
-        const uint64_t t2 = prof.enabled ? monotonic_us() : 0;
+        vision_update_circle_heading((float)fb.actual_yaw_rate_mrad_s / 1000.0F,
+                                     fb.period_ms,
+                                     fb.actual_yaw_rate_valid);
 
-        // [t2->t3] ATG 视觉识别：image_handle -> find_corners -> elements -> selected line。
+        /* 视觉识别 */
         rt->gray_valid = 1;
-        const int line_found = tracking_process_frame(rt);
-        const uint64_t t3 = prof.enabled ? monotonic_us() : 0;
-        // [t3->t4] 闭环控制：当前 ATG 帧 -> 薄控制输入 -> target_yaw -> 左右 duty。
-        const control_input_t control_input = control_input_from_current_frame(rt, line_found);
-        solve_control_input_with_feedback(&control_input, &fb, &rt->control);
-        const uint64_t t4 = prof.enabled ? monotonic_us() : 0;
-        // [t4->t5] 下发电机 PWM + 推送上位机显示
+        int step_ok = vision_step(rt->gray, rt->encoder_total);
+        int line_found = copy_vision_result(rt, step_ok);
+
+        /* 控制求解（带反馈补偿） */
+        control_input_t input = control_input_from_current_frame(rt, line_found);
+        solve_control_input(&input, &fb, &rt->control);
+
+        /* 下发执行（最终给到舵机/电机） */
         drive_output_apply(&rt->control);
+
+        /* 打印 */
+        print_live(frame_id, rt, print_div);
         assistant_tick(rt, frame_id);
-        const uint64_t t5 = prof.enabled ? monotonic_us() : 0;
-        // [t5->t6] 同步发布点：按分频打印本帧 runtime 快照
-        publish_completed_live_frame(frame_id, rt, div, &prof);
-        if(prof.enabled)
-        {
-            const uint64_t t6 = monotonic_us();
-            prof.frames++;
-            profile_add(&prof.capture_us, t0, t1);
-            profile_add(&prof.feedback_us, t1, t2);
-            profile_add(&prof.pts_us, t2, t3);
-            profile_add(&prof.control_us, t3, t4);
-            profile_add(&prof.drive_us, t4, t5);
-            profile_add(&prof.total_us, t0, t6);
-            profile_report_and_reset(&prof);
-        }
         frame_id++;
 
         sleep_remaining_frame_time(t0, period_us);
@@ -283,37 +472,35 @@ int live(runtime_t *rt)
     return 0;
 }
 
-//-------------------------------------------------------------------------------------------------------------------
-//  @brief      抓帧模式：打开摄像头采集一帧灰度图并写到指定路径
-//  @return     int          0 成功 / 1 失败（摄像头/采集/写文件任一环节失败）
-//  @note       只保存 RAW_W x RAW_H 灰度图，不跑 tracking/control。
-//-------------------------------------------------------------------------------------------------------------------
+/* ================= 抓一帧 ================= */
+
+/** 抓帧模式：打开摄像头抓一帧存为 PNG，然后退出 */
 int capture_frame(runtime_t *rt, const char *capture_path)
 {
-    if(rt == nullptr || !path_present(capture_path))
+    if(rt == nullptr || !has_path(capture_path))
     {
-        std::fprintf(stderr, "ERROR: capture arguments invalid\n");
+        std::fprintf(stderr, "错误: 抓帧参数无效\n");
         return 1;
     }
 
-    const camera_options_t camera = read_camera_options();
-    if(!device_open_camera(camera.path, camera.width, camera.height, camera.fps))
+    const char *camera_path = camera_path_param();
+    if(!device_open_camera(camera_path))
     {
-        std::fprintf(stderr, "ERROR: camera init failed\n");
+        std::fprintf(stderr, "错误: 摄像头启动失败\n");
         return 1;
     }
     if(!device_capture_gray(rt->gray))
     {
-        std::fprintf(stderr, "ERROR: capture failed\n");
+        std::fprintf(stderr, "错误: 抓帧失败\n");
         return 1;
     }
 
     cv::Mat img(RAW_H, RAW_W, CV_8UC1, rt->gray[0]);
     if(!cv::imwrite(capture_path, img))
     {
-        std::fprintf(stderr, "ERROR: write capture failed: %s\n", capture_path);
+        std::fprintf(stderr, "错误: 抓帧图片写入失败: %s\n", capture_path);
         return 1;
     }
-    std::printf("Captured frame: %s\n", capture_path);
+    std::printf("抓帧完成: %s\n", capture_path);
     return 0;
 }

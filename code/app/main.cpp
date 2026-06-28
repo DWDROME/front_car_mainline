@@ -1,73 +1,66 @@
-#include "app/options.hpp"
 #include "app/runners.hpp"
 #include "core/config.hpp"
-#include "tracking/atg_reference_mainline.hpp"
-#include "tracking/perspective.hpp"
+#include "report/options.hpp"
+#include "vision_step.h"
 
 #include <cstdio>
 #include <cstring>
 
-namespace
-{
-constexpr const char *k_default_config_path = "/root/front_car_mainline.yaml";
-runtime_t g_rt;
+static runtime_t rt;
 
-const char *program_name(int argc, char **argv)
+int main(int argc, char **argv)
 {
-    if(argc <= 0 || argv == nullptr || argv[0] == nullptr || argv[0][0] == '\0')
+    const char *prog = "front_car_mainline";
+
+    if(argc > 0 && argv != nullptr && argv[0] != nullptr)
     {
-        return "front_car_mainline";
+        prog = argv[0];
     }
-    return argv[0];
-}
 
-int help_requested(int argc, char **argv)
-{
-    if(argc != 2 || argv == nullptr || argv[1] == nullptr)
-    {
-        return 0;
-    }
-    return std::strcmp(argv[1], "-h") == 0 || std::strcmp(argv[1], "--help") == 0;
-}
-}
+    /* ================= 读取配置 ================= */
+    load_control_config(read_env_text("FRONT_CAR_CONFIG",
+                                      "/root/front_car_mainline.yaml"));
 
-//-------------------------------------------------------------------------------------------------------------------
-//  @brief      命令行调度入口，根据传入参数选择实时/抓图/离线分析/回放等运行模式
-//  @return     int          0 表示成功，1 表示参数无效（已打印用法）
-//  @note       启动时先读 FRONT_CAR_CONFIG 或 /root/front_car_mainline.yaml；IPM 使用编译进来的静态查表。
-//-------------------------------------------------------------------------------------------------------------------
-int run_mainline(int argc, char **argv)
-{
-    const char *prog = program_name(argc, argv);
-    if(help_requested(argc, argv))
+    /* ================= 帮助信息 ================= */
+    if(argc == 2 && argv != nullptr && argv[1] != nullptr &&
+       (std::strcmp(argv[1], "-h") == 0 ||
+        std::strcmp(argv[1], "--help") == 0))
     {
         print_usage(prog);
         return 0;
     }
 
-    load_control_config(read_env_text("FRONT_CAR_CONFIG", k_default_config_path));
-
+    /* ================= 解析参数 ================= */
     options_t opt = {};
     init_options(&opt);
+
     if(!parse_options(argc, argv, &opt))
     {
         print_usage(prog);
         return 1;
     }
 
-    tracking_reset(&g_rt);
-    std::printf("front_car_mainline: ipm=atg rot/inv_rot\n");
+    /* ================= 初始化视觉主线 ================= */
+    std::memset(&rt, 0, sizeof(rt));
+    rt.control_center_x = CONTROL_CENTER_X;
+    vision_reset();
 
+    /* ================= 实时模式 =================
+     * 不带参数时直接上车跑。
+     * 摄像头、电机、外设初始化放在 live() 里面。
+     */
     if(argc == 1)
     {
-        return live(&g_rt);
+        return live(&rt);
     }
 
-    if(opt.capture_path != nullptr)
+    /* ================= 回放模式 ================= */
+    if(opt.replay_path != nullptr)
     {
-        return capture_frame(&g_rt, opt.capture_path);
+        return replay(&rt, opt.replay_path, opt.replay_count, opt.report_path);
     }
 
+    /* ================= 单图分析 ================= */
     if(opt.analyze_path != nullptr)
     {
         analyze_paths_t p = {
@@ -75,28 +68,22 @@ int run_mainline(int argc, char **argv)
             opt.ipm_path,
             opt.report_path,
         };
-        return analyze(&g_rt, &p);
+
+        return analyze(&rt, &p);
     }
 
-    if(opt.replay_path != nullptr)
+    /* ================= 抓一帧图像 ================= */
+    if(opt.capture_path != nullptr)
     {
-        return replay(&g_rt, opt.replay_path, opt.replay_count, opt.report_path);
+        return capture_frame(&rt, opt.capture_path);
     }
 
+    /* ================= 离线输入 ================= */
     if(opt.input_path != nullptr)
     {
-        return offline(&g_rt, opt.input_path);
+        return offline(&rt, opt.input_path);
     }
 
     print_usage(prog);
     return 1;
-}
-
-//-------------------------------------------------------------------------------------------------------------------
-//  @brief      程序入口，转发到 run_mainline 进行命令行分发
-//  @return     int          run_mainline 的返回值
-//-------------------------------------------------------------------------------------------------------------------
-int main(int argc, char **argv)
-{
-    return run_mainline(argc, argv);
 }

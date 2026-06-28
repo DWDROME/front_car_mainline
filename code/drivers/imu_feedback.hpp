@@ -18,11 +18,6 @@ struct gyro_sample_t
     double rad_s_y = 0.0;
     double rad_s_z = 0.0;
 
-    // 兼容旧控制入口的单轴字段；当前取 Y 轴作为 yaw-rate 反馈。
-    int raw = 0;
-    int bias = 0;
-    int delta = 0;
-    double rad_s = 0.0;
 };
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -35,8 +30,8 @@ bool imu_feedback_init(double raw_to_rad_s);
 
 //----------------------------------------------------------------------------------------------------------------------
 //  @brief      读取一帧陀螺仪反馈
-//  @param      gy    输出三轴和兼容单轴角速度
+//  @param      gy    输出三轴角速度
 //  @return     bool  true 成功 / false 未初始化或 sysfs 读取失败
-//  @note       gy->rad_s 当前取 Y 轴，drive_output_read_feedback() 会转成 mrad/s 给控制层。
+//  @note       当前车体装配下 yaw 轴对应 IMU 的 Y 轴，drive_output_read_feedback() 读取 gy->rad_s_y。
 //----------------------------------------------------------------------------------------------------------------------
 bool imu_feedback_read(gyro_sample_t *gy);

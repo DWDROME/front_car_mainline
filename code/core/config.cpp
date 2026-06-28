@@ -66,73 +66,83 @@ bool parse_float_value(const std::string &v, float *out)
 
 void warn_bad_value(const char *key, const std::string &v)
 {
-    std::printf("ConfigWarn: invalid value for '%s': '%s'\n", key, v.c_str());
+    std::printf("配置警告: %s='%s' 不是有效数值，保留原值\n", key, v.c_str());
 }
 
-void set_int_field(const char *key, const std::string &v, int *field)
+bool set_int_field(const std::string &k, const std::string &v, const char *name, int *field)
 {
+    if(k != name)
+    {
+        return false;
+    }
+
     int parsed = 0;
     if(!parse_int_value(v, &parsed))
     {
-        warn_bad_value(key, v);
-        return;
+        warn_bad_value(name, v);
+        return true;
     }
+
     *field = parsed;
+    return true;
 }
 
-void set_float_field(const char *key, const std::string &v, float *field)
+bool set_float_field(const std::string &k, const std::string &v, const char *name, float *field)
 {
+    if(k != name)
+    {
+        return false;
+    }
+
     float parsed = 0.0F;
     if(!parse_float_value(v, &parsed))
     {
-        warn_bad_value(key, v);
-        return;
+        warn_bad_value(name, v);
+        return true;
     }
+
     *field = parsed;
+    return true;
 }
 
-// 按 key 把字符串值写入对应配置字段：I() 走严格 int 解析，F() 走严格 float 解析。
-// 宏里的字段名必须和 control_config_t 成员逐字一致；改了结构体成员名要同步这里。
-// 未知 key 或非法值只打印 ConfigWarn、不中断：对应字段保留原值。
+// 按 key 把字符串值写入对应配置字段。未知 key 或非法值只打印配置警告、不中断；
+// 对应字段保留原值。
 void set_field(const std::string &k, const std::string &v)
 {
-#define I(name) if(k == #name) { set_int_field(#name, v, &g_cfg.name); return; }
-#define F(name) if(k == #name) { set_float_field(#name, v, &g_cfg.name); return; }
-    I(control_period_ms)
-    F(target_rps)
-    F(element_target_rps)
-    F(speed_target_rps)
-    F(curve_speed_slowdown)
-    F(left_speed_base_percent)
-    F(right_speed_base_percent)
-    F(left_speed_kp)
-    F(right_speed_kp)
-    F(left_speed_ki)
-    F(right_speed_ki)
-    F(wheel_track_m)
-    F(encoder_gear_diameter_m)
-    F(gyro_raw_to_rad_s)
-    I(imu_yaw_feedback_enabled)
-    F(outer_kp)
-    F(outer_kd)
-    F(outer_sign)
-    F(straight_error_threshold)
-    F(straight_turn_scale)
-    F(max_target_yaw_rate)
-    I(element_reverse_brake_percent)
-    F(yaw_kp)
-    F(yaw_ki)
-    F(max_yaw_rate_correction)
-    F(rps_filter_alpha)
-    I(yaw_rate_filter_window)
-    F(lookahead_time_s)
-    F(vehicle_raw_ref_x)
-    F(guide_error_bias_deg)
-    F(curve_entry_bias_deg)
-    I(max_duty_percent)
-#undef I
-#undef F
-    std::printf("ConfigWarn: unknown key '%s'\n", k.c_str());
+    if(set_int_field(k, v, "control_period_ms", &g_cfg.control_period_ms)) return;
+    if(set_float_field(k, v, "target_rps", &g_cfg.target_rps)) return;
+    if(set_float_field(k, v, "element_target_rps", &g_cfg.element_target_rps)) return;
+    if(set_float_field(k, v, "speed_target_rps", &g_cfg.speed_target_rps)) return;
+    if(set_float_field(k, v, "curve_speed_slowdown", &g_cfg.curve_speed_slowdown)) return;
+    if(set_float_field(k, v, "left_speed_base_percent", &g_cfg.left_speed_base_percent)) return;
+    if(set_float_field(k, v, "right_speed_base_percent", &g_cfg.right_speed_base_percent)) return;
+    if(set_float_field(k, v, "left_speed_kp", &g_cfg.left_speed_kp)) return;
+    if(set_float_field(k, v, "right_speed_kp", &g_cfg.right_speed_kp)) return;
+    if(set_float_field(k, v, "left_speed_ki", &g_cfg.left_speed_ki)) return;
+    if(set_float_field(k, v, "right_speed_ki", &g_cfg.right_speed_ki)) return;
+    if(set_float_field(k, v, "wheel_track_m", &g_cfg.wheel_track_m)) return;
+    if(set_float_field(k, v, "encoder_gear_diameter_m", &g_cfg.encoder_gear_diameter_m)) return;
+    if(set_float_field(k, v, "gyro_raw_to_rad_s", &g_cfg.gyro_raw_to_rad_s)) return;
+    if(set_int_field(k, v, "imu_yaw_feedback_enabled", &g_cfg.imu_yaw_feedback_enabled)) return;
+    if(set_float_field(k, v, "outer_kp", &g_cfg.outer_kp)) return;
+    if(set_float_field(k, v, "outer_kd", &g_cfg.outer_kd)) return;
+    if(set_float_field(k, v, "outer_sign", &g_cfg.outer_sign)) return;
+    if(set_float_field(k, v, "straight_error_threshold", &g_cfg.straight_error_threshold)) return;
+    if(set_float_field(k, v, "straight_turn_scale", &g_cfg.straight_turn_scale)) return;
+    if(set_float_field(k, v, "max_target_yaw_rate", &g_cfg.max_target_yaw_rate)) return;
+    if(set_int_field(k, v, "element_reverse_brake_percent", &g_cfg.element_reverse_brake_percent)) return;
+    if(set_float_field(k, v, "yaw_kp", &g_cfg.yaw_kp)) return;
+    if(set_float_field(k, v, "yaw_ki", &g_cfg.yaw_ki)) return;
+    if(set_float_field(k, v, "max_yaw_rate_correction", &g_cfg.max_yaw_rate_correction)) return;
+    if(set_float_field(k, v, "rps_filter_alpha", &g_cfg.rps_filter_alpha)) return;
+    if(set_int_field(k, v, "yaw_rate_filter_window", &g_cfg.yaw_rate_filter_window)) return;
+    if(set_float_field(k, v, "lookahead_time_s", &g_cfg.lookahead_time_s)) return;
+    if(set_float_field(k, v, "vehicle_raw_ref_x", &g_cfg.vehicle_raw_ref_x)) return;
+    if(set_float_field(k, v, "guide_error_bias_deg", &g_cfg.guide_error_bias_deg)) return;
+    if(set_float_field(k, v, "curve_entry_bias_deg", &g_cfg.curve_entry_bias_deg)) return;
+    if(set_int_field(k, v, "max_duty_percent", &g_cfg.max_duty_percent)) return;
+
+    std::printf("配置警告: 未知配置项 '%s'，已忽略\n", k.c_str());
 }
 
 // 解析一行配置：先去掉 '#' 注释，再按第一个 ':' 拆成 key/value 并各自 trim，空行或缺冒号直接跳过。
@@ -175,7 +185,7 @@ bool load_control_config(const char *path)
     std::ifstream input(path);
     if(!input.is_open())
     {
-        std::printf("ConfigWarn: %s not found, using config.hpp defaults\n", path);
+        std::printf("配置警告: 找不到 %s，使用 config.hpp 默认值\n", path);
         return false;
     }
 
@@ -184,11 +194,28 @@ bool load_control_config(const char *path)
     {
         parse_config_line(line);
     }
-    std::printf("ConfigInfo: loaded %s\n", path);
+    std::printf("配置: 已加载 %s\n", path);
     return true;
 }
 
-const control_config_t &control_config()
+const control_config_t &control_config(void)
 {
     return g_cfg;
+}
+
+int control_lookahead_dist_px(int pixel_per_meter)
+{
+    const double circ = 3.14159265358979323846 * static_cast<double>(g_cfg.encoder_gear_diameter_m);
+    const double v_mps = static_cast<double>(g_cfg.target_rps) * circ;
+    double dist_m = static_cast<double>(g_cfg.lookahead_time_s) * v_mps;
+
+    if(dist_m < 0.20)
+    {
+        dist_m = 0.20;
+    }
+    if(dist_m > 0.58)
+    {
+        dist_m = 0.58;
+    }
+    return static_cast<int>(std::lround(dist_m * static_cast<double>(pixel_per_meter)));
 }

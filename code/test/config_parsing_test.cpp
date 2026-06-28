@@ -1,3 +1,15 @@
+/*
+ * config_parsing_test.c —— control_config 的 YAML 解析单元测试
+ *
+ * 覆盖：
+ *   - 默认值
+ *   - 非法类型 / nan / inf / 溢出 → 保持默认
+ *   - 合法值 → 正确解析
+ *   - 行尾注释 # → 正确截断
+ *   - 不认识的 key → 忽略，保持前值
+ *   - 带尾巴的脏值（20ms / 6.0x 等）→ 忽略，保持前值
+ */
+
 #include "core/config.hpp"
 
 #include <cmath>
@@ -6,14 +18,17 @@
 
 namespace
 {
+/* 临时 YAML 文件路径（Linux tmpfs，避免磁盘 IO 干扰） */
 constexpr const char *kTestConfigPath = "/tmp/front_car_config_parsing_test.yaml";
 
+/** 将 YAML 文本写入临时文件 */
 void write_config(const char *text)
 {
     std::ofstream out(kTestConfigPath);
     out << text;
 }
 
+/** 断言 int 相等 */
 void expect_int(const char *name, int actual, int expected, int *failed)
 {
     if(actual != expected)
@@ -23,6 +38,7 @@ void expect_int(const char *name, int actual, int expected, int *failed)
     }
 }
 
+/** 断言 float 近似相等（epsilon = 1e-6） */
 void expect_float(const char *name, float actual, float expected, int *failed)
 {
     if(std::fabs(actual - expected) > 0.000001F)
@@ -37,6 +53,7 @@ int main()
 {
     int failed = 0;
 
+    // ---- 1. 默认值 ----
     const control_config_t &defaults = control_config();
     expect_int("default control_period_ms", defaults.control_period_ms, 10, &failed);
     expect_float("default target_rps", defaults.target_rps, 4.0F, &failed);
@@ -45,6 +62,7 @@ int main()
     expect_float("default guide_error_bias", defaults.guide_error_bias_deg, 0.0F, &failed);
     expect_int("default max_duty_percent", defaults.max_duty_percent, 35, &failed);
 
+    // ---- 2. 非法值（类型错 / nan / inf / 溢出）→ 保持默认 ----
     write_config("control_period_ms: bad\n"
                  "target_rps: nope\n"
                  "outer_kp: nan\n"
@@ -64,6 +82,7 @@ int main()
     expect_float("bad guide bias keeps default", after_bad.guide_error_bias_deg, 0.0F, &failed);
     expect_int("overflow keeps default", after_bad.max_duty_percent, 35, &failed);
 
+    // ---- 3. 合法值 → 正确解析 ----
     write_config("control_period_ms: 20\n"
                  "target_rps: 5.5\n"
                  "outer_kp: 0.06\n"
@@ -83,6 +102,7 @@ int main()
     expect_float("valid guide bias applied", after_valid.guide_error_bias_deg, 13.0F, &failed);
     expect_int("valid max duty applied", after_valid.max_duty_percent, 30, &failed);
 
+    // ---- 4. 行尾注释（# 后内容被截断） ----
     write_config("# inline comments should not become numeric tails\n"
                  "control_period_ms: 15 # ms\n"
                  "target_rps: 4.5 # ordinary speed\n"
@@ -103,6 +123,7 @@ int main()
     expect_float("comment guide bias applied", after_comments.guide_error_bias_deg, 12.5F, &failed);
     expect_int("comment max duty applied", after_comments.max_duty_percent, 28, &failed);
 
+    // ---- 5. 不认识的 key → 忽略，前值保持 ----
     write_config("not_a_control_key: 123\n");
     if(!load_control_config(kTestConfigPath))
     {
@@ -117,6 +138,7 @@ int main()
     expect_float("unknown key keeps guide bias", after_unknown.guide_error_bias_deg, 12.5F, &failed);
     expect_int("unknown key keeps max duty", after_unknown.max_duty_percent, 28, &failed);
 
+    // ---- 6. 脏值尾巴（20ms / 6.0x / inf / nan）→ 忽略，前值保持 ----
     write_config("control_period_ms: 20ms\n"
                  "target_rps: 6.0x\n"
                  "outer_kp: inf\n"
@@ -136,6 +158,7 @@ int main()
     expect_float("bad guide bias keeps previous", after_trailing.guide_error_bias_deg, 12.5F, &failed);
     expect_int("bad max duty keeps previous", after_trailing.max_duty_percent, 28, &failed);
 
+    // 清理临时文件
     std::remove(kTestConfigPath);
 
     if(failed)

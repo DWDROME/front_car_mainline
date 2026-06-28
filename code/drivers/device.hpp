@@ -7,13 +7,10 @@
 //----------------------------------------------------------------------------------------------------------------------
 //  @brief      打开 UVC 摄像头
 //  @param      path    设备路径，例如 /dev/video0
-//  @param      width   兼容参数；当前逐飞 UVC 库只使用 path 初始化
-//  @param      height  兼容参数；实际帧尺寸在 device_capture_gray() 校验
-//  @param      fps     兼容参数；当前逐飞 UVC 库只使用 path 初始化
 //  @return     int     1 成功 / 0 参数无效或初始化失败
-//  @note       当前库接口是 init(path) 一参数，不能在这里假装 width/height/fps 已下发给设备。
+//  @note       当前库接口是 init(path) 一参数；实际帧尺寸由 device_capture_gray() 校验。
 //----------------------------------------------------------------------------------------------------------------------
-int device_open_camera(const char *path, int width, int height, int fps);
+int device_open_camera(const char *path);
 
 //----------------------------------------------------------------------------------------------------------------------
 //  @brief      采集一帧 RAW_W x RAW_H 灰度图

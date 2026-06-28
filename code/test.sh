@@ -3,7 +3,8 @@ set -euo pipefail
 
 export PATH=/opt/ls_2k0300_env/loongson-gnu-toolchain-8.3-x86_64-loongarch64-linux-gnu-rc1.6/bin:$PATH
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CODE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "${CODE_ROOT}/.." && pwd)"
 TARGET="front_car_mainline"
 KEY_BIN="key_supervisor"
 BUILD="${ROOT}/build"
@@ -75,10 +76,12 @@ cd "${OUT}"
 
 if [[ ${CLEAN} -eq 1 ]]; then
     find . -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+elif [[ ${RECONF} -eq 1 ]]; then
+    rm -rf CMakeCache.txt CMakeFiles Makefile cmake_install.cmake
 fi
 
 if [[ ${RECONF} -eq 1 || ! -f "Makefile" ]]; then
-    cmake ${CMAKE_OPT} "${ROOT}"
+    cmake ${CMAKE_OPT} "${CODE_ROOT}"
 fi
 
 make -j"${MAKE_JOBS}"

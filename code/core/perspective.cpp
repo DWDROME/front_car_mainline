@@ -6,32 +6,11 @@ float Cal_rot_y(float x, float y);
 float Cal_inv_rot_x(float x, float y);
 float Cal_inv_rot_y(float x, float y);
 }
-#include "clip.hpp"
+
+#include <algorithm>
+#include <cmath>
 
 // ATG 分支使用 ATG2022 rot/inv_rot 投影函数；算法层本身也走同一套函数。
-
-int perspective_lookup_raw_to_ipm(int x, int y, double *ix, double *iy)
-{
-    if(ix == nullptr || iy == nullptr)
-    {
-        return 0;
-    }
-    if(x < 0 || x >= RAW_W || y < 0 || y >= RAW_H)
-    {
-        return 0;
-    }
-
-    const float x0 = Cal_rot_x(static_cast<float>(x), static_cast<float>(y));
-    const float y0 = Cal_rot_y(static_cast<float>(x), static_cast<float>(y));
-    if(x0 < 0.0F || y0 < 0.0F || x0 >= IPM_W || y0 >= IPM_H)
-    {
-        return 0;
-    }
-
-    *ix = x0;
-    *iy = y0;
-    return 1;
-}
 
 int perspective_lookup_ipm_to_raw(int ix, int iy, int *x, int *y)
 {
@@ -51,37 +30,9 @@ int perspective_lookup_ipm_to_raw(int ix, int iy, int *x, int *y)
         return 0;
     }
 
-    *x = clip_i(static_cast<int>(std::lround(x0)), 0, RAW_W - 1);
-    *y = clip_i(static_cast<int>(std::lround(y0)), 0, RAW_H - 1);
+    *x = std::clamp(static_cast<int>(std::lround(x0)), 0, RAW_W - 1);
+    *y = std::clamp(static_cast<int>(std::lround(y0)), 0, RAW_H - 1);
     return 1;
-}
-
-// 投影一个 point_t 到 IPM；失败或越界时 dst 置为 (-1,-1)，ok 写 0。
-void perspective_point(const point_t *src, point_t *dst, int *ok)
-{
-    double x = 0.0;
-    double y = 0.0;
-    int valid = 0;
-
-    if(src != nullptr && dst != nullptr)
-    {
-        valid = perspective_lookup_raw_to_ipm(src->x, src->y, &x, &y);
-        if(valid)
-        {
-            dst->x = round_i(x);
-            dst->y = round_i(y);
-        }
-        else
-        {
-            dst->x = -1;
-            dst->y = -1;
-        }
-    }
-
-    if(ok != nullptr)
-    {
-        *ok = valid;
-    }
 }
 
 // 俯视预览采用反向采样，避免正向投影留下空洞。

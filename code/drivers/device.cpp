@@ -12,56 +12,14 @@ namespace
 {
 zf_device_uvc g_uvc;
 int g_opened = 0;
-
-// ==== 摄像头帧转灰度 ====
-int frame_to_gray_mat(const cv::Mat &src, cv::Mat *dst)
-{
-    if(dst == nullptr || src.empty() || src.depth() != CV_8U)
-    {
-        return 0;
-    }
-
-    if(src.channels() == 1)
-    {
-        *dst = src;
-        return 1;
-    }
-    if(src.channels() == 3)
-    {
-        cv::cvtColor(src, *dst, cv::COLOR_BGR2GRAY);
-        return 1;
-    }
-    if(src.channels() == 4)
-    {
-        cv::cvtColor(src, *dst, cv::COLOR_BGRA2GRAY);
-        return 1;
-    }
-
-    return 0;
-}
-
-// ==== 灰度图拷贝 ====
-void copy_gray_mat(const cv::Mat &src, uint8_t gray[RAW_H][RAW_W])
-{
-    if(src.isContinuous())
-    {
-        std::memcpy(gray[0], src.data, RAW_W * RAW_H);
-        return;
-    }
-
-    for(int y = 0; y < RAW_H; ++y)
-    {
-        std::memcpy(gray[y], src.ptr<uint8_t>(y), RAW_W);
-    }
-}
 }
 
 //-------------------------------------------------------------------------------------------------------------------
-//  @brief      打开 UVC 摄像头并按库默认参数初始化；重复调用直接返回成功
+//  @brief      打开 UVC 摄像头；重复调用直接返回成功
 //  @return     int          1 成功 / 0 设备初始化失败
-//  @note       当前逐飞库版本只支持 init(path)，width/height/fps 在这里不生效，实际尺寸由采集阶段校验。
+//  @note       当前逐飞库版本只支持 init(path)，实际尺寸由采集阶段校验。
 //-------------------------------------------------------------------------------------------------------------------
-int device_open_camera(const char *path, int width, int height, int fps)
+int device_open_camera(const char *path)
 {
     if(g_opened)
     {
@@ -71,10 +29,6 @@ int device_open_camera(const char *path, int width, int height, int fps)
     {
         return 0;
     }
-
-    (void)width;
-    (void)height;
-    (void)fps;
 
     if(g_uvc.init(path) < 0)
     {
@@ -111,7 +65,27 @@ int device_capture_gray(uint8_t gray[RAW_H][RAW_W])
     }
 
     cv::Mat g;
-    if(!frame_to_gray_mat(img, &g))
+    if(img.depth() != CV_8U)
+    {
+        std::fprintf(stderr,
+                     "ERROR: camera frame type depth=%d channels=%d unsupported\n",
+                     img.depth(),
+                     img.channels());
+        return 0;
+    }
+    if(img.channels() == 1)
+    {
+        g = img;
+    }
+    else if(img.channels() == 3)
+    {
+        cv::cvtColor(img, g, cv::COLOR_BGR2GRAY);
+    }
+    else if(img.channels() == 4)
+    {
+        cv::cvtColor(img, g, cv::COLOR_BGRA2GRAY);
+    }
+    else
     {
         std::fprintf(stderr,
                      "ERROR: camera frame type depth=%d channels=%d unsupported\n",
@@ -131,7 +105,17 @@ int device_capture_gray(uint8_t gray[RAW_H][RAW_W])
         return 0;
     }
 
-    copy_gray_mat(g, gray);
+    if(g.isContinuous())
+    {
+        std::memcpy(gray[0], g.data, RAW_W * RAW_H);
+    }
+    else
+    {
+        for(int y = 0; y < RAW_H; ++y)
+        {
+            std::memcpy(gray[y], g.ptr<uint8_t>(y), RAW_W);
+        }
+    }
     return 1;
 }
 
@@ -165,6 +149,16 @@ int device_load_gray(const char *path, uint8_t gray[RAW_H][RAW_W])
         return 0;
     }
 
-    copy_gray_mat(img, gray);
+    if(img.isContinuous())
+    {
+        std::memcpy(gray[0], img.data, RAW_W * RAW_H);
+    }
+    else
+    {
+        for(int y = 0; y < RAW_H; ++y)
+        {
+            std::memcpy(gray[y], img.ptr<uint8_t>(y), RAW_W);
+        }
+    }
     return 1;
 }

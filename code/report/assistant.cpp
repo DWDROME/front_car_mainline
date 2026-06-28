@@ -1,30 +1,30 @@
-#include "app/assistant.hpp"
+#include "report/assistant.hpp"
 
-#include "app/options.hpp"
-#include "tracking/atg_reference_mainline.hpp"
-#include "tracking/perspective.hpp"
-#include "clip.hpp"
+#include "report/options.hpp"
+#include "report/vision_view.hpp"
+#include "core/perspective.hpp"
 
 #include "seekfree_assistant.hpp"
 #include "seekfree_assistant_interface.hpp"
 #include "zf_driver_tcp_client.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 
-// 上位机显示通过 tracking adapter 读取 ATG 当前帧显示 view，对应大佬 Cpu0_Main.c 的 TFT 调试语义：
+// 上位机显示通过 vision_view 读取 ATG 当前帧显示状态，对应参考 Cpu0_Main.c 的调试语义：
 // 发送图为上下拼接的 160x240：上半是原图，下半是 IPM 俯视图（逐像素 inv_rot 反向采样）。
 //   左/右边线 = ipts0/ipts1 (raw 追线点，画在上半)
-//   中线      = inv_rptsn (port step 每帧已把 rptsn 投回原图，画在上半)
+//   中线      = inv_rptsn (vision_step 每帧已把 rptsn 投回原图，画在上半)
 //   断点扫描线 = 圆环入口 inner-hit 的 Lpt seed 竖向参考线；左右种子 ipts0[0]/ipts1[0] 画方框叠加在图上
 //   角点      = Lpt0/Lpt1 (rpts0s/rpts1s 上的 L 角，经 inv_rot 投回原图画十字)
 //   圆环 B/C  = circle_B_point/circle_C_point (raw 几何点，复用角点 marker 通道并叠加到原图)
-//   环岛补线  = Splicing_*/leftline/rightline 按大佬显示分支的状态条件叠加在上半图
+//   环岛补线  = leftline/rightline 与 Splicing_*_center 按大佬显示分支的状态条件叠加在上半图
 //               （环岛 IN/OUT 时 rpts 控制选线直接取 Splicing_*_center，补线就是控制输入）
 //   IPM 下半  = rpts0s/rpts1s/rptsn 既作为 boundary 发给上位机，也用灰度像素直接叠加
-// 失败帧合同：reference_step.c 每帧入口清 ipts*_num/rptsn_num，find_corners() 清 Lpt*_found，
+// 失败帧合同：vision_step.c 每帧入口清 ipts*_num/rptsn_num，find_corners() 清 Lpt*_found，
 // 因此这里不会显示旧帧点列。本文件是纯显示旁路，不读 runtime_t 算法字段，只取 rt->gray 当底图。
 
 namespace
@@ -149,14 +149,6 @@ int assistant_send_all(const uint8 *buf, uint32 len)
     return tcp_send_wrap(buf, len) == len ? 1 : 0;
 }
 
-// 只有 SMARTCAR_ASSISTANT 和 SMARTCAR_VIEWER 两个开关同时为真才启用上位机（VIEWER 是 legacy 别名）。
-int assistant_enabled()
-{
-    const int en = read_env_flag("SMARTCAR_ASSISTANT", 0);
-    const int viewer = read_env_flag("SMARTCAR_VIEWER", 1);
-    return en && viewer;
-}
-
 // 建一次 TCP 连接并初始化逐飞 assistant 接口和相机信息；成功置 connected=1。
 int connect_once()
 {
@@ -186,7 +178,7 @@ int append_display_pt(uint8_t *xs, uint8_t *ys, int *count, int x, int y)
 }
 
 // 把 ATG raw 整型点列（ipts0/ipts1）隔点拷成上位机要的 uint8 x/y，返回有效点数。
-int copy_atg_raw_pts(atg_raw_points_view_t src, uint8_t *xs, uint8_t *ys)
+int copy_atg_raw_pts(vision_raw_view_t src, uint8_t *xs, uint8_t *ys)
 {
     if(src.pts == nullptr || xs == nullptr || ys == nullptr || src.count <= 0)
     {
@@ -206,7 +198,7 @@ int copy_atg_raw_pts(atg_raw_points_view_t src, uint8_t *xs, uint8_t *ys)
 }
 
 // 把 ATG 已投回原图的浮点点列（inv_rptsn）隔点拷成 uint8 x/y；投影出界点直接跳过，不 clamp 到边缘。
-int copy_atg_inv_pts(atg_line_points_view_t src, uint8_t *xs, uint8_t *ys)
+int copy_atg_inv_pts(vision_line_view_t src, uint8_t *xs, uint8_t *ys)
 {
     if(src.pts == nullptr || xs == nullptr || ys == nullptr || src.count <= 0)
     {
@@ -216,8 +208,8 @@ int copy_atg_inv_pts(atg_line_points_view_t src, uint8_t *xs, uint8_t *ys)
     int n = 0;
     for(int i = 0; i < src.count && n < k_point_limit; i += k_display_point_stride)
     {
-        const int x = round_i(src.pts[i][0]);
-        const int y = round_i(src.pts[i][1]);
+        const int x = static_cast<int>(std::lround(src.pts[i][0]));
+        const int y = static_cast<int>(std::lround(src.pts[i][1]));
         if(!raw_point_valid(x, y))
         {
             continue;
@@ -228,7 +220,7 @@ int copy_atg_inv_pts(atg_line_points_view_t src, uint8_t *xs, uint8_t *ys)
 }
 
 // 把 IPM 域点列拷成上位机 XY boundary，纵坐标偏移到下半图。
-int copy_atg_ipm_pts(atg_line_points_view_t src, uint8_t *xs, uint8_t *ys)
+int copy_atg_ipm_pts(vision_line_view_t src, uint8_t *xs, uint8_t *ys)
 {
     if(src.pts == nullptr || xs == nullptr || ys == nullptr || src.count <= 0)
     {
@@ -238,8 +230,8 @@ int copy_atg_ipm_pts(atg_line_points_view_t src, uint8_t *xs, uint8_t *ys)
     int n = 0;
     for(int i = 0; i < src.count && n < k_point_limit; i += k_display_point_stride)
     {
-        const int x = round_i(src.pts[i][0]);
-        const int y = round_i(src.pts[i][1]);
+        const int x = static_cast<int>(std::lround(src.pts[i][0]));
+        const int y = static_cast<int>(std::lround(src.pts[i][1]));
         if(x < 0 || x >= IPM_W || y < 0 || y >= IPM_H)
         {
             continue;
@@ -262,9 +254,9 @@ int ipm_pt_to_raw_display(float ix, float iy, int *x, int *y)
 
     float x0 = 0.0F;
     float y0 = 0.0F;
-    atg_ipm_to_raw(ix, iy, &x0, &y0);
-    const int rx = round_i(x0);
-    const int ry = round_i(y0);
+    vision_ipm_to_raw(ix, iy, &x0, &y0);
+    const int rx = static_cast<int>(std::lround(x0));
+    const int ry = static_cast<int>(std::lround(y0));
     if(!raw_point_valid(rx, ry))
     {
         return 0;
@@ -275,7 +267,7 @@ int ipm_pt_to_raw_display(float ix, float iy, int *x, int *y)
 }
 
 void append_lpt_cross(int found,
-                      atg_line_points_view_t pts,
+                      vision_line_view_t pts,
                       int id,
                       uint8_t *xs,
                       uint8_t *ys,
@@ -341,17 +333,17 @@ void append_raw_cross(int found, int x, int y, uint8_t *xs, uint8_t *ys, int *co
     }
 }
 
-int copy_marker_crosses(uint8_t *xs, uint8_t *ys, const atg_report_snapshot_t &atg)
+int copy_marker_crosses(uint8_t *xs, uint8_t *ys, const vision_snapshot_t &atg)
 {
     int n = 0;
     append_lpt_cross(atg.lpt0_found,
-                     atg_line_points(atg_line_points_id::near_left_smooth),
+                     vision_line(vision_line_id::near_left_smooth),
                      atg.lpt0_id,
                      xs,
                      ys,
                      &n);
     append_lpt_cross(atg.lpt1_found,
-                     atg_line_points(atg_line_points_id::near_right_smooth),
+                     vision_line(vision_line_id::near_right_smooth),
                      atg.lpt1_id,
                      xs,
                      ys,
@@ -519,7 +511,7 @@ void mark_cross(uint8_t image[][RAW_W], int x, int y, uint8_t value)
 // 必须经 inv_rot 反投回 raw；不能拿 rpts*s 索引去查 ipts*（两个点列长度和间距不同）。
 void draw_atg_corner(uint8_t image[][RAW_W],
                      int found,
-                     atg_line_points_view_t pts,
+                     vision_line_view_t pts,
                      int id)
 {
     if(image == nullptr || !found || pts.pts == nullptr || id < 0 || id >= pts.count)
@@ -536,18 +528,6 @@ void draw_atg_corner(uint8_t image[][RAW_W],
     mark_cross(image, x, y, k_marker_value);
 }
 
-int circle_entry_scan_seed_raw(int *seed_x, int *seed_y)
-{
-    if(seed_x == nullptr || seed_y == nullptr)
-    {
-        return 0;
-    }
-
-    // 入口侧判定为上位机显示用。种子公式(左 +2/-5、右 +5/-5)单一来源在
-    // circle.c::circle_entry_inner_seed；tracking adapter 负责复用算法函数和当前侧判定。
-    return atg_circle_entry_scan_seed_raw(seed_x, seed_y);
-}
-
 // 圆环入口断点/inner-hit 诊断线：与 circle.c 的 Lpt seed 同源，显示为竖线。
 // 它不是 begin_y 起搜横线；它用来确认入口 inner-hit 正在从哪一列附近找黑点。
 int entry_scan_line_pts(uint8_t *xs, uint8_t *ys)
@@ -559,7 +539,7 @@ int entry_scan_line_pts(uint8_t *xs, uint8_t *ys)
 
     int seed_x = 0;
     int seed_y = 0;
-    if(!circle_entry_scan_seed_raw(&seed_x, &seed_y))
+    if(!vision_circle_entry_seed(&seed_x, &seed_y))
     {
         return 0;
     }
@@ -582,7 +562,7 @@ void draw_entry_scan_line_on_image(uint8_t image[][RAW_W])
 
     int seed_x = 0;
     int seed_y = 0;
-    if(!circle_entry_scan_seed_raw(&seed_x, &seed_y))
+    if(!vision_circle_entry_seed(&seed_x, &seed_y))
     {
         return;
     }
@@ -632,7 +612,7 @@ void mark_box(uint8_t image[][RAW_W], int x, int y, uint8_t value)
     }
 }
 
-void draw_circle_anchor_point(uint8_t image[][RAW_W], const atg_anchor_point_t &point)
+void draw_circle_anchor_point(uint8_t image[][RAW_W], const vision_anchor_point_t &point)
 {
     if(image == nullptr || !point.found ||
        !raw_point_valid(point.raw_x, point.raw_y))
@@ -644,7 +624,7 @@ void draw_circle_anchor_point(uint8_t image[][RAW_W], const atg_anchor_point_t &
     mark_box(image, point.raw_x, point.raw_y, k_marker_dark_value);
 }
 
-void draw_circle_anchor_points(uint8_t image[][RAW_W], const atg_report_snapshot_t &atg)
+void draw_circle_anchor_points(uint8_t image[][RAW_W], const vision_snapshot_t &atg)
 {
     draw_circle_anchor_point(image, atg.circle_b);
     draw_circle_anchor_point(image, atg.circle_c);
@@ -654,8 +634,8 @@ void draw_circle_anchor_points(uint8_t image[][RAW_W], const atg_report_snapshot
 // 判断方法：方框应该正好落在左右赛道边线上；缺失或落在别处说明第一步起搜不正确。
 void draw_atg_seeds(uint8_t image[][RAW_W])
 {
-    const atg_raw_points_view_t left = atg_raw_points(atg_raw_points_id::left);
-    const atg_raw_points_view_t right = atg_raw_points(atg_raw_points_id::right);
+    const vision_raw_view_t left = vision_raw_line(vision_raw_id::left);
+    const vision_raw_view_t right = vision_raw_line(vision_raw_id::right);
     if(left.count > 0 && left.pts != nullptr)
     {
         mark_box(image, left.pts[0][0], left.pts[0][1], k_seed_box_value);
@@ -666,8 +646,8 @@ void draw_atg_seeds(uint8_t image[][RAW_W])
     }
 }
 
-// 把一条 IPM 浮点点列逐点经 inv_rot 反投回 raw 后叠加到发送图上（对应大佬 lcd_Show_inv_Line）。
-void draw_atg_ipm_line(uint8_t image[][RAW_W], atg_line_points_view_t pts, uint8_t value)
+// 把一条 IPM 浮点点列逐点经 inv_rot 反投回 raw 后叠加到发送图上。
+void draw_atg_ipm_line(uint8_t image[][RAW_W], vision_line_view_t pts, uint8_t value)
 {
     if(image == nullptr || pts.pts == nullptr || pts.count <= 0)
     {
@@ -687,17 +667,14 @@ void draw_atg_ipm_line(uint8_t image[][RAW_W], atg_line_points_view_t pts, uint8
 
 // 环岛补线叠加：状态条件照抄大佬 Cpu0_Main.c 显示分支，旧帧补线被 circle_type gate 住不会误显。
 // 暗线 = 拼接边线/几何延长线（补线原料），亮线 = 补线中心（环岛 IN/OUT 它就是 rpts 控制选线来源）。
-void draw_atg_splicing(uint8_t image[][RAW_W], const atg_report_snapshot_t &atg)
+void draw_atg_splicing(uint8_t image[][RAW_W], const vision_snapshot_t &atg)
 {
     if(atg.circle_right_begin && atg.circle_ref_in_c)
     {
         if(atg.far_lpt1_found)
         {
             draw_atg_ipm_line(image,
-                              atg_line_points(atg_line_points_id::splicing_leftline),
-                              k_splice_edge_value);
-            draw_atg_ipm_line(image,
-                              atg_line_points(atg_line_points_id::splicing_leftline_center),
+                              vision_line(vision_line_id::splicing_leftline_center),
                               k_splice_center_value);
         }
     }
@@ -707,10 +684,10 @@ void draw_atg_splicing(uint8_t image[][RAW_W], const atg_report_snapshot_t &atg)
            atg.rpts0s_num < 0.6F / atg.sample_dist)
         {
             draw_atg_ipm_line(image,
-                              atg_line_points(atg_line_points_id::leftline),
+                              vision_line(vision_line_id::leftline),
                               k_splice_edge_value);
             draw_atg_ipm_line(image,
-                              atg_line_points(atg_line_points_id::splicing_leftline_center),
+                              vision_line(vision_line_id::splicing_leftline_center),
                               k_splice_center_value);
         }
     }
@@ -719,10 +696,7 @@ void draw_atg_splicing(uint8_t image[][RAW_W], const atg_report_snapshot_t &atg)
         if(atg.far_lpt0_found)
         {
             draw_atg_ipm_line(image,
-                              atg_line_points(atg_line_points_id::splicing_rightline),
-                              k_splice_edge_value);
-            draw_atg_ipm_line(image,
-                              atg_line_points(atg_line_points_id::splicing_rightline_center),
+                              vision_line(vision_line_id::splicing_rightline_center),
                               k_splice_center_value);
         }
     }
@@ -731,10 +705,10 @@ void draw_atg_splicing(uint8_t image[][RAW_W], const atg_report_snapshot_t &atg)
         if(atg.lpt1_found || atg.rpts1s_num < 0.6F / atg.sample_dist)
         {
             draw_atg_ipm_line(image,
-                              atg_line_points(atg_line_points_id::rightline),
+                              vision_line(vision_line_id::rightline),
                               k_splice_edge_value);
             draw_atg_ipm_line(image,
-                              atg_line_points(atg_line_points_id::splicing_rightline_center),
+                              vision_line(vision_line_id::splicing_rightline_center),
                               k_splice_center_value);
         }
     }
@@ -757,7 +731,7 @@ void render_ipm_half(uint8_t image[][RAW_W], const uint8_t gray[RAW_H][RAW_W])
 }
 
 // 把 IPM 域浮点点列按原生坐标画进下半图（y 偏移 RAW_H），出界点跳过。
-void draw_ipm_pts(uint8_t image[][RAW_W], atg_line_points_view_t pts, uint8_t value)
+void draw_ipm_pts(uint8_t image[][RAW_W], vision_line_view_t pts, uint8_t value)
 {
     if(image == nullptr || pts.pts == nullptr || pts.count <= 0)
     {
@@ -766,8 +740,8 @@ void draw_ipm_pts(uint8_t image[][RAW_W], atg_line_points_view_t pts, uint8_t va
 
     for(int i = 0; i < pts.count; ++i)
     {
-        const int x = round_i(pts.pts[i][0]);
-        const int y = round_i(pts.pts[i][1]);
+        const int x = static_cast<int>(std::lround(pts.pts[i][0]));
+        const int y = static_cast<int>(std::lround(pts.pts[i][1]));
         if(x >= 0 && x < IPM_W && y >= 0 && y < IPM_H)
         {
             image[RAW_H + y][x] = value;
@@ -775,7 +749,7 @@ void draw_ipm_pts(uint8_t image[][RAW_W], atg_line_points_view_t pts, uint8_t va
     }
 }
 
-// 组装并下发一帧上位机数据：左/中/右三条线 + 断点扫描线 + 灰度图 + 角点/种子叠加，全部通过 tracking adapter 读取当前帧 view。
+// 组装并下发一帧上位机数据：左/中/右三条线 + 断点扫描线 + 灰度图 + 角点/种子叠加，全部通过 vision_view 读取当前帧状态。
 // 显示边界共用一个 dot_num（取 max 后 pad 补齐），不能用最短线长度，否则会裁短边线。
 int config_points(const runtime_t *rt)
 {
@@ -784,33 +758,33 @@ int config_points(const runtime_t *rt)
         return 0;
     }
 
-    const atg_report_snapshot_t atg = atg_report_snapshot();
+    const vision_snapshot_t atg = vision_snapshot();
     int point_count[k_display_boundary_limit] = {};
     point_count[DISPLAY_CHANNEL_LEFT] =
-        copy_atg_raw_pts(atg_raw_points(atg_raw_points_id::left),
+        copy_atg_raw_pts(vision_raw_line(vision_raw_id::left),
                          g_asst.display_x[DISPLAY_CHANNEL_LEFT],
                          g_asst.display_y[DISPLAY_CHANNEL_LEFT]);
     point_count[DISPLAY_CHANNEL_MID] =
-        copy_atg_inv_pts(atg_line_points(atg_line_points_id::selected_raw),
+        copy_atg_inv_pts(vision_line(vision_line_id::selected_raw),
                          g_asst.display_x[DISPLAY_CHANNEL_MID],
                          g_asst.display_y[DISPLAY_CHANNEL_MID]);
     point_count[DISPLAY_CHANNEL_RIGHT] =
-        copy_atg_raw_pts(atg_raw_points(atg_raw_points_id::right),
+        copy_atg_raw_pts(vision_raw_line(vision_raw_id::right),
                          g_asst.display_x[DISPLAY_CHANNEL_RIGHT],
                          g_asst.display_y[DISPLAY_CHANNEL_RIGHT]);
     point_count[DISPLAY_CHANNEL_ENTRY_SCAN] =
         entry_scan_line_pts(g_asst.display_x[DISPLAY_CHANNEL_ENTRY_SCAN],
                             g_asst.display_y[DISPLAY_CHANNEL_ENTRY_SCAN]);
     point_count[DISPLAY_CHANNEL_IPM_LEFT] =
-        copy_atg_ipm_pts(atg_line_points(atg_line_points_id::near_left_smooth),
+        copy_atg_ipm_pts(vision_line(vision_line_id::near_left_smooth),
                          g_asst.display_x[DISPLAY_CHANNEL_IPM_LEFT],
                          g_asst.display_y[DISPLAY_CHANNEL_IPM_LEFT]);
     point_count[DISPLAY_CHANNEL_IPM_MID] =
-        copy_atg_ipm_pts(atg_line_points(atg_line_points_id::selected),
+        copy_atg_ipm_pts(vision_line(vision_line_id::selected),
                          g_asst.display_x[DISPLAY_CHANNEL_IPM_MID],
                          g_asst.display_y[DISPLAY_CHANNEL_IPM_MID]);
     point_count[DISPLAY_CHANNEL_IPM_RIGHT] =
-        copy_atg_ipm_pts(atg_line_points(atg_line_points_id::near_right_smooth),
+        copy_atg_ipm_pts(vision_line(vision_line_id::near_right_smooth),
                          g_asst.display_x[DISPLAY_CHANNEL_IPM_RIGHT],
                          g_asst.display_y[DISPLAY_CHANNEL_IPM_RIGHT]);
     point_count[DISPLAY_CHANNEL_LPT] =
@@ -849,21 +823,21 @@ int config_points(const runtime_t *rt)
     draw_atg_seeds(g_asst.image);
     draw_atg_corner(g_asst.image,
                     atg.lpt0_found,
-                    atg_line_points(atg_line_points_id::near_left_smooth),
+                    vision_line(vision_line_id::near_left_smooth),
                     atg.lpt0_id);
     draw_atg_corner(g_asst.image,
                     atg.lpt1_found,
-                    atg_line_points(atg_line_points_id::near_right_smooth),
+                    vision_line(vision_line_id::near_right_smooth),
                     atg.lpt1_id);
     draw_circle_anchor_points(g_asst.image, atg);
     draw_ipm_pts(g_asst.image,
-                 atg_line_points(atg_line_points_id::near_left_smooth),
+                 vision_line(vision_line_id::near_left_smooth),
                  k_ipm_left_value);
     draw_ipm_pts(g_asst.image,
-                 atg_line_points(atg_line_points_id::near_right_smooth),
+                 vision_line(vision_line_id::near_right_smooth),
                  k_ipm_right_value);
     draw_ipm_pts(g_asst.image,
-                 atg_line_points(atg_line_points_id::selected),
+                 vision_line(vision_line_id::selected),
                  k_ipm_mid_value);
     return send_display_frame(bd, boundary_count, dot_num);
 }
@@ -871,9 +845,9 @@ int config_points(const runtime_t *rt)
 
 //-------------------------------------------------------------------------------------------------------------------
 //  @brief      初始化 assistant：清空状态、读取 env 配置，启用时尝试首次 TCP 连接
-//  @note       仅当 SMARTCAR_ASSISTANT 且 SMARTCAR_VIEWER 同时为真才启用；连接失败只打印日志，不影响主链。
+//  @note       仅当 SMARTCAR_ASSISTANT 为真才启用；连接失败只打印日志，不影响主链。
 //-------------------------------------------------------------------------------------------------------------------
-void assistant_init()
+void assistant_init(void)
 {
     g_asst.enabled = 0;
     g_asst.div = 0;
@@ -885,7 +859,7 @@ void assistant_init()
     std::memset(g_asst.display_x, 0, sizeof(g_asst.display_x));
     std::memset(g_asst.display_y, 0, sizeof(g_asst.display_y));
     std::memset(g_asst.image, 0, sizeof(g_asst.image));
-    g_asst.enabled = assistant_enabled();
+    g_asst.enabled = read_env_flag("SMARTCAR_ASSISTANT", 0);
     g_asst.div = read_env_int_clamped("SMARTCAR_ASSISTANT_DIV", k_default_div, 1, 10000);
     g_asst.reconnect_div = read_env_int_clamped("SMARTCAR_ASSISTANT_RECONNECT_DIV", k_default_reconnect_div, 1, 10000);
     g_asst.ip = read_env_text("SMARTCAR_ASSISTANT_IP", k_default_ip);
@@ -903,7 +877,7 @@ void assistant_init()
 
 //-------------------------------------------------------------------------------------------------------------------
 //  @brief      每帧上位机入口：按分频重连/发送，组装显示边界和图像后下发
-//  @param      rt        当前帧运行时快照；这里只取 rt->gray 当底图，线和角点通过 tracking adapter 读取
+//  @param      rt        当前帧运行时快照；这里只取 rt->gray 当底图，线和角点通过 vision_view 读取
 //  @param      frame_id  帧序号，用于发送分频(div)和断线重连分频(reconnect_div)
 //  @note       未启用或未连接时直接返回；纯显示旁路，不改变 tracking/control 主链。
 //-------------------------------------------------------------------------------------------------------------------

@@ -1,8 +1,8 @@
 #include "control.hpp"
 
 #include "config.hpp"
-#include "clip.hpp"
 
+#include <algorithm>
 #include <cmath>
 
 // 控制主链按实车闭环顺序展开：
@@ -105,7 +105,7 @@ int sign_f(float v)
 // 对 IMU yaw-rate 做滑动平均；单位 rad/s。g_yaw_buf 是环形缓冲，g_yaw_pos 写满 window 后回绕。
 float yaw_avg(float yaw, int window)
 {
-    window = clip_i(window, 1, k_yaw_window_max);
+    window = std::clamp(window, 1, k_yaw_window_max);
     g_yaw_buf[g_yaw_pos] = yaw;
     g_yaw_pos++;
     if(g_yaw_pos >= window)
@@ -125,8 +125,15 @@ float yaw_avg(float yaw, int window)
     return sum / static_cast<float>(g_yaw_num);
 }
 
-void solve(const control_input_t *input, const control_feedback_t *fb, control_state_t *out)
+} // namespace
+
+void solve_control_input(const control_input_t *input, const control_feedback_t *fb, control_state_t *out)
 {
+    if(out == nullptr)
+    {
+        return;
+    }
+
     *out = {};
     if(fb != nullptr)
     {
@@ -339,7 +346,7 @@ void solve(const control_input_t *input, const control_feedback_t *fb, control_s
     const float diff_mps = yaw_cmd * c.wheel_track_m * 0.5F;
     float target_l = (center_mps - diff_mps) / circ;
     float target_r = (center_mps + diff_mps) / circ;
-    const int element_reverse_brake = clip_i(c.element_reverse_brake_percent, 0, c.max_duty_percent);
+    const int element_reverse_brake = std::clamp(c.element_reverse_brake_percent, 0, c.max_duty_percent);
     if(input->spin_mode || (input->element_active && element_reverse_brake > 0))
     {
         target_l = clip_f(target_l, -45.0F, 45.0F);
@@ -470,37 +477,12 @@ void solve(const control_input_t *input, const control_feedback_t *fb, control_s
     if(out->signed_output)
     {
         const int reverse_limit = input->spin_mode ? c.max_duty_percent : element_reverse_brake;
-        out->left_duty = clip_i(round_i32(duty_l), -reverse_limit, c.max_duty_percent);
-        out->right_duty = clip_i(round_i32(duty_r), -reverse_limit, c.max_duty_percent);
+        out->left_duty = std::clamp(round_i32(duty_l), -reverse_limit, c.max_duty_percent);
+        out->right_duty = std::clamp(round_i32(duty_r), -reverse_limit, c.max_duty_percent);
     }
     else
     {
-        out->left_duty = clip_i(round_i32(duty_l), 0, c.max_duty_percent);
-        out->right_duty = clip_i(round_i32(duty_r), 0, c.max_duty_percent);
+        out->left_duty = std::clamp(round_i32(duty_l), 0, c.max_duty_percent);
+        out->right_duty = std::clamp(round_i32(duty_r), 0, c.max_duty_percent);
     }
-}
-
-} // namespace
-
-void solve_control_input(const control_input_t *input, control_state_t *ctrl)
-{
-    if(input == nullptr || ctrl == nullptr)
-    {
-        return;
-    }
-
-    control_feedback_t fb = {};
-    fb.period_ms = control_config().control_period_ms;
-    solve(input, &fb, ctrl);
-}
-
-void solve_control_input_with_feedback(const control_input_t *input,
-                                       const control_feedback_t *fb,
-                                       control_state_t *ctrl)
-{
-    if(input == nullptr || ctrl == nullptr)
-    {
-        return;
-    }
-    solve(input, fb, ctrl);
 }

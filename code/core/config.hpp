@@ -68,4 +68,7 @@ struct control_config_t
 bool load_control_config(const char *path);
 
 // 控制环读全局参数；load 之前调用返回默认值。
-const control_config_t &control_config();
+const control_config_t &control_config(void);
+
+// 控制/诊断共用的视觉预瞄距离，单位像素。
+int control_lookahead_dist_px(int pixel_per_meter);

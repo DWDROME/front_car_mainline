@@ -1,7 +1,7 @@
-#include "app/report.hpp"
+#include "report/report.hpp"
 
-#include "app/options.hpp"
-#include "tracking/atg_reference_mainline.hpp"
+#include "report/options.hpp"
+#include "report/vision_view.hpp"
 
 #include <array>
 #include <cstddef>
@@ -139,6 +139,11 @@ int flag(bool value)
     return value ? 1 : 0;
 }
 
+int line_found_for_report(const runtime_t *rt)
+{
+    return rt != nullptr && rt->vision.line_found && rt->vision.mid.step > 0;
+}
+
 int clamp_index_for_report(int index, int count)
 {
     if(count <= 0)
@@ -154,6 +159,32 @@ int clamp_index_for_report(int index, int count)
         return count - 1;
     }
     return index;
+}
+
+int midline_has_forward_lookahead(const midline_t *midline, int aim_distance, int ref_y)
+{
+    if(midline == nullptr || midline->step <= 0)
+    {
+        return 0;
+    }
+
+    int best = -1;
+    for(int i = 0; i < midline->step; ++i)
+    {
+        if(midline->dist[i] < aim_distance)
+        {
+            continue;
+        }
+        if(best < 0 || midline->dist[i] < midline->dist[best])
+        {
+            best = i;
+        }
+    }
+    if(best < 0)
+    {
+        return 0;
+    }
+    return midline->pts[best].y < ref_y;
 }
 
 struct atg_point_diag_t
@@ -187,19 +218,19 @@ atg_point_diag_t near_point_diag(bool found, int id, const float pts[][2], int c
     }
     out.ipm_x = pts[idx][0];
     out.ipm_y = pts[idx][1];
-    atg_ipm_to_raw(out.ipm_x, out.ipm_y, &out.raw_x, &out.raw_y);
+    vision_ipm_to_raw(out.ipm_x, out.ipm_y, &out.raw_x, &out.raw_y);
     return out;
 }
 
-atg_point_diag_t near_point_diag(bool found, int id, atg_line_points_view_t pts)
+atg_point_diag_t near_point_diag(bool found, int id, vision_line_view_t pts)
 {
     return near_point_diag(found, id, pts.pts, pts.count);
 }
 
 atg_point_diag_t far_point_diag(bool found,
                                 int id,
-                                atg_line_points_view_t pts,
-                                atg_point2f_t inv_pt)
+                                vision_line_view_t pts,
+                                vision_point2f_t inv_pt)
 {
     atg_point_diag_t out = {};
     out.found = flag(found);
@@ -225,7 +256,7 @@ atg_point_diag_t far_point_diag(bool found,
     return out;
 }
 
-const char *left_farline_seed_source(const atg_report_snapshot_t &atg)
+const char *left_farline_seed_source(const vision_snapshot_t &atg)
 {
     if(atg.lpt0_found && atg.rpts0s_num >= 3 && !atg.if_lost_left_line)
     {
@@ -242,7 +273,7 @@ const char *left_farline_seed_source(const atg_report_snapshot_t &atg)
     return "none";
 }
 
-const char *right_farline_seed_source(const atg_report_snapshot_t &atg)
+const char *right_farline_seed_source(const vision_snapshot_t &atg)
 {
     if(atg.lpt1_found && atg.lpt1_id > 2 && !atg.if_lost_right_line)
     {
@@ -261,9 +292,9 @@ const char *right_farline_seed_source(const atg_report_snapshot_t &atg)
 
 live_state_signature_t make_live_state_signature(const runtime_t *rt)
 {
-    const atg_report_snapshot_t atg = atg_report_snapshot();
+    const vision_snapshot_t atg = vision_snapshot();
     return live_state_signature(
-        track_line_found(rt),
+        line_found_for_report(rt),
         atg.track_type,
         atg.cross_type,
         atg.circle_type,
@@ -298,10 +329,10 @@ live_state_signature_t make_live_state_signature(const runtime_t *rt)
         angle_bucket(atg.conf2_rad),
         angle_bucket(atg.conf3_rad),
         angle_bucket(atg.conf4_rad),
-        atg.atg_seed0_found,
-        atg.atg_seed1_found,
-        atg.atg_seed0_y / 4,
-        atg.atg_seed1_y / 4,
+        atg.seed0_found,
+        atg.seed1_found,
+        atg.seed0_y / 4,
+        atg.seed1_y / 4,
         atg.lpt0_debug.best_i / 2,
         atg.lpt1_debug.best_i / 2,
         angle_bucket(atg.lpt0_debug.best_conf_rad),
@@ -350,7 +381,7 @@ int live_state_changed(const live_state_signature_t &sig)
     return 1;
 }
 
-void print_atg_counts(const atg_report_snapshot_t &atg)
+void print_atg_counts(const vision_snapshot_t &atg)
 {
     std::printf("ATGCounts: raw=%d/%d ipm=%d/%d smooth=%d/%d center=%d/%d sel=%d norm=%d "
                 "far_raw=%d/%d far_ipm=%d/%d\n",
@@ -370,14 +401,14 @@ void print_atg_counts(const atg_report_snapshot_t &atg)
                 atg.far_rpts1s_num);
 }
 
-void print_atg_elements(const atg_report_snapshot_t &atg)
+void print_atg_elements(const vision_snapshot_t &atg)
 {
     std::printf("ATGElem: track=%d cross=%d circle=%d(%s) round=%d yroad=%d ramp=%d road=%d speed=%d "
                 "not_have_line=%d dist=%d begin_dist=%lld begin_last=%lld ramp_dist=%d\n",
                 atg.track_type,
                 atg.cross_type,
                 atg.circle_type,
-                atg_circle_type_name(atg.circle_type),
+                atg.circle_type_name,
                 atg.round_type,
                 atg.yroad_type,
                 atg.ramp_type,
@@ -390,12 +421,12 @@ void print_atg_elements(const atg_report_snapshot_t &atg)
                 atg.ramp_total_distence);
 }
 
-void print_atg_corners(const atg_report_snapshot_t &atg)
+void print_atg_corners(const vision_snapshot_t &atg)
 {
-    const atg_line_points_view_t left = atg_line_points(atg_line_points_id::near_left_smooth);
-    const atg_line_points_view_t right = atg_line_points(atg_line_points_id::near_right_smooth);
-    const atg_line_points_view_t far_left = atg_line_points(atg_line_points_id::far_left_smooth);
-    const atg_line_points_view_t far_right = atg_line_points(atg_line_points_id::far_right_smooth);
+    const vision_line_view_t left = vision_line(vision_line_id::near_left_smooth);
+    const vision_line_view_t right = vision_line(vision_line_id::near_right_smooth);
+    const vision_line_view_t far_left = vision_line(vision_line_id::far_left_smooth);
+    const vision_line_view_t far_right = vision_line(vision_line_id::far_right_smooth);
     const atg_point_diag_t l0 = near_point_diag(atg.lpt0_found, atg.lpt0_id, left);
     const atg_point_diag_t l1 = near_point_diag(atg.lpt1_found, atg.lpt1_id, right);
     const atg_point_diag_t y0 = near_point_diag(atg.ypt0_found, atg.ypt0_id, left);
@@ -515,24 +546,9 @@ struct raw_ref_diag_t
     double y;
 };
 
-raw_ref_diag_t raw_ref_to_ipm(double raw_x)
-{
-    const double raw_y = static_cast<double>(RAW_H) * 0.98;
-    raw_ref_diag_t out = {};
-    float ipm_x = 0.0F;
-    float ipm_y = 0.0F;
-    atg_raw_to_ipm(static_cast<float>(raw_x),
-                                 static_cast<float>(raw_y),
-                                 &ipm_x,
-                                 &ipm_y);
-    out.x = static_cast<double>(ipm_x);
-    out.y = static_cast<double>(ipm_y);
-    return out;
-}
-
-line_error_diag_t line_error_diag(atg_line_points_view_t points,
+line_error_diag_t line_error_diag(vision_line_view_t points,
                                   int aim_distance,
-                                  const atg_report_snapshot_t &atg)
+                                  const vision_snapshot_t &atg)
 {
     line_error_diag_t out = {};
     out.begin = -1;
@@ -606,19 +622,19 @@ line_error_diag_t line_error_diag(atg_line_points_view_t points,
     return out;
 }
 
-void print_line_error_diag(const atg_report_snapshot_t &atg)
+void print_line_error_diag(const vision_snapshot_t &atg)
 {
-    const int aim_distance = atg_lookahead_dist_px();
+    const int aim_distance = vision_lookahead_dist_px();
     const line_error_diag_t left =
-        line_error_diag(atg_line_points(atg_line_points_id::center_left), aim_distance, atg);
+        line_error_diag(vision_line(vision_line_id::center_left), aim_distance, atg);
     const line_error_diag_t right =
-        line_error_diag(atg_line_points(atg_line_points_id::center_right), aim_distance, atg);
+        line_error_diag(vision_line(vision_line_id::center_right), aim_distance, atg);
     const line_error_diag_t selected =
-        line_error_diag(atg_line_points(atg_line_points_id::selected), aim_distance, atg);
+        line_error_diag(vision_line(vision_line_id::selected), aim_distance, atg);
     const line_error_diag_t edge_left =
-        line_error_diag(atg_line_points(atg_line_points_id::near_left_smooth), aim_distance, atg);
+        line_error_diag(vision_line(vision_line_id::near_left_smooth), aim_distance, atg);
     const line_error_diag_t edge_right =
-        line_error_diag(atg_line_points(atg_line_points_id::near_right_smooth), aim_distance, atg);
+        line_error_diag(vision_line(vision_line_id::near_right_smooth), aim_distance, atg);
     int edge_mid_ok = 0;
     double edge_mid_x = -1.0;
     double edge_mid_y = -1.0;
@@ -692,9 +708,18 @@ void print_line_error_diag(const atg_report_snapshot_t &atg)
         char scan[512];
         int used = 0;
         scan[0] = '\0';
+        const double raw_y = static_cast<double>(RAW_H) * 0.98;
         for(int raw_x = 0; raw_x <= 140; raw_x += 5)
         {
-            const raw_ref_diag_t ref = raw_ref_to_ipm(static_cast<double>(raw_x));
+            raw_ref_diag_t ref = {};
+            float ipm_x = 0.0F;
+            float ipm_y = 0.0F;
+            vision_raw_to_ipm(static_cast<float>(raw_x),
+                              static_cast<float>(raw_y),
+                              &ipm_x,
+                              &ipm_y);
+            ref.x = static_cast<double>(ipm_x);
+            ref.y = static_cast<double>(ipm_y);
             const double dx = edge_mid_x - ref.x;
             const double dy = ref.y - edge_mid_y + 0.2 * static_cast<double>(atg.pixel_per_meter);
             const double err = -std::atan2(dx, dy) * 180.0 / 3.14159265358979323846;
@@ -725,7 +750,7 @@ void print_line_error_diag(const atg_report_snapshot_t &atg)
             }
         }
         std::printf("CxScan: raw_ref=%.1f edge=%.1f,%.1f best_raw_x=%d best_err=%.2f best_cxcy=%.1f,%.1f scan=%s\n",
-                    atg_vehicle_raw_ref_x(),
+                    atg.vehicle_raw_ref_x,
                     edge_mid_x,
                     edge_mid_y,
                     best_raw_x,
@@ -736,7 +761,7 @@ void print_line_error_diag(const atg_report_snapshot_t &atg)
     }
 }
 
-void print_cross_diag(const atg_report_snapshot_t &atg)
+void print_cross_diag(const vision_snapshot_t &atg)
 {
     const int half_left = atg.cross_half && atg.lpt0_found_flag;
     const int half_right = atg.cross_half && atg.lpt1_found_flag;
@@ -744,7 +769,7 @@ void print_cross_diag(const atg_report_snapshot_t &atg)
                 "nearL=%d@%d/%d@%d nearNum=%d/%d centerNum=%d/%d "
                 "farL=%d@%d/%d@%d farNum=%d/%d farRaw=%d/%d "
                 "lost=%d/%d not_have=%d final=%d/%d flags=%d/%d\n",
-                atg_cross_type_name(atg.cross_type),
+                atg.cross_type_name,
                 atg.track_type,
                 half_left,
                 half_right,
@@ -773,15 +798,15 @@ void print_cross_diag(const atg_report_snapshot_t &atg)
                 atg.lpt1_found_flag);
 }
 
-void print_atg_vision_diag(const atg_report_snapshot_t &atg)
+void print_atg_vision_diag(const vision_snapshot_t &atg)
 {
     std::printf("ATGSeedDiag: seed=%d@%d,%d/%d@%d,%d begin=%d,%d block=%d clip=%d\n",
-                atg.atg_seed0_found,
-                atg.atg_seed0_x,
-                atg.atg_seed0_y,
-                atg.atg_seed1_found,
-                atg.atg_seed1_x,
-                atg.atg_seed1_y,
+                atg.seed0_found,
+                atg.seed0_x,
+                atg.seed0_y,
+                atg.seed1_found,
+                atg.seed1_x,
+                atg.seed1_y,
                 atg.begin_x,
                 atg.begin_y,
                 atg.block_size,
@@ -825,7 +850,7 @@ void write_mid_report(std::ofstream &out, const runtime_t *rt)
     int ml_dist = -1;
     int max_dist = -1;
     int ml_forward = 0;
-    const int aim_distance = atg_lookahead_dist_px();
+    const int aim_distance = vision_lookahead_dist_px();
     mid_points_for_report(rt->vision.mid,
                           rt->vision.control_ref.y,
                           aim_distance,
@@ -898,20 +923,113 @@ void mid_points_for_report(const midline_t &mid,
     *forward_ok = midline_has_forward_lookahead(&mid, aim_distance, ref_y);
 }
 
+void print_replay_frame(int frame, const runtime_t *rt)
+{
+    point_t m0 = {-1, -1};
+    point_t ml = {-1, -1};
+    int ml_dist = -1;
+    int max_dist = -1;
+    int ml_forward = 0;
+    const int aim_distance = vision_lookahead_dist_px();
+    const vision_snapshot_t atg = vision_snapshot();
+    mid_points_for_report(rt->vision.mid,
+                          rt->vision.control_ref.y,
+                          aim_distance,
+                          &m0,
+                          &ml,
+                          &ml_dist,
+                          &max_dist,
+                          &ml_forward);
+
+    std::printf("replay frame=%d line=%d track=%d cross=%d circle=%d round=%d yroad=%d ramp=%d road=%d speed=%d "
+                "near=%d/%d raw=%d/%d ipm=%d/%d center=%d/%d sel=%d/%d src=%d "
+                "l=%d@%d/%d@%d y=%d@%d/%d@%d far_l=%d@%d/%d@%d far_num=%d/%d "
+                "straight=%d/%d far_straight=%d/%d conf=%.1f/%.1f/%.1f/%.1f "
+                "dist=%d begin=%lld/%lld ramp_dist=%d m0=(%d,%d) ml=(%d,%d) md=%d/%d/%d "
+                "cxcy=%.1f,%.1f guide=%.2f atg_guide=%.1f/%.1f/%.1f "
+                "duty=%d/%d pwm=PWM2:%d/PWM1:%d motor=2:%d/1:%d\n",
+                frame,
+                line_found_for_report(rt),
+                atg.track_type,
+                atg.cross_type,
+                atg.circle_type,
+                atg.round_type,
+                atg.yroad_type,
+                atg.ramp_type,
+                atg.road_type,
+                atg.speed_type,
+                atg.rpts0s_num,
+                atg.rpts1s_num,
+                atg.ipts0_num,
+                atg.ipts1_num,
+                atg.rpts0_num,
+                atg.rpts1_num,
+                atg.rptsc0_num,
+                atg.rptsc1_num,
+                atg.rpts_num,
+                atg.rptsn_num,
+                atg.line_src_id,
+                atg.lpt0_found,
+                atg.lpt0_id,
+                atg.lpt1_found,
+                atg.lpt1_id,
+                atg.ypt0_found,
+                atg.ypt0_id,
+                atg.ypt1_found,
+                atg.ypt1_id,
+                atg.far_lpt0_found,
+                atg.far_lpt0_id,
+                atg.far_lpt1_found,
+                atg.far_lpt1_id,
+                atg.far_rpts0s_num,
+                atg.far_rpts1s_num,
+                atg.is_straight0,
+                atg.is_straight1,
+                atg.is_straight_far_0,
+                atg.is_straight_far_1,
+                atg.conf1_deg,
+                atg.conf2_deg,
+                atg.conf3_deg,
+                atg.conf4_deg,
+                atg.total_distence,
+                (long long)atg.circle_begin_dist,
+                (long long)atg.circle_begin_last_dist,
+                atg.ramp_total_distence,
+                m0.x,
+                m0.y,
+                ml.x,
+                ml.y,
+                ml_dist,
+                ml_forward,
+                max_dist,
+                atg.cx,
+                atg.cy,
+                rt->vision.guide_error,
+                atg.guide,
+                atg.guide_up,
+                atg.guide_up_up,
+                rt->control.left_duty,
+                rt->control.right_duty,
+                rt->control.left_duty,
+                rt->control.right_duty,
+                rt->control.left_duty,
+                rt->control.right_duty);
+}
+
 void print_detail(const runtime_t *rt)
 {
     if(rt == nullptr)
     {
         return;
     }
-    const atg_report_snapshot_t atg = atg_report_snapshot();
+    const vision_snapshot_t atg = vision_snapshot();
 
     point_t m0 = {-1, -1};
     point_t ml = {-1, -1};
     int ml_dist = -1;
     int max_dist = -1;
     int ml_forward = 0;
-    const int aim_distance = atg_lookahead_dist_px();
+    const int aim_distance = vision_lookahead_dist_px();
     mid_points_for_report(rt->vision.mid,
                           rt->vision.control_ref.y,
                           aim_distance,
@@ -927,7 +1045,7 @@ void print_detail(const runtime_t *rt)
     print_atg_vision_diag(atg);
     std::printf("ATGMid: line=%d step=%d ref=(%d,%d) m0=(%d,%d) ml=(%d,%d) md=%d/%d/%d "
                 "cxcy=%.1f,%.1f guide=%.2f atg_guide=%.1f/%.1f/%.1f\n",
-                track_line_found(rt),
+                line_found_for_report(rt),
                 rt->vision.mid.step,
                 rt->vision.control_ref.x,
                 rt->vision.control_ref.y,
@@ -988,7 +1106,7 @@ void print_live(uint32_t frame_id, const runtime_t *rt, int div)
     {
         return;
     }
-    const atg_report_snapshot_t atg = atg_report_snapshot();
+    const vision_snapshot_t atg = vision_snapshot();
     const int force_log = read_env_flag("FRONT_CAR_FORCE_LIVE_LOG", 0);
     const int element_log = atg.cross_or_circle_active;
     if(!force_log && !element_log && div > 1 && frame_id % static_cast<uint32_t>(div) != 0U)
@@ -1011,7 +1129,7 @@ void print_live(uint32_t frame_id, const runtime_t *rt, int div)
     int ml_dist = -1;
     int max_dist = -1;
     int ml_forward = 0;
-    const int aim_distance = atg_lookahead_dist_px();
+    const int aim_distance = vision_lookahead_dist_px();
     mid_points_for_report(rt->vision.mid,
                           rt->vision.control_ref.y,
                           aim_distance,
@@ -1030,11 +1148,11 @@ void print_live(uint32_t frame_id, const runtime_t *rt, int div)
                 "atg=%.1f/%.1f/%.1f pure=%.2f/%.2f yaw=%d cmd=%d actual=%d signed=%d rps=%d/%d:%d/%d "
                 "duty=%d/%d pwm=PWM2:%d/PWM1:%d motor=2:%d/1:%d\n",
                 frame_id,
-                track_line_found(rt),
+                line_found_for_report(rt),
                 atg.track_type,
                 atg.cross_type,
                 atg.circle_type,
-                atg_circle_type_name(atg.circle_type),
+                atg.circle_type_name,
                 atg.round_type,
                 atg.yroad_type,
                 atg.ramp_type,
@@ -1140,9 +1258,9 @@ int write_report(const runtime_t *rt, const char *report_path)
     {
         return 0;
     }
-    const atg_report_snapshot_t atg = atg_report_snapshot();
+    const vision_snapshot_t atg = vision_snapshot();
 
-    out << "line_found=" << track_line_found(rt) << "\n";
+    out << "line_found=" << line_found_for_report(rt) << "\n";
     out << "ipm_source=atg_rot_inv_rot\n";
     out << "atg_track_type=" << atg.track_type << "\n";
     out << "atg_cross_type=" << atg.cross_type << "\n";
@@ -1181,7 +1299,7 @@ int write_report(const runtime_t *rt, const char *report_path)
     out << "atg_rptsc1_num=" << atg.rptsc1_num << "\n";
     out << "atg_rpts_num=" << atg.rpts_num << "\n";
     out << "atg_rptsn_num=" << atg.rptsn_num << "\n";
-    out << "atg_selected_line_source=" << atg_selected_line_source_name() << "\n";
+    out << "atg_selected_line_source=" << atg.line_src_name << "\n";
     out << "atg_selected_line_source_id=" << atg.line_src_id << "\n";
     out << "atg_far_ipts0_num=" << atg.far_ipts0_num << "\n";
     out << "atg_far_ipts1_num=" << atg.far_ipts1_num << "\n";
@@ -1208,10 +1326,10 @@ int write_report(const runtime_t *rt, const char *report_path)
     out << "atg_conf2_max_deg=" << atg.conf2_deg << "\n";
     out << "atg_conf3_max_deg=" << atg.conf3_deg << "\n";
     out << "atg_conf4_max_deg=" << atg.conf4_deg << "\n";
-    out << "atg_seed0_found=" << atg.atg_seed0_found << "\n";
-    out << "atg_seed1_found=" << atg.atg_seed1_found << "\n";
-    out << "atg_seed0_xy=" << atg.atg_seed0_x << "," << atg.atg_seed0_y << "\n";
-    out << "atg_seed1_xy=" << atg.atg_seed1_x << "," << atg.atg_seed1_y << "\n";
+    out << "atg_seed0_found=" << atg.seed0_found << "\n";
+    out << "atg_seed1_found=" << atg.seed1_found << "\n";
+    out << "atg_seed0_xy=" << atg.seed0_x << "," << atg.seed0_y << "\n";
+    out << "atg_seed1_xy=" << atg.seed1_x << "," << atg.seed1_y << "\n";
     out << "atg_lpt0_best=" << atg.lpt0_debug.best_i << "," << atg.lpt0_debug.best_conf_deg << "\n";
     out << "atg_lpt1_best=" << atg.lpt1_debug.best_i << "," << atg.lpt1_debug.best_conf_deg << "\n";
     out << "atg_lpt0_best_imip=" << atg.lpt0_debug.best_im1 << "," << atg.lpt0_debug.best_ip1 << "\n";
